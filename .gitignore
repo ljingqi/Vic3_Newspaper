@@ -1,0 +1,21 @@
+# 配置文件（含 DeepSeek API Key，切勿上传）
+config.json
+
+# 依赖工具：需自行下载，见 README「工具与环境准备」
+tools/
+
+# 日志与 Python 缓存
+logs/
+__pycache__/
+*.pyc
+
+# 测试集与生成输出（报纸 Markdown 与原始 JSON 数据）
+data/
+**/data/
+**/报纸_*.md
+
+# 编辑器 / 系统文件
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
