@@ -1,0 +1,10 @@
+{
+  "deepseek_api_key": "",
+  "deepseek_model": "deepseek-chat",
+  "deepseek_base_url": "https://api.deepseek.com/chat/completions",
+  "game_log_path": "",
+  "journal_dir": "",
+  "poll_interval_seconds": 5,
+  "max_tokens": 8000,
+  "temperature": 1.0
+}

@@ -1,7 +1,7 @@
 # 维多利亚3 年度报纸 Mod —《世界纪闻》
 
 在《维多利亚3》中，每年年初自动把玩家国家的**经济 / 战争 / 外交**数据导出，
-交给 DeepSeek LLM 生成一份**19 世纪风格报纸**（Markdown），保存在 `D:/Journal`。
+交给 DeepSeek LLM 生成一份**19 世纪风格报纸**（Markdown），保存在本仓库目录（下称 `<项目目录>`）。
 
 ```
 ┌──────────────────┐   每年1月1日    ┌──────────────────┐
@@ -15,25 +15,28 @@
                                  │ DeepSeek API         │
                                  └────────────┬─────────┘
                                               ▼
-                                    D:/Journal/<国名>/报纸_1837.md
+                                    <项目目录>/<国名>/报纸_1837.md
 ```
 
 ---
 
 ## 文件清单
 
+下文用 `<项目目录>` 表示本仓库所在的文件夹（例如 `D:\Journal`），不写死盘符。
+
 | 路径 | 说明 |
 | --- | --- |
-| `C:\Users\CHINE\Documents\Paradox Interactive\Victoria 3\mod\v3journal\` | **游戏 mod**（.metadata / common / localization / thumbnail） |
-| `D:\Journal\journal.py` | **Python 伴生程序**（主程序） |
-| `D:\Journal\config.json` | 配置文件（DeepSeek Key、日志路径等） |
-| `D:\Journal\requirements.txt` | Python 依赖（requests） |
-| `D:\Journal\README.md` | 本文档 |
-| `D:\Journal\<国名>\报纸_<年份>.md` | 生成的报纸（按存档/国名分文件夹，自动产生） |
-| `D:\Journal\<国名>\data\raw_<年份>.json` | 每年导出的原始数据（随报纸同放于该存档文件夹，用于 regen 重试） |
+| `%USERPROFILE%\Documents\Paradox Interactive\Victoria 3\mod\v3journal\` | **游戏 mod**（.metadata / common / localization / thumbnail） |
+| `<项目目录>\journal.py` | **Python 伴生程序**（主程序） |
+| `<项目目录>\config.json` | 配置文件（由 `config.example.json` 复制而来；含你的 DeepSeek Key，**勿上传**） |
+| `<项目目录>\config.example.json` | 配置模板（所有参数已填好，仅 API Key 留空） |
+| `<项目目录>\requirements.txt` | Python 依赖（requests） |
+| `<项目目录>\README.md` | 本文档 |
+| `<项目目录>\<国名>\报纸_<年份>.md` | 生成的报纸（按存档/国名分文件夹，自动产生） |
+| `<项目目录>\<国名>\data\raw_<年份>.json` | 每年导出的原始数据（随报纸同放于该存档文件夹，用于 regen 重试） |
 
 > 注意：GitHub 仓库**不包含**以下内容（已在 `.gitignore` 中排除），使用前需自行准备：
-> - `config.json`（含你的 DeepSeek API Key，切勿上传）
+> - `config.json`（含你的 DeepSeek API Key，切勿上传；仓库提供 `config.example.json` 模板，复制改名即可）
 > - `tools\`（rakaly 等二进制工具，下载方式见下文「工具与环境准备」）
 > - 各测试集文件夹（`<国名>\报纸_*.md` 与 `<国名>\data\raw_*.json`，由程序自动生成）
 
@@ -48,22 +51,20 @@
 
 1. **下载 Rakaly**：到 [rakaly/cli Releases](https://github.com/rakaly/cli/releases)
    下载 Windows 版（如 `rakaly-cli-windows-*.zip`，内含 `rakaly.exe`），解压后把
-   **`rakaly.exe`** 放到 **`D:\Journal\tools\rakaly.exe`**（`tools` 目录需自行创建）。
+   **`rakaly.exe`** 放到 **`<项目目录>\tools\rakaly.exe`**（`tools` 目录需自行创建）。
    `journal_save.py` 会从这里调用它来熔化 `.v3` 存档。
 2. **安装 Python 依赖**：
    ```bat
    python -m pip install -r requirements.txt
    ```
-3. **创建配置文件 `D:\Journal\config.json`**（仓库不含，模板如下）：
-   ```json
-   {
-     "deepseek_api_key": "sk-你的密钥",
-     "deepseek_model": "deepseek-chat",
-     "deepseek_base_url": "https://api.deepseek.com/chat/completions",
-     "game_log_path": "",
-     "journal_dir": "D:/Journal"
-   }
+3. **创建配置文件**：仓库已提供 `config.example.json`（所有参数已填好，仅 API Key 留空），
+   复制为 `config.json` 后填入你的 Key：
+   ```bat
+   copy config.example.json config.json
    ```
+   然后编辑 `config.json`，把 `"deepseek_api_key": ""` 改成 `"deepseek_api_key": "sk-你的密钥"`。
+   字段说明：`deepseek_model` 可选 `deepseek-chat`（默认）或 `deepseek-reasoner`（推理模式，更慢）；
+   `game_log_path` / `journal_dir` 留空时自动使用默认值（日志路径自动探测 / 仓库目录）。
 
 准备完成后，运行 `python journal_save.py check` 可自检存档、rakaly 是否就绪。
 
@@ -89,7 +90,7 @@
 ## 第二步：配置 DeepSeek API Key
 
 1. 到 [platform.deepseek.com](https://platform.deepseek.com) 注册并申请 API Key（形如 `sk-xxxxxxxx`）。
-2. 编辑 `D:\Journal\config.json`（不在仓库内，模板见上文「工具与环境准备」），把 Key 填入 `deepseek_api_key`：
+2. 编辑 `<项目目录>\config.json`（由 `config.example.json` 复制而来，见上文「工具与环境准备」），把 Key 填入 `deepseek_api_key`：
 
 ```json
 { "deepseek_api_key": "sk-你的密钥" }
@@ -100,7 +101,7 @@
 ## 第三步：运行伴生程序
 
 ```bat
-cd /d D:\Journal
+cd /d <项目目录>
 python -m pip install -r requirements.txt   :: 首次运行, 安装依赖
 python journal.py check                      :: 自检 mod 数据是否写入日志
 python journal.py test-llm                   :: 测试 API 连通性
@@ -109,7 +110,7 @@ python journal.py watch                      :: 持续监控(建议常驻后台)
 
 `watch` 会每 5 秒检查一次 `debug.log`。**游戏内每当 1 月 1 日年度滚动**，mod 会写出
 一个数据块，伴生程序随即调用 DeepSeek 生成当期报纸并写入
-`D:\Journal\<国名>\报纸_<年份>.md`（同时弹出一个游戏内事件提示）。
+`<项目目录>\<国名>\报纸_<年份>.md`（同时弹出一个游戏内事件提示）。
 > 首次运行 `watch` 后会以玩家国名新建文件夹；同一国家再次开新档则生成 `国名2`。
 
 ### 全部命令
@@ -209,11 +210,11 @@ debug.log 其实已在写入（本方案已验证），此开关只是额外保�
 这是游戏运行时持续更新的实时数据源。但 `.v3` 默认是**压缩二进制**格式，纯 Python
 无法直接解析，需要借助 [Rakaly CLI](https://github.com/rakaly/cli/releases)
 先转为文本，或用 `-debug_mode` 把"存档格式"设为 **Text**。本版本暂未内置该解析，
-可作为后续扩展（原始 JSON 已存于 `D:\Journal\data\`，接入解析后可直接复用）。
+可作为后续扩展（原始 JSON 已存于 `<项目目录>\data\`，接入解析后可直接复用）。
 
 **方案 C — journal_save.py 存档直读（当前索科托等测试使用的路线）**
 `python journal_save.py newspaper <年份>` 用 [Rakaly](https://github.com/rakaly/cli/releases)
-（`rakaly.exe` 放在 `D:\Journal\tools\`）熔化最新 `.v3` 存档并提取**精确数据**，
+（`rakaly.exe` 放在 `<项目目录>\tools\`）熔化最新 `.v3` 存档并提取**精确数据**，
 除 GDP/生活水平/识字率/法律变化/条约/列强战事外，还提供：
 
 - **激进派/效忠派占比**：按 `population_radicals` / `population_loyalists` 与全国总人口计算百分比，
@@ -240,7 +241,7 @@ debug.log 其实已在写入（本方案已验证），此开关只是额外保�
   仅能给出各列强的交战/和平状态；玩家自己参与战争的对手可正常列出。
 - **法律 Amendments**：脚本可遍历（`every_scope_amendment`），但导出其效果/文本不实际（每个修正案
   的 modifiers 复杂），暂不实现。
-- **精确数据（非 debug_log 路线）**：已提供 `D:\Journal\saveparse.py` 读取 .v3 存档信封
+- **精确数据（非 debug_log 路线）**：已提供 `<项目目录>\saveparse.py` 读取 .v3 存档信封
   （SAV01033 + ZIP gamestate，已验证可读）。默认 gamestate 为**二进制**，需用
   [Rakaly CLI](https://github.com/rakaly/cli/releases) 熔化，或游戏 debug 模式把存档格式
   设为 **Text** 后解析——届时可精确读取 GDP/生活水平/前三大文化名/战争参与方等 debug_log 拿不到的数据。
