@@ -130,6 +130,7 @@ WORKSHOP_DIR = r"F:\Game\steamapps\workshop\content\529340"
 
 _NAME_CACHE = None
 _LOC_ALL = None
+_LOC_PLACEHOLDER_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9]*\$")
 
 def _loc_dirs():
     """本地化目录列表: 游戏原版 + workshop mod + 用户 mod (mod 覆盖原版)。"""
@@ -172,6 +173,20 @@ def _load_loc_all():
     _LOC_ALL = loc
     return loc
 
+def _clean_loc_name(value, loc=None):
+    """清理本地化名: 解析 $KEY$ 引用并去掉运行时占位符($NAME$/$ADJECTIVE$ 等)。
+    例: '卡洛斯派$NAME$' → '卡洛斯派'; '$generic_revolt_unions$' → '无产阶级起义'。"""
+    if not isinstance(value, str) or "$" not in value:
+        return value
+    loc = _load_loc_all() if loc is None else loc
+    v = value.strip()
+    # 整串是 $key$ 引用(游戏内未解析的动态名): 反查本地化后再清理
+    if v.startswith("$") and v.endswith("$") and _LOC_PLACEHOLDER_RE.fullmatch(v):
+        v = loc.get(v[1:-1], v)
+    v = _LOC_PLACEHOLDER_RE.sub("", v)
+    v = re.sub(r"\$+", "", v)
+    return v.strip()
+
 def load_country_names():
     """从本地化(含 mod 覆盖)加载 {TAG: 中文名} 映射。"""
     global _NAME_CACHE
@@ -180,7 +195,7 @@ def load_country_names():
     names = {}
     for k, v in _load_loc_all().items():
         if re.fullmatch(r"[A-Z]{3}", k) and len(v) <= 12:
-            names[k] = v
+            names[k] = _clean_loc_name(v)
     _NAME_CACHE = names
     return names
 
@@ -196,7 +211,7 @@ def load_current_country_names(data, index=None):
         tag = entry.get("definition")
         dyn_key = entry.get("dyn_name")
         if tag and dyn_key and loc.get(dyn_key):
-            names[tag] = loc[dyn_key]
+            names[tag] = _clean_loc_name(loc[dyn_key], loc)
     return names
 
 # ---------------------------------------------------------------------------
@@ -1236,7 +1251,11 @@ def _building_production_methods(data, bid):
 
 
 def _state_object(data, state_id):
-    """州 id → 完整 state 对象 (含 region/incorporation 等字段); 找不到返回 None。"""
+    """州 id → 完整 state 对象 (含 region/incorporation 等字段); 找不到返回 None。
+
+    注意: states.database 内嵌其他数字键对象 (如某州对象 trade.goods 的商品 id
+    映射, 键形如 "13":{value, prestige_goods}), 不能直接返回第一个 'N':{ 匹配;
+    须解析后校验对象像州 (含 capital/region 字段) 才返回, 否则继续往后找。"""
     sd = data.find(b'"states":{"database"')
     if sd < 0:
         return None
@@ -1245,17 +1264,18 @@ def _state_object(data, state_id):
     so_end = _object_end(data, sob)
     pat = ('"' + str(state_id) + '":{').encode()
     idx = data.find(pat, sob, so_end)
-    if idx < 0:
-        return None
-    ob2 = data.find(b'{', idx)
-    raw, _end = extract_json_object(data, ob2)
-    if not raw:
-        return None
-    try:
-        obj = json.loads(raw)
-    except Exception:
-        return None
-    return obj if isinstance(obj, dict) else None
+    while idx >= 0:
+        ob2 = data.find(b'{', idx)
+        raw, _end = extract_json_object(data, ob2)
+        if raw:
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                obj = None
+            if isinstance(obj, dict) and ("capital" in obj or "region" in obj):
+                return obj
+        idx = data.find(pat, idx + 1, so_end)
+    return None
 
 def _state_region_key(data, state_id):
     """州 id → 州域 key (如 STATE_HAUSALAND), 供本地化转中文名。"""
@@ -1593,6 +1613,64 @@ def _pops_in_state(data, state_id):
         if isinstance(obj, dict) and obj.get("location") == state_id:
             yield obj
         j = end
+
+def _extract_player_states(data, state_ids):
+    """提取玩家每个州的 [州id, 州域名(中文), 主要居民文化(中文)]。
+    单次扫描 pops 按州聚合各族人口, 取人口最多的文化; 州内完全无人时
+    回退州域本土文化(add_homeland)。返回按州 id 升序的
+    [{id, name, top_culture, empty}]。"""
+    state_ids = set(state_ids or [])
+    if not state_ids:
+        return []
+    cult_by_state = {sid: {} for sid in state_ids}
+    pop_db = data.find(b'"pops"')
+    if pop_db >= 0:
+        db = data.find(b'"database"', pop_db)
+        ob = data.find(b'{', db)
+        j = ob
+        while True:
+            i = data.find(b'":{', j)
+            if i < 0:
+                break
+            ob2 = data.find(b'{', i)
+            head = data[ob2:min(ob2 + 600, len(data))]
+            m_loc = re.search(rb'"location":(\d+)', head)
+            if not m_loc:
+                j = data.find(b'}', ob2) + 1
+                continue
+            sid = int(m_loc.group(1))
+            counts = cult_by_state.get(sid)
+            if counts is None:
+                j = data.find(b'}', ob2) + 1
+                continue
+            m_cult = re.search(rb'"culture":(\d+)', head)
+            if m_cult:
+                m_wf = re.search(rb'"workforce":([\d.]+)', head)
+                m_dep = re.search(rb'"dependents":([\d.]+)', head)
+                wf = float(m_wf.group(1)) if m_wf else 0
+                dep = float(m_dep.group(1)) if m_dep else 0
+                cid = int(m_cult.group(1))
+                counts[cid] = counts.get(cid, 0) + wf + dep
+            j = data.find(b'}', ob2) + 1
+    loc = _load_loc_all()
+    zh_map = (build_culture_map() or {}).get("_zh") or {}
+    hm = build_homeland_map()
+    result = []
+    for sid in sorted(state_ids):
+        rk = _state_region_key(data, sid)
+        name = loc.get(rk) if rk else None
+        counts = cult_by_state.get(sid) or {}
+        top = None
+        empty = True
+        if counts:
+            empty = False
+            top = culture_id_to_name(max(counts, key=counts.get))
+        elif rk and hm.get(rk):
+            keys = sorted(hm[rk])
+            top = "、".join(zh_map.get(k, k) for k in keys)
+        result.append({"id": sid, "name": name or f"州{sid}",
+                       "top_culture": top, "empty": empty})
+    return result
 
 def _buildings_in_state(data, state_id):
     """building_manager.database 中属于该州的建筑 id 迭代器。"""
@@ -1987,6 +2065,61 @@ def _last_year_wars(wars, year):
     out.sort(key=lambda x: _v3_date_tuple(x.get("start_date")) or (0, 0, 0))
     return out
 
+def _merge_prev_year_wars(snap, journal_dir, folder):
+    """存档层落盘: 生成本年快照时, 把上一年存档中仍在进行的战争并入
+    last_year_wars / prev_year_wars, 补回 V3 war_manager 只保留进行中战争
+    而丢失的「去年战争」。仅并入报告字段, 不改 wars, 避免影响基于进行中
+    战争的列强交战状态等判定。"""
+    year = snap.get("year")
+    if not year:
+        return
+    prev_dirs = []
+    if folder:
+        prev_dirs.append(os.path.join(journal_dir, folder, "data"))
+    prev_dirs.append(os.path.join(journal_dir, "data"))
+    prev_wars = []
+    for rd in prev_dirs:
+        p = os.path.join(rd, f"raw_{year - 1}.json")
+        if not os.path.exists(p):
+            continue
+        try:
+            with open(p, "r", encoding="utf-8") as fp:
+                prev = json.load(fp)
+        except Exception:
+            continue
+        prev_wars = prev.get("wars") or []
+        if prev_wars:
+            break
+    if not prev_wars:
+        return
+    lyw = list(snap.get("last_year_wars") or [])
+    lyw_seen = {w.get("id") for w in lyw if w.get("id") is not None}
+    for w in prev_wars:
+        wid = w.get("id")
+        if wid is not None and wid in lyw_seen:
+            continue
+        ps = [p for p in (w.get("participants") or []) if p.get("primary")]
+        if not ps:
+            continue
+        w2 = dict(w)
+        w2["participants"] = ps
+        lyw.append(w2)
+        if wid is not None:
+            lyw_seen.add(wid)
+    snap["last_year_wars"] = lyw
+    pyw = list(snap.get("prev_year_wars") or [])
+    pyw_seen = {w.get("id") for w in pyw if w.get("id") is not None}
+    for w in prev_wars:
+        wid = w.get("id")
+        if not w.get("player_involved"):
+            continue
+        if wid is not None and wid in pyw_seen:
+            continue
+        pyw.append(w)
+        if wid is not None:
+            pyw_seen.add(wid)
+    snap["prev_year_wars"] = pyw
+
 # ---------------------------------------------------------------------------
 # 法律查询 (laws.database)
 # ---------------------------------------------------------------------------
@@ -2099,6 +2232,10 @@ def build_journal_data(snap):
     data["date"] = snap.get("date", "")
     data["year"] = snap.get("year")
     data["player"] = snap.get("player", "未知")
+    # 玩家国家标识: 供 render_overview 从战争参与者中识别「我国」,
+    # 避免把列强之间的战事误报成本国参战
+    data["tag"] = snap.get("tag")
+    data["player_country_id"] = snap.get("player_country_id")
     data["govt"] = snap.get("govt_zh") or gov_to_name(snap.get("govt", "other"))
     # 首都: 由首都 state 的 hub 名(城市)解析, 失败回退州域名; 不再让模型凭空猜测
     data["capital"] = snap.get("capital") or ""
@@ -2127,6 +2264,7 @@ def build_journal_data(snap):
     data["subjects"] = snap.get("subjects") or []
     data["rivals"] = snap.get("rivals") or []
     data["interest_groups"] = snap.get("interest_groups") or []
+    data["states"] = snap.get("states") or []
     data["events"] = []
     # 存档直读扩展字段
     data["literacy"] = snap.get("literacy")
@@ -2168,6 +2306,7 @@ def extract_full_snapshot(melted):
     state_ids = (country or {}).get("states") or []
     pops = _aggregate_pops(melted, state_ids)
     prim_cultures = _get_primary_cultures(melted, state_ids)
+    snap["states"] = _extract_player_states(melted, state_ids)
     mapped = []
     for i, c in enumerate(pops["cultures"]):
         cname = culture_id_to_name(c["name"])
@@ -2275,23 +2414,30 @@ def _iter_pacts(data):
 _TREATY_ZH = None
 
 def _load_treaty_names():
-    """加载 treaty_name_* 本地化 → 中文条约名。"""
+    """加载 treaty_name_* 本地化 → 中文条约名 (游戏+mod, 后加载覆盖)。"""
     global _TREATY_ZH
     if _TREATY_ZH is not None:
         return _TREATY_ZH
     zh = {}
-    loc_dir = GAME_LOCALIZATION
-    try:
-        for fn in os.listdir(loc_dir):
-            if not fn.endswith(".yml"):
-                continue
-            with open(os.path.join(loc_dir, fn), encoding="utf-8-sig", errors="replace") as fp:
-                for line in fp:
-                    m = re.match(r"\s*(treaty_name_[a-z_0-9]+):\s*\"([^\"]+)\"\s*$", line)
-                    if m:
-                        zh[m.group(1)] = m.group(2).strip()
-    except Exception:
-        pass
+    for base in _loc_dirs():
+        if not os.path.isdir(base):
+            continue
+        for root, _sub, files in os.walk(base):
+            for fn in files:
+                if not fn.endswith(".yml"):
+                    continue
+                try:
+                    with open(os.path.join(root, fn), encoding="utf-8-sig",
+                              errors="replace") as fp:
+                        for line in fp:
+                            # 允许行尾带注释 (如 "$SIGNING_LOCATION$妥协" # 备注)
+                            m = re.match(
+                                r"\s*(treaty_name_[a-z_0-9]+):\s*\"([^\"]+)\"\s*(?:#.*)?$",
+                                line)
+                            if m:
+                                zh[m.group(1)] = m.group(2).strip()
+                except Exception:
+                    continue
     _TREATY_ZH = zh
     return zh
 
@@ -2436,15 +2582,131 @@ def _article_detail(a):
         return f"{qty}单位"
     return None
 
+
+def _region_hub_names(data):
+    """扫描 states.database → {州域key: [hub名×5]} (city/port/farm/mine/wood 顺序)。
+    同一州域多个州对象时, 优先 hub 名非空者, 同况取较小州 id (确定性)。"""
+    out = {}
+    sd = data.find(b'"states":{"database"')
+    if sd < 0:
+        return out
+    db = data.find(b'"database"', sd)
+    sob = data.find(b'{', db)
+    so_end = _object_end(data, sob)
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = sob
+    while True:
+        m = _IDOBJ.search(data, j, so_end - 1)
+        if not m:
+            break
+        sid = int(m.group(1))
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and isinstance(obj.get("region"), str):
+            rk = obj["region"]
+            names = _hub_names(obj)
+            cur = out.get(rk)
+            if cur is None:
+                out[rk] = [sid, names]
+            else:
+                cur_sid, cur_names = cur
+                cur_ok = any(n for n in cur_names)
+                new_ok = any(n for n in names)
+                if new_ok and (not cur_ok or sid < cur_sid):
+                    out[rk] = [sid, names]
+        j = end
+    return {rk: names for rk, (_sid, names) in out.items()}
+
+
+def _signing_location(region_hubs, region, hub):
+    """$SIGNING_LOCATION$ → 签约地中文名; 解析不了返回 None。
+    优先该州域对应 hub 名 (玩家改名/本地化), 回退州域名 (如 莫斯科)。"""
+    if not region:
+        return None
+    idx = HUB_ORDER.index(hub) if hub in HUB_ORDER else 0
+    names = (region_hubs or {}).get(region) or []
+    if idx < len(names) and names[idx]:
+        loc = names[idx]
+        # 个别 hub 名是未解析的本地化键 (如 HUB_NAME_STATE_X_city_southern_bantu), 跳过
+        if not loc.startswith(("HUB_NAME_", "STATE_")) \
+                and not re.fullmatch(r"[A-Z][A-Z0-9_]*", loc):
+            return loc
+    return _load_loc_all().get(region)
+
+
+def _render_treaty_name(data, treaty_obj, fname, sname, get_region_hubs):
+    """条约 name 对象 → 中文名 (无则 None)。
+    custom 字面直出; scripted/dynamic 查本地化并渲染占位符:
+      $SIGNING_LOCATION$ (签约地) / $SIGNING_MONTH$ (签约月)
+      [FIRST/SECOND_COUNTRY.GetName/GetAdjectiveNoFormatting] (缔约方中文名)
+      [FIRST_COUNTRY.GetRuler.GetPrimaryRoleTitle] (略去)
+    地点名每次熔化时按当时州 hub 数据现读, 不做跨存档定格。"""
+    nm = treaty_obj.get("name") or {}
+    cust = (nm.get("custom") or {}).get("custom_name")
+    if cust:
+        return cust
+    dyn = nm.get("dynamic") or {}
+    key = ((nm.get("scripted") or {}).get("scripted_name")
+           or dyn.get("dynamic_name") or "")
+    if not key:
+        return None
+    zh = _load_treaty_names().get(key, "")
+    if not zh:
+        return None
+    ctx = dyn.get("context") or {}
+    if "$SIGNING_LOCATION$" in zh:
+        region_hubs = get_region_hubs()
+        loc = _signing_location(region_hubs, ctx.get("region"), ctx.get("hub"))
+        if not loc:
+            return None
+        zh = zh.replace("$SIGNING_LOCATION$", loc)
+    if "$SIGNING_MONTH$" in zh:
+        parts = str(ctx.get("date", "")).split(".")
+        if len(parts) > 1 and parts[1].isdigit():
+            zh = zh.replace("$SIGNING_MONTH$", f"{int(parts[1])}月")
+        else:
+            zh = zh.replace("$SIGNING_MONTH$", "")
+    for ph, v in (
+            ("[FIRST_COUNTRY.GetNameNoFormatting]", fname),
+            ("[SECOND_COUNTRY.GetNameNoFormatting]", sname),
+            ("[FIRST_COUNTRY.GetAdjectiveNoFormatting]", fname),
+            ("[SECOND_COUNTRY.GetAdjectiveNoFormatting]", sname),
+            ("[FIRST_COUNTRY.GetRuler.GetPrimaryRoleTitle]", ""),
+            ("[SECOND_COUNTRY.GetRuler.GetPrimaryRoleTitle]", "")):
+        zh = zh.replace(ph, v)
+    zh = zh.replace("\u2011", "-").strip(" \t-‐")
+    if not zh or "$" in zh or "[" in zh or "]" in zh:
+        return None
+    return zh
+
+
 def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
     """从 treaty_manager.database 提取**与玩家有关**的条约及条款内容。
     返回 [{id, name(中文), first_name, second_name, date, articles:[{zh, from, to, detail}]}]。
+    name 由 custom/scripted/dynamic 渲染; 地点类条约 (如"莫斯科公约") 按当时州 hub
+    数据现读, 国名/城市名随存档变化不跨存档定格。
     只保留玩家参与(任一方是玩家)的条约; 其余世界条约(中葡/日荷等)不输出。
     条款来自 treaty_article_manager (article类型 + source/target方向 + goods_transfer 等数据)。"""
     if index is None or gp_ids is None:
         index, gp_ids, _ = _build_indexes(data)
-    treaty_zh = _load_treaty_names()
     treaties = []
+    # 州域→hub名 映射: 仅在遇到 $SIGNING_LOCATION$ 模板时惰性构建一次
+    _region_hubs = {}
+    _hubs_loaded = [False]
+
+    def get_region_hubs():
+        if not _hubs_loaded[0]:
+            _region_hubs.update(_region_hub_names(data))
+            _hubs_loaded[0] = True
+        return _region_hubs
+
     tm = data.find(b'"treaty_manager"')
     if tm < 0:
         return treaties
@@ -2502,18 +2764,11 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
         if player_id is None or player_id not in (f, s):
             j = end
             continue
-        nm = obj.get("name") or {}
-        name_key = ((nm.get("scripted") or {}).get("scripted_name")
-                    or (nm.get("dynamic") or {}).get("dynamic_name")
-                    or "")
-        # 本地化名含 '$'/'[' 是模板(如 $SIGNING_LOCATION$条约), 降级为"甲乙之条约"
-        tname = treaty_zh.get(name_key, "")
-        if not tname or "$" in tname or "[" in tname:
-            tname = None
         fname = names.get((index.get(f) or {}).get("definition"),
                           (index.get(f) or {}).get("definition") or str(f))
         sname = names.get((index.get(s) or {}).get("definition"),
                           (index.get(s) or {}).get("definition") or str(s))
+        tname = _render_treaty_name(data, obj, fname, sname, get_region_hubs)
         raw_date = obj.get("entered_into_force_on", "")
         date = _v3_num_date(raw_date) if isinstance(raw_date, (int, float)) else str(raw_date)
         tid = int(m.group(1))
@@ -2544,6 +2799,7 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
         })
         j = end
     return treaties
+
 
 def _extract_subjects(data, player_id, names, index=None):
     """从 pacts.database 提取玩家的附庸国 (first=宗主, second=附庸)。
@@ -2671,7 +2927,6 @@ def make_newspaper(year=None, force=True, melted=None, snap=None):
         snap = extract_full_snapshot(melted)
     if year and snap.get("year") != year:
         print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
-    jdata = build_journal_data(snap)
     cfg = journal.load_config()
     # 首次确定文件夹: 检查根目录同名文件夹, 有则加数字(大南、大南2...); 同局沿用
     if not journal.SESSION["folder"]:
@@ -2679,6 +2934,9 @@ def make_newspaper(year=None, force=True, melted=None, snap=None):
             if not journal.SESSION["folder"]:
                 journal.SESSION["folder"] = journal.determine_folder(
                     snap.get("player") or "未知名国家", cfg["journal_dir"])
+    # 存档层落盘: 补回上一年存档中的「去年战争」(V3 war_manager 只保留进行中战争)
+    _merge_prev_year_wars(snap, cfg["journal_dir"], journal.SESSION["folder"])
+    jdata = build_journal_data(snap)
     journal.on_block_complete(jdata, cfg, force=force)
     print("报纸生成完成")
     return 0

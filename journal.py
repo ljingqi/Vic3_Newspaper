@@ -222,9 +222,18 @@ CN_DATE_RE = re.compile(r"(\d{1,2})月\s*(\d{1,2})[，,]?\s*(\d{4})")
 YEAR_RE = re.compile(r"\b(1[0-9]{3})\b")
 
 def strip_loc_formatting(text):
-    """去除 Paradox 本地化格式标记, 如 #Vxxx#! / #red 等。"""
+    """去除 Paradox 本地化格式标记(#Vxxx#! / #red 等)与动态占位符($NAME$/$ADJECTIVE$ 等)。
+    整串为 $key$ 引用且清理后为空时, 退回保留 key(如 generic_revolt_unions), 避免空名。"""
+    if not isinstance(text, str):
+        return text
+    orig = text.strip()
     text = re.sub(r"#[A-Za-z0-9_\-+]+#!", "", text)
     text = re.sub(r"#\w+", "", text)
+    text = re.sub(r"\$[A-Za-z_][A-Za-z_0-9]*\$", "", text)
+    text = re.sub(r"\$+", "", text)
+    text = text.strip()
+    if not text and orig.startswith("$") and orig.endswith("$"):
+        return orig[1:-1]
     return text.strip()
 
 def extract_date(before_text):
@@ -626,7 +635,13 @@ SOL_GUIDE = ("生活水平(SoL)为0~30量级的民生指数：5以下=赤贫潦�
 FOOD_SECURITY_NAMES = {
     "secure": "充足", "secured": "充足", "moderate": "尚可",
     "insecure": "紧张", "starving": "饥荒",
+    "starvation": "饥荒", "severe_starvation": "严重饥荒",
+    "moderate_starvation": "轻度饥饿",
 }
+
+def food_security_zh(fs):
+    """粮食安全状态本地化: 存档原始状态 → 中文。未知值原样返回。"""
+    return FOOD_SECURITY_NAMES.get(fs, fs)
 
 # 收成条件(Harvest Condition)本地化: 取自游戏官方简体中文本地化,
 # 海洋类条件(naval_condition_*)已解析为对应中文名
@@ -857,12 +872,110 @@ SECTION_STYLE = (
     "晓畅明白，又保留文言的凝练庄重（梁启超、鲁迅及民国初年《申报》《大公报》笔法）。"
     "使用简体中文与 Markdown。铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
     "数据缺失时相应内容简写或略去，不得编造；行文中以「本报」指代本报刊名。"
-    "「执政利益集团」指当前组阁执政的利益集团（存档中 in_government=True 者），"
+    "「执政利益集团」指当前组阁执政的利益集团（即数据中标注「执政」的集团），"
     "其政治力量(clout)为该集团在政坛的影响力占比；报道政界动态时应以执政集团为核心，"
     "结合其力量消长说明朝局与施政倾向，但不得虚构具体数字。"
 )
 
-def render_overview(data):
+_TERRITORY_CAP = 8
+
+def _v3_date_zh(v3date):
+    """把存档日期 '1836.5.14' 转成 '1836年5月14日'; 空或无效时返回空串。"""
+    if not v3date:
+        return ""
+    parts = str(v3date).split(".")
+    if len(parts) == 3:
+        try:
+            y, m, d = (int(x) for x in parts)
+            return f"{y}年{m}月{d}日"
+        except ValueError:
+            return str(v3date)
+    return str(v3date)
+
+def _state_change_line(verb, state):
+    """生成一条疆域变动行。verb: '新获' / '失去'。"""
+    name = state.get("name") or f"州{state.get('id')}"
+    culture = state.get("top_culture")
+    if verb == "新获":
+        if culture and not state.get("empty"):
+            return f"我国新获「{name}」，该地居民以{culture}为主"
+        if culture:
+            return f"我国新获「{name}」，该地尚少人烟（本土为{culture}）"
+        return f"我国新获「{name}」"
+    if culture and not state.get("empty"):
+        return f"我国失去「{name}」，该地原以{culture}为主"
+    if culture:
+        return f"我国失去「{name}」，该地原少人烟（本土为{culture}）"
+    return f"我国失去「{name}」"
+
+def _render_territory_change(data, history=None):
+    """对比本年与上一份年度存档的州列表, 生成「去年疆域变动」行; 无变化返回 []。"""
+    cur = data.get("states") or []
+    if not cur or not history:
+        return []
+    prev = history[-1]
+    prev_states = prev.get("states") or []
+    if not prev_states:
+        return []
+    prev_year = prev.get("year")
+    cur_ids = {s.get("id") for s in cur}
+    prev_ids = {s.get("id") for s in prev_states}
+    gained = [s for s in cur if s.get("id") not in prev_ids]
+    lost = [s for s in prev_states if s.get("id") not in cur_ids]
+    if not gained and not lost:
+        return []
+    label = f"与{prev_year}年相比" if prev_year else "与上一年度相比"
+    lines = [f"- 去年疆域变动（{label}）："]
+    for s in gained[:_TERRITORY_CAP]:
+        lines.append("  - " + _state_change_line("新获", s))
+    if len(gained) > _TERRITORY_CAP:
+        lines.append(f"  - 新获地区共 {len(gained)} 个，其余从略")
+    for s in lost[:_TERRITORY_CAP]:
+        lines.append("  - " + _state_change_line("失去", s))
+    if len(lost) > _TERRITORY_CAP:
+        lines.append(f"  - 失去地区共 {len(lost)} 个，其余从略")
+    return lines
+
+def _merged_last_year_wars(data, history):
+    """去年战争: 当前存档记录 + 上一年存档中仍在进行的战争(按 id 去重)。
+    V3 存档的 war_manager 只保留仍在进行的战争, 去年开打但在今年存档前已
+    结束的战争会从存档消失; 上一年存档中的战争必然覆盖上一历年, 据此补回。"""
+    wars = list(data.get("last_year_wars") or [])
+    seen = {w.get("id") for w in wars if w.get("id") is not None}
+    if history:
+        for w in (history[-1].get("wars") or []):
+            wid = w.get("id")
+            if wid is not None and wid in seen:
+                continue
+            ps = [p for p in (w.get("participants") or []) if p.get("primary")]
+            if not ps:
+                continue
+            w2 = dict(w)
+            w2["participants"] = ps
+            wars.append(w2)
+            if wid is not None:
+                seen.add(wid)
+    wars.sort(key=lambda x: str(x.get("start_date") or ""))
+    return wars
+
+
+def _merged_prev_year_player_wars(data, history):
+    """前一年玩家参战的战争: 当前存档记录 + 上一年存档补回(按 id 去重)。"""
+    wars = list(data.get("prev_year_wars") or [])
+    seen = {w.get("id") for w in wars if w.get("id") is not None}
+    if history:
+        for w in (history[-1].get("wars") or []):
+            wid = w.get("id")
+            if not w.get("player_involved"):
+                continue
+            if wid is not None and wid in seen:
+                continue
+            wars.append(w)
+            if wid is not None:
+                seen.add(wid)
+    return wars
+
+def render_overview(data, history=None):
     L = []
     capital = data.get('capital', '') or '（数据缺失，请根据国名常识补填该国的广为人知的都城名）'
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
@@ -880,28 +993,64 @@ def render_overview(data):
             f"（政治力量约{g['clout_pct']:.1f}%）" if isinstance(g.get('clout_pct'), (int, float))
             else f"{IG_NAMES.get(g.get('name'), IG_NAMES.get(g.get('definition'), g.get('name')))}"
             for g in ruling))
+    L.extend(_render_territory_change(data, history))
+    # 列强之间的战事 = 国际背景, 与本国无关: 每场战争单独一行,
+    # 只列主要参与方; 多个列强在同一场战争则写在同一行;
+    # 本国参战的战争不在此列, 由下面的「我国…交战」行覆盖
+    bg_wars = [w for w in _merged_last_year_wars(data, history)
+               if not w.get("player_involved")
+               and any(p.get("rank") == "great_power" for p in (w.get("participants") or []))]
+    if bg_wars:
+        for w in bg_wars:
+            ps = [strip_loc_formatting(p.get("name", "?")) for p in (w.get("participants") or [])]
+            L.append(f"- 列强之间的战事：{'、'.join(ps)}")
+    # 本国战事: 只读取前一年(上一历年)玩家参战的战争(含开战日期),
+    # 已过去两年及更早的战争不传递给模型
+    player_id = data.get("player_country_id")
+    player_tag = data.get("tag")
+    player_name = data.get("player", "")
+    player_wars = sorted(_merged_prev_year_player_wars(data, history),
+                         key=lambda x: str(x.get("start_date") or ""))
+    for w in player_wars:
+        opps = []
+        for p in (w.get("participants") or []):
+            if not p.get("primary"):
+                continue
+            if player_id is not None and p.get("id") == player_id:
+                continue
+            if player_tag and p.get("definition") == player_tag:
+                continue
+            if player_name and p.get("name") == player_name:
+                continue
+            opps.append(strip_loc_formatting(p.get("name", "?")))
+        start = _v3_date_zh(w.get("start_date"))
+        suffix = ""
+        if w.get("ended"):
+            pz = _v3_date_zh(w.get("peace_date"))
+            suffix = f"，已于{pz}结束" if pz else "，已结束"
+        if opps:
+            L.append(f"- 我国于{start}与{'、'.join(opps)}交战{suffix}")
+        elif start:
+            L.append(f"- 我国于{start}参战{suffix}")
+    # 日志解析路径回退: war_opponents 无开战日期, 只给对手
     opponents = data.get("war_opponents") or []
-    if opponents:
-        L.append(f"- 交战对手：{'、'.join(opponents)}")
+    if opponents and not player_wars:
+        L.append(f"- 我国与{'、'.join(opponents)}交战")
     ended = [e for e in (data.get("events") or []) if e.get("kind") == "war_end"]
     if ended:
         L.append("- 结束战事：" + "；".join(f"{e.get('actor', '?')}对{e.get('target', '?')}" for e in ended))
-    powers = data.get("powers") or []
-    atwar = [p for p in powers if p.get('war')]
-    if atwar:
-        L.append("- 交战的列强：" + "、".join(p['name'] for p in atwar))
     return "\n".join(L)
 
-def render_war(data):
+def render_war(data, history=None):
     L = []
     # 只传去年发生的战争: 玩家参战或列强参战, 仅主要参加者; 不含当前交战状态
     L.append("- 以下战事为去年（上一历年）发生的战争记录（玩家参战或列强参战，"
              "仅列主要参加者）；数据不含今年是否处于交战状态，请勿推断今年战况。")
-    wars = data.get("last_year_wars") or []
+    wars = _merged_last_year_wars(data, history)
     if not wars:
         L.append("  (去年无相关战事记录)")
     for w in wars:
-        ps = [p.get('name', '?') for p in w.get('participants', [])]
+        ps = [strip_loc_formatting(p.get('name', '?')) for p in w.get('participants', [])]
         status = f"已结束（和约 {w.get('peace_date')}）" if w.get('ended') else "仍在进行"
         start = w.get('start_date')
         line = f"- {'、'.join(ps)}：{status}"
@@ -923,14 +1072,15 @@ def render_diplo(data):
     L = []
     rivals = data.get("rivals") or []
     if rivals:
-        L.append("- 宿敌（互相敌对的国家）：" + "、".join(r.get('name', '?') for r in rivals))
+        L.append("- 宿敌（互相敌对的国家）：" + "、".join(strip_loc_formatting(r.get('name', '?')) for r in rivals))
     else:
         L.append("- 宿敌：(无)")
     treaties = data.get("treaties") or []
     if treaties:
         L.append("- 本国条约：")
         for t in treaties:
-            L.append(f"  - {t['name']}：{t['first_name']}与{t['second_name']}签订于{t.get('date', '?')}")
+            L.append(f"  - {strip_loc_formatting(t['name'])}：{strip_loc_formatting(t['first_name'])}"
+                     f"与{strip_loc_formatting(t['second_name'])}签订于{t.get('date', '?')}")
             for a in t.get("articles") or []:
                 line = f"    · {a['zh']}"
                 if a.get('from') and a.get('to'):
@@ -943,7 +1093,7 @@ def render_diplo(data):
     subs = data.get("subjects") or []
     if subs:
         L.append("- 附庸国：" + "、".join(
-            f"{s['name']}({PACT_NAMES.get(s.get('type'), s.get('type'))})"
+            f"{strip_loc_formatting(s['name'])}({PACT_NAMES.get(s.get('type'), s.get('type'))})"
             if isinstance(s, dict) else str(s)
             for s in subs))
     else:
@@ -953,7 +1103,7 @@ def render_diplo(data):
     if powers:
         L.append("- 世界前八强战况(外交背景)：")
         for p in powers:
-            L.append(f"  - {p['name']}：{'交战中' if p.get('war') else '和平'}")
+            L.append(f"  - {strip_loc_formatting(p['name'])}：{'交战中' if p.get('war') else '和平'}")
     return "\n".join(L)
 
 def render_econ(data):
@@ -1253,7 +1403,7 @@ def render_family(data):
         L.append(f"- 政治倾向：{lr_zh}")
     fs = fi.get("food_security")
     if fs:
-        L.append(f"- 粮食安全：{FOOD_SECURITY_NAMES.get(fs, fs)}")
+        L.append(f"- 粮食安全：{food_security_zh(fs)}")
     return "\n".join(L)
 
 
@@ -1393,7 +1543,7 @@ def render_peer(data):
         L.append(f"- 政治倾向：{lr_zh}")
     fs = peer.get("food_security")
     if fs:
-        L.append(f"- 粮食安全：{FOOD_SECURITY_NAMES.get(fs, fs)}")
+        L.append(f"- 粮食安全：{food_security_zh(fs)}")
     return "\n".join(L)
 
 
@@ -1524,7 +1674,7 @@ def render_unemployed(data):
         L.append(f"- 政治倾向：{lr_zh}")
     fs = uni.get("food_security")
     if fs:
-        L.append(f"- 粮食安全：{FOOD_SECURITY_NAMES.get(fs, fs)}")
+        L.append(f"- 粮食安全：{food_security_zh(fs)}")
     return "\n".join(L)
 
 def render_history_table(data, history=None):
@@ -1580,9 +1730,9 @@ def render_ads(data, history=None):
 
 def render_section_facts(key, data, history=None):
     if key == "headline":
-        return render_overview(data)
+        return render_overview(data, history)
     if key == "war":
-        return render_war(data)
+        return render_war(data, history)
     if key == "diplo":
         return render_diplo(data)
     if key == "econ":
@@ -1598,10 +1748,10 @@ def render_section_facts(key, data, history=None):
     if key == "unemployed":
         return render_unemployed(data)
     if key == "comment":
-        return render_overview(data) + "\n\n" + render_history_table(data, history)
+        return render_overview(data, history) + "\n\n" + render_history_table(data, history)
     if key == "ads":
         return render_ads(data, history)
-    return render_overview(data)
+    return render_overview(data, history)
 
 def build_masthead_messages(data):
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
