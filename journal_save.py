@@ -3311,6 +3311,7 @@ ARTICLE_ZH_FALLBACK = {
     "support_independence": "支持独立",
     "host_power_bloc_embassy": "东道国集团使馆",
     "no_tolls": "免通行费",
+    "free_text": "备注",
 }
 ARTICLE_CONCEPT_MAP = {
     "defensive_pact": "concept_defensive_pact",
@@ -3322,20 +3323,40 @@ ARTICLE_CONCEPT_MAP = {
     "military_access": "concept_military_access",
 }
 ARTICLE_GOODS = {
-    "grain": "谷物", "fish": "鱼", "fruit": "水果", "livestock": "牲畜",
-    "food": "食物", "groceries": "杂货", "sugar": "糖", "tea": "茶叶",
-    "coffee": "咖啡", "liquor": "烈酒", "wine": "葡萄酒", "tobacco": "烟草",
-    "opium": "鸦片", "silk": "丝绸", "cotton": "棉花", "wool": "羊毛",
-    "dye": "染料", "wood": "木材", "cloth": "布料", "fabric": "织物",
-    "clothes": "成衣", "furniture": "家具", "iron": "铁", "coal": "煤",
-    "steel": "钢", "tools": "工具", "lead": "铅", "sulfur": "硫磺",
-    "glass": "玻璃", "porcelain": "瓷器", "paper": "纸张",
-    "small_arms": "轻武器", "artillery": "火炮", "ammunition": "弹药",
-    "ships": "船舶", "engines": "引擎", "fertilizer": "化肥", "oil": "石油",
-    "rubber": "橡胶", "services": "服务业", "transportation": "交通",
+    # 原版 53 商品 (官方简体中文译名, 与游戏内一致)
+    "ammunition": "弹药", "small_arms": "轻武器", "artillery": "火炮",
+    "tanks": "坦克", "aeroplanes": "飞机", "manowars": "风帆战舰",
+    "ironclads": "铁甲舰",
+    "grain": "谷物", "fish": "鱼类", "fabric": "织物", "wood": "木材",
+    "groceries": "加工食品", "clothes": "衣物", "furniture": "家具",
+    "paper": "纸张", "services": "服务", "transportation": "运力",
+    "electricity": "电力", "merchant_marine": "商船", "clippers": "帆船",
+    "steamers": "蒸汽船", "silk": "丝绸", "dye": "染料", "sulfur": "硫磺",
+    "coal": "煤炭", "iron": "铁", "lead": "铅", "hardwood": "硬木",
+    "rubber": "橡胶", "oil": "油", "engines": "发动机", "steel": "钢",
+    "glass": "玻璃", "fertilizer": "肥料", "tools": "工具",
+    "explosives": "炸药", "porcelain": "瓷器", "meat": "肉类",
+    "fruit": "水果", "liquor": "烈酒", "wine": "葡萄酒", "tea": "茶叶",
+    "coffee": "咖啡", "sugar": "糖", "tobacco": "烟草", "opium": "鸦片",
+    "automobiles": "汽车", "telephones": "电话机", "radios": "无线电",
+    "luxury_clothes": "高档衣物", "luxury_furniture": "高档家具",
+    "gold": "黄金", "fine_art": "艺术品",
+    # mod/旧版商品 (journal mod 清单, 保留以免译名空缺)
+    "livestock": "牲畜", "food": "食物", "cotton": "棉花", "wool": "羊毛",
+    "cloth": "布料", "ships": "船舶",
 }
 
 _CONCEPT_ZH = None
+
+def _goods_zh(key):
+    """商品 key → 中文名 (硬编码表优先, 回退游戏本地化, 再回退原 key 保证非空)。"""
+    zh = ARTICLE_GOODS.get(key)
+    if zh:
+        return zh
+    try:
+        return build_goods_map()["zh"].get(key, key)
+    except Exception:
+        return key
 
 def _concept_zh():
     """加载本地化 concept_* 中文名。"""
@@ -3395,32 +3416,40 @@ def _iter_treaty_articles(data):
         j = end
 
 def _article_detail(a):
-    """条款附加数据 → 中文描述 (货物/金钱/法律等)。
-    inputs 为键值对列表(如 [{"goods": X}, {"quantity": N}]), 成对拼成"轻武器15单位"。"""
+    """条款附加数据 → (展示文本, 结构化信息)。
+    inputs 为键值对列表(如 [{"goods": X}, {"quantity": N}]), 成对拼成"轻武器15单位";
+    结构化信息供渲染层拼自然语句 (如"巴西向奥地利移交27单位的咖啡")。
+    free_text 条款的 inputs 为 [{"text": "..."}], 原文直出。"""
     inputs = (a.get("inputs") or [])
     if not inputs:
-        return None
-    goods = qty = law = state = None
+        return None, None
+    goods = qty = law = state = text = None
     for it in inputs:
         if not isinstance(it, dict):
             continue
         if "goods" in it:
-            goods = ARTICLE_GOODS.get(it["goods"], it["goods"])
+            goods = it["goods"]
         elif "quantity" in it:
             qty = it["quantity"]
         elif "law_type" in it:
             law = it["law_type"].replace("law_", "")
         elif "state" in it:
             state = it["state"]
+        elif "text" in it:
+            text = it["text"]
     if goods is not None:
-        return f"{goods}{qty}单位" if qty is not None else goods
+        gz = _goods_zh(goods)
+        return (f"{gz}{qty}单位" if qty is not None else gz), \
+               {"kind": "goods", "goods": gz, "quantity": qty}
+    if text is not None:
+        return text, {"kind": "free_text", "text": text}
     if law is not None:
-        return f"施行法律{law}"
+        return f"施行法律{law}", {"kind": "law", "law": law}
     if state is not None:
-        return f"州{state}"
+        return f"州{state}", {"kind": "state", "state": state}
     if qty is not None:
-        return f"{qty}单位"
-    return None
+        return f"{qty}单位", {"kind": "quantity", "quantity": qty}
+    return None, None
 
 
 def _region_hub_names(data):
@@ -3604,6 +3633,11 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
         if player_id is None or player_id not in (f, s):
             j = end
             continue
+        # 草拟条约 (未进入生效期, 如谈判遗留/draft_treaties) 一律不输出,
+        # 避免模型把未生效条约当成真实条约报道。
+        if not obj.get("entered_into_force_on"):
+            j = end
+            continue
         fname = names.get((index.get(f) or {}).get("definition"),
                           (index.get(f) or {}).get("definition") or str(f))
         sname = names.get((index.get(s) or {}).get("definition"),
@@ -3617,11 +3651,12 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
             azh = _article_zh(a.get("article"))
             if azh == "下文略":
                 # 修改器强制条款/无法识别条款: 无内容无方向, 仅写"下文略"
-                articles.append({"zh": azh, "from": None, "to": None, "detail": None})
+                articles.append({"zh": azh, "from": None, "to": None,
+                                 "detail": None, "meta": None})
                 continue
             src = a.get("source_country")
             tgt = a.get("target_country")
-            detail = _article_detail(a)
+            detail, meta = _article_detail(a)
             articles.append({
                 "zh": azh,
                 "from": names.get((index.get(src) or {}).get("definition"),
@@ -3629,6 +3664,7 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
                 "to": names.get((index.get(tgt) or {}).get("definition"),
                                 str(tgt)) if tgt and tgt != 4294967295 else None,
                 "detail": detail,
+                "meta": meta,
             })
         treaties.append({
             "id": str(tid),
