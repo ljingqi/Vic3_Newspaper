@@ -3,6 +3,7 @@ config.json
 
 # 依赖工具：需自行下载，见 README「工具与环境准备」
 tools/
+Source/
 
 # 日志与 Python 缓存
 logs/

@@ -133,8 +133,20 @@ _LOC_ALL = None
 _LOC_PLACEHOLDER_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9]*\$")
 
 def _loc_dirs():
-    """本地化目录列表: 游戏原版 + workshop mod + 用户 mod (mod 覆盖原版)。"""
+    """本地化目录列表: 游戏原版 + 当前 playset 已启用的 mod (mod 覆盖原版)。
+
+    只读取 content_load.json 里的 enabledMods, 避免把已安装但未启用的 mod
+    (例如 Divergences CN) 的本地化混入, 导致国名与游戏内不一致。
+    """
     dirs = [GAME_LOCALIZATION]
+    enabled = _enabled_mod_dirs()
+    if enabled:
+        for base in enabled:
+            p = os.path.join(base, "localization", "simp_chinese")
+            if os.path.isdir(p):
+                dirs.append(p)
+        return dirs
+    # 读不到启用的 playset 时退回旧逻辑: 扫描全部已安装 mod 目录
     for base in (WORKSHOP_DIR,
                  os.path.join(os.path.expanduser("~"), "Documents",
                               "Paradox Interactive", "Victoria 3", "mod")):
@@ -144,6 +156,28 @@ def _loc_dirs():
             p = os.path.join(base, d, "localization", "simp_chinese")
             if os.path.isdir(p):
                 dirs.append(p)
+    return dirs
+
+
+def _enabled_mod_dirs():
+    """读取启动器当前 playset 的 enabledMods → 已启用 mod 根目录列表。"""
+    doc_root = os.path.join(os.path.expanduser("~"), "Documents",
+                            "Paradox Interactive", "Victoria 3")
+    content = os.path.join(doc_root, "content_load.json")
+    dirs = []
+    try:
+        with open(content, encoding="utf-8") as fp:
+            obj = json.load(fp)
+        for mod in (obj.get("enabledMods") or []):
+            p = mod.get("path") if isinstance(mod, dict) else None
+            if not p:
+                continue
+            p = os.path.normpath(p)
+            if not os.path.isabs(p):
+                p = os.path.join(doc_root, p)
+            dirs.append(p)
+    except Exception:
+        pass
     return dirs
 
 def _load_loc_all():
@@ -1171,28 +1205,34 @@ def _growth_law_bits(laws, health_inv, safety_inv, sewerage):
 
 
 def _growth_rates_with_modifiers(sol, literacy_pct, wealth, pop_type, pollution_pct,
-                                 devastation, bits, building_group=None, active_pms=None):
+                                 devastation, bits, building_group=None, active_pms=None,
+                                 institutions_active=True):
     """基础出生/死亡率 × 污染/荒废度/法律/机构/生产方式/工作条件修正。
     返回 (年化出生率%, 年化死亡率%, 高危死亡率增幅%, 高危生产方式key列表);
     sol 缺失时返回 (None, None, None, [])。
     高危增幅 = 生产方式+工作条件带来的死亡率相对增幅 (相对无高危劳动条件的同类人群)。
-    修正项为同类型百分比相加后乘到基础率上 (与游戏 modifier 系统一致)。"""
+    修正项为同类型百分比相加后乘到基础率上 (与游戏 modifier 系统一致)。
+    institutions_active=False 时 (殖民地/未完全并入州) 不套用卫生机构与卫生法律修正:
+    机构只对完全并入的州生效, 其余修正 (污染/荒废度/童工法/生产方式/工作条件) 照常。"""
     birth_m, death_m = _estimate_growth_rates(sol)
     if birth_m is None:
         return None, None, None, []
     bits = bits or {}
     # 非高危死亡率修正 (污染/荒废度/卫生机构/童工法)
-    poll_red = (_HEALTH_POLLUTION_REDUCTION.get(bits.get("health_law"), 0.0)
-                * (bits.get("health_inv") or 0))
+    poll_red = 0.0
+    if institutions_active:
+        poll_red = (_HEALTH_POLLUTION_REDUCTION.get(bits.get("health_law"), 0.0)
+                    * (bits.get("health_inv") or 0))
     if bits.get("sewerage"):
         poll_red += _SEWERAGE_POLLUTION_REDUCTION
     death_mult = 1.0
     death_mult += _MORT_PER_POLLUTION_PCT * (pollution_pct or 0.0) * (1.0 + poll_red)
     death_mult += _MORT_PER_DEVASTATION * (devastation or 0.0)
-    death_mult += _HEALTH_MORTALITY_PER_LEVEL.get(bits.get("health_law"), 0.0) \
-        * (bits.get("health_inv") or 0)
-    if bits.get("health_law") == "law_private_health_insurance":
-        death_mult += _HEALTH_MORTALITY_WEALTH * (wealth or 0) * (bits.get("health_inv") or 0)
+    if institutions_active:
+        death_mult += _HEALTH_MORTALITY_PER_LEVEL.get(bits.get("health_law"), 0.0) \
+            * (bits.get("health_inv") or 0)
+        if bits.get("health_law") == "law_private_health_insurance":
+            death_mult += _HEALTH_MORTALITY_WEALTH * (wealth or 0) * (bits.get("health_inv") or 0)
     child_labor = bits.get("child_labor")
     if child_labor and pop_type:
         types, mult = _CHILD_LABOR_MORTALITY[child_labor]
@@ -1208,6 +1248,9 @@ def _growth_rates_with_modifiers(sol, literacy_pct, wealth, pop_type, pollution_
     hazard_pms = []
     for pm in (active_pms or []):
         m = pm_mort.get(pm, {}).get(pop_type, 0.0)
+        if not m and pop_type == "slaves":
+            # 奴隶填充劳工岗位: 无显式 slaves 修正时直接套用劳工倍率
+            m = pm_mort.get(pm, {}).get("laborers", 0.0)
         if m:
             hazard_mort += m
             if m >= _HAZARD_PM_THRESHOLD:
@@ -1371,6 +1414,319 @@ def _country_ig_slots(data, country_id):
         j = end
     return slots
 
+def _movement_type_names(data):
+    """扫描 political_movement_manager.database → {运动id: {type, religion?, culture?}}。"""
+    names = {}
+    idx = data.find(b'"political_movement_manager"')
+    if idx < 0:
+        return names
+    mgr_brace = data.find(b'{', idx)
+    mgr_end = _object_end(data, mgr_brace)
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return names
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, mgr_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict):
+            ident = obj.get("identity")
+            if isinstance(ident, dict) and str(ident.get("type", "")).startswith("movement_"):
+                names[int(m.group(1))] = {"type": ident["type"],
+                                          "religion": ident.get("religion"),
+                                          "culture": ident.get("culture")}
+        j = end
+    return names
+
+def _movement_display_name(mtype, ident, loc, player_tag=None):
+    """政治运动显示名: 游戏面板取 <类型>_name 本地化键并解析动态占位符
+    ([COUNTRY.GetAdjectiveNoFormatting] / [RELIGION.GetNameNoFormatting] /
+    [CULTURE.GetNameNoFormatting]), 无该键时回退基础类型名。
+    例: movement_cultural_majority_name → "旁遮普至上主义运动"。"""
+    key = f"{mtype}_name"
+    val = loc.get(key)
+    if not val:
+        return _clean_loc_name(loc.get(mtype, mtype), loc)
+    if isinstance(ident, dict):
+        rel = ident.get("religion")
+        if rel:
+            val = val.replace("[RELIGION.GetNameNoFormatting]",
+                              _clean_loc_name(loc.get(rel, rel), loc))
+        cul = ident.get("culture")
+        if cul:
+            val = val.replace("[CULTURE.GetNameNoFormatting]",
+                              _clean_loc_name(loc.get(cul, cul), loc))
+    if "[COUNTRY.GetAdjectiveNoFormatting]" in val:
+        adj = ""
+        if player_tag:
+            adj = (loc.get(f"{player_tag}_ADJ")
+                   or loc.get(f"{player_tag}_ADJ_NO_FORMAT") or "")
+        val = val.replace("[COUNTRY.GetAdjectiveNoFormatting]", adj)
+    val = _clean_loc_name(val, loc)
+    return val.strip() or _clean_loc_name(loc.get(mtype, mtype), loc)
+
+def _movement_names_zh(data, player_tag=None):
+    """所有政治运动 id → 中文显示名（<类型>_name 本地化 + 动态占位符解析）。"""
+    loc = _load_loc_all()
+    return {mid: _movement_display_name(info.get("type"), info, loc, player_tag)
+            for mid, info in _movement_type_names(data).items()}
+
+def _civil_war_progress(data, country_id):
+    """civil_war.database 中该国运动的内战/分离进程 → {运动id: {"type","progress"}}。"""
+    out = {}
+    key = b'"civil_war"'
+    pos = 0
+    found = None
+    while True:
+        idx = data.find(key, pos)
+        if idx < 0:
+            break
+        j = idx + len(key)
+        if j < len(data) and data[j:j + 1] == b':':
+            j += 1
+        while j < len(data) and data[j:j + 1] in b" \t\r\n":
+            j += 1
+        if data[j:j + 1] == b'{':
+            brace = j
+            mgr_end = _object_end(data, brace)
+            if data.find(b'"database"', brace, mgr_end) >= 0:
+                found = (idx, brace, mgr_end)
+                break
+        pos = idx + 1
+    if not found:
+        return out
+    idx, mgr_brace, mgr_end = found
+    db = data.find(b'"database"', idx, mgr_end)
+    if db < 0:
+        return out
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, mgr_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and obj.get("origin_country") == country_id:
+            mid = obj.get("political_movement")
+            if mid is not None:
+                out[int(mid)] = {"type": obj.get("type"),
+                                 "progress": round(obj.get("progress") or 0.0, 4)}
+        j = end
+    return out
+
+def _localize_character_name(first, last, loc):
+    """角色名中文化: 存档存英文名, 游戏 names_l 本地化提供英文名→中文表。
+    优先整词匹配 (如 Karam_Singh→卡拉姆·辛格), 否则按空格/下划线拆词逐个查表,
+    查不到保留原文。"""
+    parts = []
+    for raw in (first, last):
+        if not raw:
+            continue
+        if raw in loc:
+            parts.append(loc[raw])
+            continue
+        for tok in re.split(r"[ _]+", raw):
+            parts.append(loc.get(tok, tok))
+    return " ".join(p for p in parts if p)
+
+def _player_characters(data, country_id):
+    """character_manager.database 该国角色 → {id: {"name"(中文), "ideology"}}。"""
+    chars = {}
+    if not country_id:
+        return chars
+    loc = _load_loc_all()
+    idx = data.find(b'"character_manager"')
+    if idx < 0:
+        return chars
+    mgr_brace = data.find(b'{', idx)
+    mgr_end = _object_end(data, mgr_brace)
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return chars
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, mgr_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and obj.get("country") == country_id:
+            nm = _localize_character_name(str(obj.get("first_name") or ""),
+                                          str(obj.get("last_name") or ""), loc)
+            chars[int(m.group(1))] = {"name": nm or None,
+                                      "ideology": obj.get("ideology")}
+        j = end
+    return chars
+
+def _iter_pops_in_states(data, state_ids):
+    """单次扫描 pops.database，产出位于指定州集合内的全部 POP 对象。"""
+    state_ids = set(state_ids or [])
+    if not state_ids:
+        return
+    pop_db = data.find(b'"pops"')
+    if pop_db < 0:
+        return
+    mgr_brace = data.find(b'{', pop_db)
+    mgr_end = _object_end(data, mgr_brace)
+    db = data.find(b'"database"', pop_db)
+    if db < 0:
+        return
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, mgr_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and obj.get("location") in state_ids:
+            yield obj
+        j = end
+
+def _extract_political_movements(data, country_id, state_ids, pop_stats, player_tag=None):
+    """提取玩家政治运动列表（按支持度降序）。
+
+    存档字段口径（经实测校准，与游戏面板一致）：
+      - POP 的 political_movement_support 为“每 10 万人的支持人数”：
+        支持者人数 = Σ(比例) × 100000；军人支持数 = Σ(军人POP比例) × 100000。
+      - 大众支持% = 支持者/全国政治参与人口；
+        军人支持% = 军人支持数/(军队政治力量×10000)；
+        财富支持% = Σ(财富×比例)×100000/(国家总财富×100000)。
+      - 支持度 = 0.34×大众% + 0.33×军人% + 0.33×财富%。
+    """
+    moves = []
+    if not country_id:
+        return moves
+    loc = _load_loc_all()
+    idx = data.find(b'"political_movement_manager"')
+    if idx < 0:
+        return moves
+    mgr_brace = data.find(b'{', idx)
+    mgr_end = _object_end(data, mgr_brace)
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return moves
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    objs = {}
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, mgr_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and obj.get("country") == country_id:
+            ident = obj.get("identity")
+            if isinstance(ident, dict) and str(ident.get("type", "")).startswith("movement_"):
+                objs[int(m.group(1))] = obj
+        j = end
+    if not objs:
+        return moves
+    sums = {mid: [0.0, 0.0, 0.0] for mid in objs}  # [Σ比例, Σ军人比例, Σ财富×比例]
+    for obj in _iter_pops_in_states(data, state_ids):
+        wl = obj.get("wealth") or 0
+        ismil = obj.get("type") in ("officers", "soldiers")
+        pms = obj.get("political_movement_support") or {}
+        for k, v in pms.items():
+            try:
+                mid = int(k)
+            except (TypeError, ValueError):
+                continue
+            if mid in sums and isinstance(v, (int, float)):
+                sums[mid][0] += v
+                if ismil:
+                    sums[mid][1] += v
+                sums[mid][2] += wl * v
+    participants = pop_stats.get("population_political_participants") or 0
+    wealth_total = (pop_stats.get("total_wealth") or 0) * 100000
+    army_total = (pop_stats.get("military_political_strength") or 0) * 10000
+    cw = _civil_war_progress(data, country_id)
+    for mid, obj in objs.items():
+        ident = obj.get("identity") or {}
+        mtype = ident.get("type") if isinstance(ident, dict) else None
+        rad = obj.get("radicalism") or 0.0
+        if rad < 0.25:
+            tier = "消极"
+        elif rad < 0.5:
+            tier = "不满"
+        elif rad < 0.75:
+            tier = "抗议"
+        else:
+            tier = "武斗"
+        s = sums[mid]
+        supporters = s[0] * 100000
+        popular_pct = supporters / participants * 100 if participants else None
+        military_pct = (s[1] * 100000 / army_total * 100) if army_total else None
+        wealth_pct = (s[2] * 100000 / wealth_total * 100) if wealth_total else None
+        if popular_pct is not None and military_pct is not None and wealth_pct is not None:
+            support_pct = 0.34 * popular_pct + 0.33 * military_pct + 0.33 * wealth_pct
+        else:
+            support_pct = None
+        ideology = obj.get("ideology")
+        # 只有抗议(50)及以上档位的运动才允许附带内战/分离进程,
+        # 避免存档里存在进程对象但运动活跃度不足时误导模型。
+        mov_cw = cw.get(mid) if rad >= 0.5 else None
+        moves.append({
+            "id": mid,
+            "type": mtype,
+            "name": _movement_display_name(mtype, ident, loc, player_tag) if mtype else None,
+            "ideology": (_clean_loc_name(loc.get(ideology, ideology), loc)
+                         if ideology else None),
+            "radicalism": round(rad, 4),
+            "activism": tier,
+            "supporters": int(round(supporters)),
+            "popular_pct": round(popular_pct, 2) if popular_pct is not None else None,
+            "military_supporters": int(round(s[1] * 100000)),
+            "military_pct": round(military_pct, 2) if military_pct is not None else None,
+            "wealth_support": int(round(s[2] * 100000)),
+            "wealth_pct": round(wealth_pct, 2) if wealth_pct is not None else None,
+            "support_pct": round(support_pct, 2) if support_pct is not None else None,
+            "civil_war": mov_cw,
+        })
+    moves.sort(key=lambda m: -(m.get("support_pct") or 0))
+    return moves
+
 def _building_type_map(data, state_ids):
     """解析 building_manager.database，返回 {建筑id: 建筑类型key}（仅玩家州内）。"""
     state_ids = set(state_ids or [])
@@ -1446,13 +1802,18 @@ def _country_technologies(data, country_id):
 
 def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
                      building_map=None, incorporation=None, harvest_conditions=None,
-                     pop_needs=None, hub_names=None, price_map=None, vital=None):
+                     pop_needs=None, hub_names=None, price_map=None, vital=None,
+                     movement_names=None):
     """把单个 pop 对象整理成「家庭采访」数据块。"""
     wf = pop.get("workforce") or 0
     dep = pop.get("dependents") or 0
     total = wf + dep
+    def _grp_pct(n):
+        return round(min(100.0, n / total * 100), 2) if total else None
+    # 识字率口径与游戏一致: 存档 num_literate 是按劳动力统计的识字人数,
+    # Pop.GetLiteracyRate = num_literate / workforce (不含被抚养人口)。
     num_lit = pop.get("num_literate") or 0
-    literacy = round(num_lit / total * 100, 2) if total else None
+    literacy = round(num_lit / wf * 100, 2) if wf else None
     sol = pop.get("previous_quality_of_life")
     vital = vital or {}
     birth_pct, death_pct, hazard_excess_pct, hazard_pms = _growth_rates_with_modifiers(
@@ -1460,7 +1821,8 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         vital.get("pollution_pct"), vital.get("devastation"),
         vital.get("bits"),
         building_group=vital.get("building_group"),
-        active_pms=vital.get("active_pms"))
+        active_pms=vital.get("active_pms"),
+        institutions_active=vital.get("institutions_active", True))
     # 高危生产方式的中文名 (本地化, 含 $引用$ 解析)
     hazard_pms_zh = None
     if hazard_pms:
@@ -1490,6 +1852,18 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         if idx < len(wb) and isinstance(wb[idx], (int, float)) and wb[idx]:
             expense_parts.append(f"{name} {abs(wb[idx]):.2f}")
     lr = pop.get("loyalists_and_radicals")
+    loy_n = round(max(0.0, lr) * 100000) if isinstance(lr, (int, float)) else 0
+    rad_n = round(max(0.0, -lr) * 100000) if isinstance(lr, (int, float)) else 0
+    mov_list = []
+    pms = pop.get("political_movement_support") or {}
+    if isinstance(pms, dict) and pms:
+        items = sorted(((int(k), v) for k, v in pms.items()
+                        if isinstance(k, str) and k.isdigit() and isinstance(v, (int, float))),
+                       key=lambda kv: -kv[1])[:2]
+        for mid, v in items:
+            nm = (movement_names or {}).get(mid)
+            mov_list.append({"id": mid, "name": nm or f"运动{mid}",
+                             "pct": _grp_pct(v * 100000)})
     food = pop.get("food_security") or {}
     culture = culture_id_to_name(pop.get("culture")) if pop.get("culture") is not None else None
     # 本土判定: 该 pop 所在州域是否是其 culture 的 add_homeland
@@ -1556,7 +1930,6 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "sol": pop.get("previous_quality_of_life"),
         "wealth": pop.get("wealth"),
         "literacy_pct": literacy,
-        "acceptance_value": acc.get("acceptance_value"),
         "acceptance_status": acc.get("acceptance_status"),
         "interest_group": top_ig,
         "job_satisfaction": round(job_sat, 2) if isinstance(job_sat, (int, float)) else None,
@@ -1581,6 +1954,11 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "income_parts": income_parts,
         "expense_parts": expense_parts,
         "loyalists_and_radicals": round(lr, 4) if isinstance(lr, (int, float)) else None,
+        "loyalists": loy_n or None,
+        "radicals": rad_n or None,
+        "loyalists_pct": _grp_pct(loy_n),
+        "radicals_pct": _grp_pct(rad_n),
+        "political_movements": mov_list,
         "food_security": food.get("state"),
     }
 
@@ -1707,7 +2085,7 @@ def _buildings_in_state(data, state_id):
 
 
 def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price_map=None,
-                        cid=None, max_tries=300):
+                        cid=None, player_tag=None, max_tries=300):
     """随机选一个州 → 随机选该州一个建筑 → 取建筑内 SoL 最低与最高两个 POP(人口>10)
     分别作为「民生访谈」与「邻里富户」数据块。
     若该州失业率(失业POP劳动力/该州总人口)>5%, 再附加「失业民生」块:
@@ -1769,13 +2147,16 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
     btype = (building_map or {}).get(bid)
     active_pms = _building_production_methods(data, bid)
     building_group = (_load_building_groups().get(btype) if btype else None)
+    movement_names = _movement_names_zh(data, player_tag)
     common = dict(region_name=region_name, region_key=region_key, ig_slots=ig_slots,
                   building_map=building_map, incorporation=incorporation,
                   harvest_conditions=harvest_conditions, pop_needs=pop_needs,
                   hub_names=hub_names, price_map=price_map,
                   vital=dict(pollution_pct=pollution_pct, devastation=devastation,
                              bits=bits, schools_inv=schools_inv,
-                             building_group=building_group, active_pms=active_pms))
+                             building_group=building_group, active_pms=active_pms,
+                             institutions_active=bool(incorporation and incorporation >= 1)),
+                  movement_names=movement_names)
     result["family_interview"] = _family_from_pop(lowest, **common)
     result["top_sol_peer"] = _family_from_pop(highest, **common)
     # 失业率: (该州失业POP的劳动力) / (该州总人口)
@@ -2264,6 +2645,7 @@ def build_journal_data(snap):
     data["subjects"] = snap.get("subjects") or []
     data["rivals"] = snap.get("rivals") or []
     data["interest_groups"] = snap.get("interest_groups") or []
+    data["political_movements"] = snap.get("political_movements") or []
     data["states"] = snap.get("states") or []
     data["events"] = []
     # 存档直读扩展字段
@@ -2291,6 +2673,7 @@ def extract_full_snapshot(melted):
         return snap
     snap["tag"] = tag
     snap["country_id"] = cid
+    player_tag = tag or (country or {}).get("definition")
     snap["govt_zh"] = gov_to_name(snap.get("govt"))
     snap["capital"] = _capital_name(melted, country)
     # 法律: 只保留本年度内发生变化的法律 (新施行 + 废除), 不再输出全部现行法
@@ -2332,7 +2715,7 @@ def extract_full_snapshot(melted):
     building_map = _building_type_map(melted, state_ids)
     price_map = _market_price_map(melted, country)
     interview = _pick_interview_set(melted, state_ids, ig_slots, building_map, price_map,
-                                    cid=cid)
+                                    cid=cid, player_tag=player_tag)
     snap["family_interview"] = interview.get("family_interview")
     snap["top_sol_peer"] = interview.get("top_sol_peer")
     snap["unemployed_interview"] = interview.get("unemployed_interview")
@@ -2350,7 +2733,11 @@ def extract_full_snapshot(melted):
     snap["subjects"] = _extract_subjects(melted, cid, names, index=index)
     snap["rivals"] = _extract_rivals(melted, cid, names, index=index)
     snap["interest_groups"] = _extract_interest_groups(melted, cid)
-    snap["powers"] = _extract_powers(melted, names, index=index, gp_ids=gp_ids)
+    snap["political_movements"] = _extract_political_movements(
+        melted, cid, state_ids, (country.get("pop_statistics") or {}),
+        player_tag=player_tag)
+    snap["powers"] = _extract_powers(melted, names, index=index, gp_ids=gp_ids,
+                                     player_id=cid, player_tag=player_tag)
     # 列强交战状态: 依据进行中战争的参与者
     gp_war_ids = {p.get("id") for w in snap["wars"] if not w.get("ended")
                   for p in w.get("participants", []) if p.get("rank") == "great_power"}
@@ -2360,8 +2747,9 @@ def extract_full_snapshot(melted):
             pw["war"] = True
     return snap
 
-def _extract_powers(data, names, index=None, gp_ids=None):
-    """提取列强名单: prestige 排名前 8 (V3 列强由声望动态决定)。"""
+def _extract_powers(data, names, index=None, gp_ids=None, player_id=None, player_tag=None):
+    """提取列强名单: prestige 排名前 8 (V3 列强由声望动态决定)。
+    player_id/player_tag 用于标注玩家所在国 (is_player=True)。"""
     if index is None or gp_ids is None:
         index, gp_ids, _ = _build_indexes(data)
     powers = []
@@ -2374,7 +2762,9 @@ def _extract_powers(data, names, index=None, gp_ids=None):
         if not tag:
             continue
         powers.append({"name": names.get(tag, tag), "definition": tag,
-                       "war": False, "prestige": entry.get("prestige")})
+                       "war": False, "prestige": entry.get("prestige"),
+                       "is_player": (player_id is not None and cid == player_id)
+                                    or bool(player_tag and tag == player_tag)})
     return powers
 
 # 附庸关系类型: pacts.database 中 first=宗主, second=附庸
@@ -2858,11 +3248,14 @@ def _extract_rivals(data, player_id, names, index=None):
 
 def _extract_interest_groups(data, player_id):
     """从 interest_groups.database 提取玩家全部利益集团。
-    返回按 clout 降序的 [{name, definition, clout_pct, in_government, approval_state}]。
+    返回按 clout 降序的 [{name, definition, clout_pct, in_government, approval_state,
+    leader_name, leader_ideology}]。
     in_government=True 的即当前执政(组阁)利益集团。"""
     groups = []
     if not player_id:
         return groups
+    chars = _player_characters(data, player_id)
+    loc = _load_loc_all()
     idx = data.find(b'"interest_groups"')
     if idx < 0:
         return groups
@@ -2888,12 +3281,17 @@ def _extract_interest_groups(data, player_id):
         if (isinstance(obj, dict) and obj.get("country") == player_id
                 and obj.get("definition")):
             clout = obj.get("clout")
+            leader = chars.get(obj.get("leader")) if obj.get("leader") is not None else None
+            lideo = (leader or {}).get("ideology")
             groups.append({
                 "name": obj.get("name") or obj.get("definition"),
                 "definition": obj.get("definition"),
                 "clout_pct": round(clout * 100, 1) if isinstance(clout, (int, float)) else None,
                 "in_government": bool(obj.get("in_government")),
                 "approval_state": obj.get("approval_state"),
+                "leader_name": (leader or {}).get("name"),
+                "leader_ideology": (_clean_loc_name(loc.get(lideo, lideo), loc)
+                                    if lideo else None),
             })
         j = end
     groups.sort(key=lambda g: -(g.get("clout_pct") or 0))
