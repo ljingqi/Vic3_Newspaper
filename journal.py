@@ -662,6 +662,30 @@ FREE_SPEECH_LAWS = ("law_outlawed_dissent", "law_censorship",
                     "law_right_of_assembly", "law_free_speech",
                     "law_protected_speech")
 
+# 各言论自由法律对应的新闻自由风味文案（提示词用）。集会权在本法律组中
+# 处于「无审查但无明文保障」的次宽松档位，故文案侧重新闻自由而非集会本身。
+FREE_SPEECH_FLAVOR = {
+    "law_outlawed_dissent": "批评政府被视为叛国而属非法，报纸只可刊发拥护现行体制的内容。",
+    "law_censorship": "新闻出版受主动审查，报纸稿件须经审查机关许可方可刊发，报道须自行把关。",
+    "law_right_of_assembly": "报纸无须事前送审，可较为自由地报道与评论，惟言论自由尚无明文法律保护，报道宜有分寸。",
+    "law_protected_speech": "言论自由已载入法律并受明文保护，报纸可依法自由报道与批评，唯须不逾诽谤、泄密等法律界限。",
+    "law_free_speech": "报纸享有完全的言论与出版自由，可自由报道、评论国政，无须事前送审。",
+}
+
+
+def _press_freedom_line(data):
+    """返回当前言论自由法律的风味提示行；法律缺失时返回空串。"""
+    fs_law = data.get("free_speech_law")
+    if not fs_law:
+        fs_law = next((l for l in (data.get("laws") or []) if l in FREE_SPEECH_LAWS), None)
+    if not fs_law:
+        return ""
+    flavor = FREE_SPEECH_FLAVOR.get(fs_law)
+    if flavor:
+        return f"- 当前的言论自由法律为：{law_zh(fs_law)}，{flavor}"
+    # 未知法律兜底：维持原有通用口径
+    return f"- 当前的言论自由法律为：{law_zh(fs_law)}，报社务必在法律允许的底线内行使新闻自由。"
+
 # 社会地位(Acceptance)本地化：存档里 acceptance_status 是英文 key，映射为模型易懂的中文
 ACCEPTANCE_NAMES = {
     "full_acceptance": "完全接纳",
@@ -1199,6 +1223,9 @@ def render_overview(data, history=None):
     ended = [e for e in (data.get("events") or []) if e.get("kind") == "war_end"]
     if ended:
         L.append("- 结束战事：" + "；".join(f"{e.get('actor', '?')}对{e.get('target', '?')}" for e in ended))
+    pf = _press_freedom_line(data)
+    if pf:
+        L.append(pf)
     return "\n".join(L)
 
 def render_war(data, history=None):
@@ -2002,13 +2029,12 @@ def _top_religion_name(rs):
     return RELIGION_NAMES.get(top, top)
 
 
-def render_history_table(data, history=None):
+def render_history_table(data, history=None, include_flavor=True):
     L = ["历年发展对照："]
-    fs_law = data.get("free_speech_law")
-    if not fs_law:
-        fs_law = next((l for l in (data.get("laws") or []) if l in FREE_SPEECH_LAWS), None)
-    if fs_law:
-        L.append(f"- 当前的言论自由法律为：{law_zh(fs_law)}，报社务必在法律允许的底线内行使新闻自由。")
+    if include_flavor:
+        pf = _press_freedom_line(data)
+        if pf:
+            L.append(pf)
     L.append("| 年份 | GDP | 人口 | 生活水平 | 识字率 | 激进派% | 效忠派% | 第一大族 | 第一大教 |")
     L.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     rows = (history or []) + [data]
@@ -2073,7 +2099,8 @@ def render_section_facts(key, data, history=None):
     if key == "unemployed":
         return render_unemployed(data)
     if key == "comment":
-        return render_overview(data, history) + "\n\n" + render_history_table(data, history)
+        # overview 已含新闻自由风味行，历史表不再重复输出
+        return render_overview(data, history) + "\n\n" + render_history_table(data, history, include_flavor=False)
     if key == "ads":
         return render_ads(data, history)
     return render_overview(data, history)
