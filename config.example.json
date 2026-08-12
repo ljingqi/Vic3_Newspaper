@@ -6,5 +6,6 @@
   "journal_dir": "",
   "poll_interval_seconds": 5,
   "max_tokens": 8000,
-  "temperature": 1.0
+  "temperature": 1.0,
+  "newspaper_style": 1
 }

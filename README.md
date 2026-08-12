@@ -1,7 +1,8 @@
 # 维多利亚3 年度报纸 Mod —《世界纪闻》
 
 在《维多利亚3》中，每年年初自动把玩家国家的**经济 / 战争 / 外交**数据导出，
-交给 DeepSeek LLM 生成一份**19 世纪风格报纸**（Markdown），保存在本仓库目录（下称 `<项目目录>`）。
+交给 DeepSeek LLM 生成一份**可切换四种风格**的报纸（Markdown），统一保存在
+本仓库的 `output\` 目录下（下称 `<项目目录>\output`）。
 
 ```
 ┌──────────────────┐   每年1月1日    ┌──────────────────┐
@@ -15,7 +16,7 @@
                                  │ DeepSeek API         │
                                  └────────────┬─────────┘
                                               ▼
-                                    <项目目录>/<国名>/报纸_1837.md
+                            <项目目录>/output/<国名>/报纸_1837.md
 ```
 
 ---
@@ -32,16 +33,17 @@
 | `<项目目录>\config.example.json` | 配置模板（所有参数已填好，仅 API Key 留空） |
 | `<项目目录>\requirements.txt` | Python 依赖（requests） |
 | `<项目目录>\README.md` | 本文档 |
-| `<项目目录>\<国名>\报纸_<年份>.md` | 生成的报纸（按存档/国名分文件夹，自动产生） |
-| `<项目目录>\<国名>\data\raw_<年份>.json` | 每年导出的原始数据（随报纸同放于该存档文件夹，用于 regen 重试） |
+| `<项目目录>\output\<国名>\报纸_<年份>.md` | 生成的报纸（每个存档开局一个文件夹，自动产生） |
+| `<项目目录>\output\<国名>\data\raw_<年份>.json` | 每年导出的原始数据（随报纸同放于该会话文件夹，用于 regen 重试） |
 
 > 注意：GitHub 仓库**不包含**以下内容（已在 `.gitignore` 中排除），使用前需自行准备：
 > - `config.json`（含你的 DeepSeek API Key，切勿上传；仓库提供 `config.example.json` 模板，复制改名即可）
 > - `tools\`（rakaly 等二进制工具，下载方式见下文「工具与环境准备」）
-> - 各测试集文件夹（`<国名>\报纸_*.md` 与 `<国名>\data\raw_*.json`，由程序自动生成）
+> - `output\`（各测试集/存档开局文件夹，含 `<国名>\报纸_*.md` 与 `<国名>\data\raw_*.json`，由程序自动生成）
 
-> 每次开始一个新存档并运行 `watch`，都会**新建一个以国名命名的文件夹**（如 `法兰西`）；
-> 若同名文件夹已存在（再次用同一国家开新档），自动在名字后加数字（`法兰西2`、`法兰西3`……）。
+> 每次开始一个新存档并运行 `watch`/`continue`，都会在 **`output\` 内新建一个以国名命名的
+> 文件夹**（如 `output\法兰西`）；若同名文件夹已存在（再次用同一国家开新档），自动在名字后
+> 加数字（`法兰西2`、`法兰西3`……）。`watch`/`continue` 的续传逻辑不变。
 
 ---
 
@@ -64,7 +66,8 @@
    ```
    然后编辑 `config.json`，把 `"deepseek_api_key": ""` 改成 `"deepseek_api_key": "sk-你的密钥"`。
    字段说明：`deepseek_model` 可选 `deepseek-chat`（默认）或 `deepseek-reasoner`（推理模式，更慢）；
-   `game_log_path` / `journal_dir` 留空时自动使用默认值（日志路径自动探测 / 仓库目录）。
+   `game_log_path` / `journal_dir` 留空时自动使用默认值（日志路径自动探测 / 仓库目录下的 `output`）。
+   `newspaper_style` 取 1~4 切换报纸风格（见下文「报纸风格」）。
 
 准备完成后，运行 `python journal_save.py check` 可自检存档、rakaly 是否就绪。
 
@@ -103,15 +106,16 @@
 ```bat
 cd /d <项目目录>
 python -m pip install -r requirements.txt   :: 首次运行, 安装依赖
-python journal.py check                      :: 自检 mod 数据是否写入日志
+python journal_save.py check                 :: 自检存档与 rakaly 是否就绪
 python journal.py test-llm                   :: 测试 API 连通性
-python journal.py watch                      :: 持续监控(建议常驻后台)
+python journal_save.py watch                 :: 持续监控自动存档(建议常驻后台)
 ```
 
-`watch` 会每 5 秒检查一次 `debug.log`。**游戏内每当 1 月 1 日年度滚动**，mod 会写出
-一个数据块，伴生程序随即调用 DeepSeek 生成当期报纸并写入
-`<项目目录>\<国名>\报纸_<年份>.md`（同时弹出一个游戏内事件提示）。
-> 首次运行 `watch` 后会以玩家国名新建文件夹；同一国家再次开新档则生成 `国名2`。
+`journal_save.py watch` 会监控最新存档，检测到新年度即调用 DeepSeek 生成当期报纸并写入
+`<项目目录>\output\<国名>\报纸_<年份>.md`。
+> 首次运行会以玩家国名在 `output\` 内新建文件夹；同一国家再次开新档则生成 `国名2`。
+> （`journal.py` 现主要作为渲染库被 `journal_save.py` 复用，其 `watch`/`once` 为旧的
+> debug_log 路线，仅作保留。）
 
 ### 全部命令
 
@@ -123,6 +127,9 @@ python journal.py watch                      :: 持续监控(建议常驻后台)
 | `python journal.py test-llm` | 测试 DeepSeek API 连通性 |
 | `python journal.py check` | 自检：日志路径、|JOURNAL| 标记是否出现、API Key 是否配置 |
 | `python journal.py config` | 打印当前生效的配置（隐藏密钥） |
+
+> 当前主入口为 `journal_save.py`：`watch`（监控新存档）、`continue`（续传并沿用该国家
+> 最新文件夹）、`newspaper <年份>`（用当前存档补生成）。
 
 ---
 
@@ -157,6 +164,22 @@ python journal.py watch                      :: 持续监控(建议常驻后台)
 2. 随后逐板块生成：**头版** → **战事专电**（仅去年战争）→ **外交风云** → **经济要闻** →
    **政界动态**（含法律变化）→ **民族宗教与社会** → **民生访谈** → **邻里富户** →
    **失业民生**（仅当随机州失业率>5%时发送）→ **本报评论**（结合历年对照）→ **广告与启示**
+
+### 四种风格切换
+
+编辑 `config.json` 的 `newspaper_style`（1~4）即可切换报纸风格，数据内容不变：
+
+| 值 | 风格 | 报名体例示例 | 代表性栏目 |
+| --- | --- | --- | --- |
+| 1 | 大公报（20世纪初） | 《罗马公报》《巴黎回声报》 | 头版、战事专电、外交风云、本报评论 |
+| 2 | 人民日报（20世纪） | 《巴黎日报》《京都早报》 | 今日要闻、军事报道、时政要闻、社论 |
+| 3 | 新华网（新华社风格） | 《巴黎新华报》《京都新华电讯》 | 要闻、军事新闻、时政新闻、新华时评 |
+| 4 | 泰晤士报（中文） | 《罗马泰晤士报》《巴黎泰晤士报》 | 头版要闻、战地报道、政坛纪事、社评 |
+
+四种风格使用完全相同的数据（GDP、人口、战争、外交、政体等），只更换报名规则、文风与
+栏目名；每种风格的栏目名均不相同。改完数字后，用
+`python journal_save.py newspaper <年份>` 或 `python journal.py regen <年份>`
+即可用新风格重写同一年份。
 
 风格要求：
 
@@ -210,7 +233,7 @@ debug.log 其实已在写入（本方案已验证），此开关只是额外保�
 这是游戏运行时持续更新的实时数据源。但 `.v3` 默认是**压缩二进制**格式，纯 Python
 无法直接解析，需要借助 [Rakaly CLI](https://github.com/rakaly/cli/releases)
 先转为文本，或用 `-debug_mode` 把"存档格式"设为 **Text**。本版本暂未内置该解析，
-可作为后续扩展（原始 JSON 已存于 `<项目目录>\data\`，接入解析后可直接复用）。
+可作为后续扩展（原始 JSON 已存于 `<项目目录>\output\<国名>\data\`，接入解析后可直接复用）。
 
 **方案 C — journal_save.py 存档直读（当前索科托等测试使用的路线）**
 `python journal_save.py newspaper <年份>` 用 [Rakaly](https://github.com/rakaly/cli/releases)

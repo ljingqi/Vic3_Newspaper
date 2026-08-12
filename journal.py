@@ -8,9 +8,10 @@
   游戏端 mod (v3journal) 在每年年初通过 debug_log 把玩家国家的
   经济 / 战争 / 外交数据写入:
       <文档>/Paradox Interactive/Victoria 3/logs/debug.log
-  本程序监控该日志, 捕获以 "|JOURNAL|" 为标记的数据块, 打包成 Prompt,
-  调用 DeepSeek API 生成 19 世纪风格报纸。报纸按国家分文件夹保存(重名加数字):
-      D:/Journal/<国名>/报纸_<年份>.md
+  当前主入口为 journal_save.py（存档直读）; 本文件主要承担「渲染」:
+  把数据打包成 Prompt, 调用 DeepSeek API 生成指定风格报纸。
+  报纸按会话分文件夹保存(重名加数字), 统一放在 output/ 下:
+      D:/Journal/output/<国名>/报纸_<年份>.md
 
 用法:
   python journal.py watch              持续监控游戏日志(建议后台运行)
@@ -58,44 +59,16 @@ DEFAULT_CONFIG = {
     "deepseek_base_url": "https://api.deepseek.com/chat/completions",
     # 游戏日志(debug.log)路径; 留空则自动检测
     "game_log_path": "",
-    # 报纸输出目录
-    "journal_dir": SCRIPT_DIR,
+    # 报纸输出目录: 所有存档开局会话统一放在 <项目目录>/output 下
+    "journal_dir": os.path.join(SCRIPT_DIR, "output"),
     # 监控轮询间隔(秒)
     "poll_interval_seconds": 5,
     # LLM 生成参数
     "max_tokens": 8000,   # 推理模型(deepseek-v4-flash等)会把预算花在思考上, 需留足余量
     "temperature": 1.0,
-    # 系统提示词(报纸风格与规则), 可自由修改
-    "system_prompt": (
-        "你是一位生活于19世纪至20世纪上半叶的报纸总编辑，供职于一家主张新文化、新风气、面向"
-        "大众的报纸。你的文风是「半文半白」：以白话为主体、晓畅明白，又保留文言的凝练与庄重，"
-        "恰似梁启超、鲁迅以及民国初年《申报》《大公报》的笔法；善用「国运」「时局」「民生」"
-        "「列强」「当此之际」「尤有甚者」等时代语汇，但绝不堆砌文言、不必句句用典。使用简体中文。\n\n"
-        "【报名】报名必须由【首都/都城】名直接派生，如《罗马公报》《巴黎回声报》《江户政闻录》，"
-        "可再结合【政体】微调（如《巴黎共和公报》），并随其变迁而调整，以体现时代推移。"
-        "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；若为州名如「法兰西岛」，"
-        "请改用该国更广为人知的都城名来拟报名）。不得使用「世界纪闻」这类与任何国家无关的通用报名。"
-        "示例：都城罗马可作《罗马公报》，都城巴黎可作《巴黎回声报》，都城京都可作《京都新闻》；"
-        "若首都或政体数据缺失，则退而用国名拟定，如《法兰西新闻》《日本新闻》。\n\n"
-        "【必须点名国家】报纸抬头必须显著写明：报名、国名、首都、政体与年份；正文中凡谈及本国，"
-        "至少要有一处明言国名（如「法兰西」「日本」），不得只以「本邦」「我国」含糊带过，要让任何"
-        "读者一眼看出这是哪个国家的报纸。\n\n"
-        "请按下列栏目撰写本期报纸，全部使用 Markdown：\n"
-        "# 报名与抬头（报名、国名、首都、政体、年份）\n"
-        "## 头版（一句导语，概括本年度最大事态）\n"
-        "## 战事专电\n"
-        "## 外交风云\n"
-        "## 经济要闻\n"
-        "## 政界动态\n"
-        "## 社会与风尚\n"
-        "## 本报评论\n"
-        "## 广告与启示（一两条趣味小广告）\n\n"
-        "铁律：\n"
-        "1. 只能基于给定事实合理演绎，可作有依据的推测，但严禁凭空捏造具体数字或国家名。\n"
-        "2. 数据中的量级档位（如 GDP=3亿~10亿）需在措辞中体现相应量级。\n"
-        "3. 某类数据缺失时，相应栏目简写或略去，不得编造。\n"
-        "4. 全文使用简体中文与 Markdown；报名用一级标题。"
-    ),
+    # 报纸风格: 1=大公报(20世纪初) 2=人民日报(20世纪) 3=新华网(新华社风格) 4=泰晤士报(中文)
+    # 各风格的完整提示词与栏目名见 NEWSPAPER_STYLES
+    "newspaper_style": 1,
 }
 
 def detect_default_log_path():
@@ -116,6 +89,16 @@ def load_config():
             log(f"警告: 读取 config.json 失败 ({e}), 使用默认配置。")
     if not cfg["game_log_path"]:
         cfg["game_log_path"] = detect_default_log_path()
+    # 报纸风格: 只接受 1~4 的整数, 非法时回退默认
+    try:
+        style = int(cfg.get("newspaper_style", DEFAULT_STYLE))
+    except (TypeError, ValueError):
+        style = DEFAULT_STYLE
+    if style not in NEWSPAPER_STYLES:
+        log(f"警告: newspaper_style={cfg.get('newspaper_style')!r} 无效, "
+            f"回退到默认风格 {DEFAULT_STYLE}（{NEWSPAPER_STYLES[DEFAULT_STYLE]['name']}）。")
+        style = DEFAULT_STYLE
+    cfg["newspaper_style"] = style
     return cfg
 
 # ---------------------------------------------------------------------------
@@ -123,6 +106,8 @@ def load_config():
 # ---------------------------------------------------------------------------
 
 LOG_FILE = os.path.join(SCRIPT_DIR, "logs", "journal.log")
+PROMPT_LOG = os.path.join(SCRIPT_DIR, "logs", "prompts.log")
+PROMPT_LOG_MAX_BYTES = 50 * 1024 * 1024
 _LOG_LOCK = threading.Lock()
 
 def log(msg):
@@ -134,6 +119,24 @@ def log(msg):
         with _LOG_LOCK:
             with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
+    except Exception:
+        pass
+
+def _log_prompt(messages):
+    """把每次整理好、发送给模型的 messages 原文写入 logs/prompts.log。
+    超过 50MB 时先自动清空再写入 (按调用一次记一份, 重试不重复记录)。"""
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        os.makedirs(os.path.dirname(PROMPT_LOG), exist_ok=True)
+        with _LOG_LOCK:
+            if os.path.exists(PROMPT_LOG) and os.path.getsize(PROMPT_LOG) > PROMPT_LOG_MAX_BYTES:
+                open(PROMPT_LOG, "w", encoding="utf-8").close()
+            with open(PROMPT_LOG, "a", encoding="utf-8") as f:
+                f.write(f"\n===== {ts} =====\n")
+                for m in messages or []:
+                    role = m.get("role", "?") if isinstance(m, dict) else "?"
+                    content = m.get("content", "") if isinstance(m, dict) else str(m)
+                    f.write(f"--- [{role}] ---\n{content}\n")
     except Exception:
         pass
 
@@ -199,11 +202,8 @@ def resolve_session_folder(data, cfg):
         return folder
 
 def find_raw_files(year, journal_dir):
-    """在中央 data/ 及各国家文件夹的 data/ 中查找某年的原始数据文件。"""
+    """在 output/ 各会话文件夹的 data/ 中查找某年的原始数据文件。"""
     matches = []
-    p = os.path.join(journal_dir, "data", f"raw_{year}.json")
-    if os.path.exists(p):
-        matches.append(p)
     try:
         for d in os.listdir(journal_dir):
             dp = os.path.join(journal_dir, d, "data", f"raw_{year}.json")
@@ -719,30 +719,34 @@ JOB_SATISFACTION_GUIDE = ("职业满意度为该POP对当前工作/薪水的满�
 
 def load_history(data, cfg, years_back=6):
     """加载当前年份之前若干年的原始数据, 供模型做发展对比。
-    优先读取同一存档文件夹的 data/, 其次回退到中央 data/。"""
+    仅读取当前会话文件夹的 data/（中央 data/ 逻辑已弃用）。"""
     folder = data.get("output_dir") or SESSION.get("folder") or ""
-    dirs = []
-    if folder:
-        dirs.append(os.path.join(cfg["journal_dir"], folder, "data"))
-    dirs.append(os.path.join(cfg["journal_dir"], "data"))
     cur = data.get("year")
     hist = []
-    if not cur:
+    if not folder or not cur:
         return hist
     seen = set()
+    rd = os.path.join(cfg["journal_dir"], folder, "data")
     for y in range(cur - years_back, cur):
-        for rd in dirs:
-            p = os.path.join(rd, f"raw_{y}.json")
-            if os.path.exists(p):
-                try:
-                    with open(p, "r", encoding="utf-8") as f:
-                        h = json.load(f)
-                    if h.get("year") == y and y not in seen:
-                        hist.append(h)
-                        seen.add(y)
-                except Exception:
-                    pass
+        p = os.path.join(rd, f"raw_{y}.json")
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    h = json.load(f)
+                if h.get("year") == y and y not in seen:
+                    hist.append(h)
+                    seen.add(y)
+            except Exception:
+                pass
     return hist
+
+def _ruler_name(data):
+    """统治者名: 日志链路拿不到时 debug_log 输出 (统治者 id N) 占位符, 视为缺失。"""
+    ruler = data.get('ruler', '') or ''
+    if re.fullmatch(r"（统治者 id \d+）", ruler.strip()):
+        return ""
+    return ruler
+
 
 def render_facts(data, history=None):
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
@@ -753,7 +757,7 @@ def render_facts(data, history=None):
     L.append("一、本国概况")
     L.append(f"- 政体: {govt_zh}")
     L.append(f"- 首都: {data.get('capital', '未知')}（注：若此为州名，请用该国更广为人知的都城名，如法兰西之巴黎）")
-    L.append(f"- 统治者: {data.get('ruler', '未知')}")
+    L.append(f"- 统治者: {_ruler_name(data) or '未知'}")
     L.append(f"- 经济总量(GDP)量级: {data.get('gdp', '未知')}")
     L.append(f"- 人口量级: {data.get('pop', '未知')}")
     L.append(f"- 平均生活水平: {data.get('sol', '未知')}")
@@ -857,13 +861,19 @@ SECTION_DEFS = [
      "数据含其政治力量clout占比、首领姓名与首领个人意识形态）、主要利益集团力量格局、"
      "当前政治运动（取支持度前三，外加所有已进入抗议/武斗档的运动，"
      "含名称、核心意识形态、活跃度档位、支持者规模与支持度，"
-     "如数据给出内战/分离进程须体现）、本年度法律变化(新施行/废除的法律)。"),
+     "如数据给出内战/分离进程须体现）、本年度法律变化(新施行/废除的法律)。"
+     "每期**必须**至少有一条以「（头衔）（统治者姓名）……」为主干的统治者活动新闻，"
+     "如视察某地建筑、召集内阁会议、走访民间、接见外国使节等；"
+     "若数据给出「本期统治者活动」一行，必须以该行事实为基础（人物、头衔、地点、事件不得改写），"
+     "在其上扩写细节；该行缺失时头衔按政体与国名常识选用，"
+     "可在不编造具体国名与数字的前提下合理演绎统治者行踪。"),
     ("society", "民族宗教与社会", "报道民族构成、宗教构成、移民动向、社会风尚。"),
-    ("family", "民生访谈", "记者在随机州随机建筑内，采访生活水平最低的一群POP，"
+    ("family", "民生访谈", "记者在随机州随机建筑内，采访生活水平最低的人群，"
      "以访谈体写衣食住行、收入支出、受抚养人口与生活水平；须体现该人群政治倾向"
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
-     "须基于给定数据，不得编造具体数字。"),
-    ("peer", "邻里富户", "与民生访谈同一建筑内生活水平最高的一群POP（富户），"
+     "须基于给定数据，不得编造具体数字；若数据给出「统治者走访」一行，"
+     "须在访谈中自然提及统治者近日到访一事，但不得喧宾夺主。"),
+    ("peer", "邻里富户", "与民生访谈同一建筑内生活水平最高的人群（富户），"
      "以同样的访谈体写其衣食住行与收支，并体现该人群政治倾向与参与比例最高的两个政治运动，"
      "须与民生访谈形成贫富对照，不得编造具体数字。"),
     ("unemployed", "失业民生", "仅当随机州失业率>5%时发送：报道该州失业状况，"
@@ -874,19 +884,216 @@ SECTION_DEFS = [
      "也可为文学沙龙、社科研讨会、新政晓谕、学堂启事等非商品形式；至少一条须直接体现科技，富有时代气息。"),
 ]
 
-SECTION_STYLE = (
-    "你是一位生活于19世纪至20世纪上半叶的报纸总编辑，文风「半文半白」：以白话为主体、"
-    "晓畅明白，又保留文言的凝练庄重（梁启超、鲁迅及民国初年《申报》《大公报》笔法）。"
-    "使用简体中文与 Markdown。铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
-    "数据缺失时相应内容简写或略去，不得编造；行文中以「本报」指代本报刊名。"
+# 所有风格共用的「数据解读规则」：与具体风格无关, 保证各风格拿到的事实口径一致
+FACT_GUIDE = (
     "「执政利益集团」指当前组阁执政的利益集团（即数据中标注「执政」的集团），"
-    "其政治力量(clout)为该集团在政坛的影响力占比；报道政界动态时应以执政集团为核心，"
+    "其政治力量为该集团在政坛的影响力占比；报道政界动态时应以执政集团为核心，"
     "结合其力量消长说明朝局与施政倾向，但不得虚构具体数字。"
     "政治运动的活跃度分四档：消极(低于25)、不满(25~50)、抗议(50~75)、武斗(75及以上)；"
     "抗议档起每月会使部分支持者激进化并在州内制造抗拒，"
     "只有抗议及以上档位的运动才可能附带内战/分离进程；"
     "数据给出该进程时须如实报道其进度，不得自行推断战争爆发。"
 )
+
+DEFAULT_STYLE = 1
+
+# 四种报纸风格。config.json 的 newspaper_style 取 1~4 对应下表;
+# 各风格只影响「报名规则 / 文风 / 栏目名」, 传入模型的数据内容完全相同。
+NEWSPAPER_STYLES = {
+    1: {
+        "name": "大公报（20世纪初）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，如《罗马公报》《巴黎回声报》"
+            "《江户政闻录》，可再结合【政体】微调（如《巴黎共和公报》），"
+            "并随其变迁而调整，以体现时代推移。"
+            "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；"
+            "若为州名如「法兰西岛」，请改用该国更广为人知的都城名来拟报名）。"
+            "不得使用「世界纪闻」这类与任何国家无关的通用报名。"
+            "示例：都城罗马可作《罗马公报》，都城巴黎可作《巴黎回声报》，"
+            "都城京都可作《京都新闻》；若首都或政体数据缺失，则退而用国名拟定，"
+            "如《法兰西新闻》《日本新闻》。"
+        ),
+        "voice": (
+            "你是一位生活于19世纪至20世纪上半叶的报纸总编辑，文风「半文半白」："
+            "以白话为主体、晓畅明白，又保留文言的凝练庄重（梁启超、鲁迅及民国初年"
+            "《申报》《大公报》笔法）。使用简体中文与 Markdown。"
+            "铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
+            "数据缺失时相应内容简写或略去，不得编造；行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「据户部消息，我国国民生产总值为……」（填入给定GDP数值）"
+            "引出经济总量，如「据户部消息，我国国民生产总值为四千六百余万英镑」；"
+            "人口、生活水平、识字率等其余指标同样以旧式公文笔法展开。"
+        ),
+        "ads_guide": (
+            "广告栏须为20世纪初报刊告白体：商品告白、工艺铺面招贴、学堂晓谕、书画社启事皆可，"
+            "措辞半文半白、文雅得体，可带「本店」「特此告白」「惠顾」等语汇，篇幅短小有趣。"
+        ),
+        "number_format": "chinese",
+        "number_guide": (
+            "大数一律用汉字数字（如「四千六百零七万七千二百六十七」），"
+            "百分比等现代度量可用阿拉伯数字（如 69.45%）。"
+        ),
+        "section_titles": {
+            "headline": "头版",
+            "war": "战事专电",
+            "diplo": "外交风云",
+            "econ": "经济要闻",
+            "politics": "政界动态",
+            "society": "民族宗教与社会",
+            "family": "民生访谈",
+            "peer": "邻里富户",
+            "unemployed": "失业民生",
+            "comment": "本报评论",
+            "ads": "广告与启示",
+        },
+    },
+    2: {
+        "name": "人民日报（20世纪）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格可采用《XX日报》《XX早报》"
+            "《XX晨报》等体例，如都城巴黎可作《巴黎日报》、都城京都可作《京都早报》；"
+            "可再结合【政体】微调（如《巴黎共和日报》），并随其变迁而调整，以体现时代推移。"
+            "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；"
+            "若为州名如「法兰西岛」，请改用该国更广为人知的都城名来拟报名）。"
+            "不得使用「世界纪闻」这类与任何国家无关的通用报名。"
+            "若首都或政体数据缺失，则退而用国名拟定，如《法兰西日报》《日本日报》。"
+        ),
+        "voice": (
+            "你是一位生活于20世纪的权威大报总编辑，供职于以人民立场为根本、"
+            "服务社会主义建设与人民生活的报纸。你的文风端正庄重、朴实有力："
+            "善用「人民」「群众」「建设」「发展」「团结」等语汇，消息客观、社论有高度，"
+            "措辞审慎而不空喊口号；有喜报喜、有忧报忧，以建设与发展为主线，不轻佻浮夸。"
+            "使用简体中文与 Markdown。"
+            "铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
+            "数据缺失时相应内容简写或略去，不得编造；行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「国家统计局最新数据显示，我国GDP为……」（填入给定GDP数值）"
+            "引出经济总量，如「国家统计局最新数据显示，我国GDP为四千六百零七万英镑」；"
+            "人口、生活水平、识字率等其余指标以官方书面语展开。"
+        ),
+        "ads_guide": (
+            "广告栏须为20世纪党报广告体：国营厂矿产品广告、展览会通知、招生启事、征订启事等，"
+            "措辞正式简明，突出为人民生活服务与建设成果（如「为人民生活服务」「欢迎选购」），"
+            "不得使用旧式文言告白腔。"
+        ),
+        "number_format": "arabic",
+        "number_guide": (
+            "一律使用阿拉伯数字并加千分位分隔符（如 46,077,267 英镑、21,862,816 人、69.45%），"
+            "不得使用汉字数字。"
+        ),
+        "section_titles": {
+            "headline": "今日要闻",
+            "war": "军事报道",
+            "diplo": "国际要闻",
+            "econ": "经济建设",
+            "politics": "时政要闻",
+            "society": "民族与宗教",
+            "family": "人民生活",
+            "peer": "先富观察",
+            "unemployed": "就业民生",
+            "comment": "社论",
+            "ads": "广告启事",
+        },
+    },
+    3: {
+        "name": "新华网（新华社风格）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格可采用《XX新华报》"
+            "《XX新华电讯》等体例，如都城巴黎可作《巴黎新华报》、都城京都可作"
+            "《京都新华电讯》；可再结合【政体】微调（如《巴黎共和新华报》），"
+            "并随其变迁而调整，以体现时代推移。"
+            "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；"
+            "若为州名如「法兰西岛」，请改用该国更广为人知的都城名来拟报名）。"
+            "不得使用「世界纪闻」这类与任何国家无关的通用报名。"
+            "若首都或政体数据缺失，则退而用国名拟定，如《法兰西新华报》《日本新华电讯》。"
+        ),
+        "voice": (
+            "你是一位供职于国家通讯社的资深记者与编辑，写作新华社通稿体："
+            "消息开门见山，首段即时间、地点、事件三要素；事实准确、行文凝练、"
+            "措辞规范，标题朴实有力，不堆砌形容词，不用网络用语；报道以事实说话，"
+            "注重权威与可信，不渲染、不夸张。使用简体中文与 Markdown。"
+            "铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
+            "数据缺失时相应内容简写或略去，不得编造；行文中以「本社」指代本通讯社。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「国家统计局最新数据显示，我国GDP为……」（填入给定GDP数值）"
+            "引出经济总量，其余数据以新华社通稿体如实报道。"
+        ),
+        "ads_guide": (
+            "广告栏须为现代新闻媒体分类广告/公告体：产品服务信息、展会通知、公益公告等，"
+            "信息要素齐全（名称、地点、方式），标题简明，措辞平实，不得使用旧式文言告白腔。"
+        ),
+        "number_format": "arabic",
+        "number_guide": (
+            "一律使用阿拉伯数字并加千分位分隔符（如 46,077,267 英镑、21,862,816 人、69.45%），"
+            "不得使用汉字数字。"
+        ),
+        "section_titles": {
+            "headline": "要闻",
+            "war": "军事新闻",
+            "diplo": "国际新闻",
+            "econ": "经济新闻",
+            "politics": "时政新闻",
+            "society": "社会新闻",
+            "family": "民生一线",
+            "peer": "富户见闻",
+            "unemployed": "就业观察",
+            "comment": "新华时评",
+            "ads": "分类广告",
+        },
+    },
+    4: {
+        "name": "泰晤士报（中文）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格可采用《XX泰晤士报》"
+            "《XX泰晤士纪事》等体例，如都城罗马可作《罗马泰晤士报》、都城巴黎可作"
+            "《巴黎泰晤士报》；可再结合【政体】微调（如《巴黎共和泰晤士报》），"
+            "并随其变迁而调整，以体现时代推移。"
+            "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；"
+            "若为州名如「法兰西岛」，请改用该国更广为人知的都城名来拟报名）。"
+            "不得使用「世界纪闻」这类与任何国家无关的通用报名。"
+            "若首都或政体数据缺失，则退而用国名拟定，如《法兰西泰晤士报》《日本泰晤士报》。"
+        ),
+        "voice": (
+            "你是一位供职于英伦百年大报的中文版总编辑（风格仿《泰晤士报》）。"
+            "你的文风庄重冷静、含蓄克制，以绅士笔调叙述世事：句子结构完整、措辞考究，"
+            "善用「据悉」「据可靠消息」「观乎」「有识之士」等书面语；报道重事实、重细节，"
+            "评论持重、不偏不倚，偶带英式含蓄的讽喻，标题典雅而不夸张。"
+            "使用简体中文与 Markdown。"
+            "铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
+            "数据缺失时相应内容简写或略去，不得编造；行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「据户部消息，我国国民生产总值为……」（填入给定GDP数值）"
+            "引出经济总量，如「据户部消息，我国国民生产总值为四千六百余万英镑」；"
+            "再以庄重含蓄的笔调展开人口、生活水平、识字率等其余指标。"
+        ),
+        "ads_guide": (
+            "广告栏须为英式大报典雅广告体：绅士用品、出版社新书、私人学校、俱乐部启事等，"
+            "措辞庄重含蓄、讲究体面，可带「谨此奉告」「敬请惠顾」等英式译风用语，篇幅短小。"
+        ),
+        "number_format": "chinese",
+        "number_guide": (
+            "大数一律用汉字数字（如「四千六百零七万七千二百六十七」），"
+            "百分比等现代度量可用阿拉伯数字（如 69.45%）。"
+        ),
+        "section_titles": {
+            "headline": "头版要闻",
+            "war": "战地报道",
+            "diplo": "国际时讯",
+            "econ": "财经报道",
+            "politics": "政坛纪事",
+            "society": "社会万象",
+            "family": "民间专访",
+            "peer": "富室专访",
+            "unemployed": "失业调查",
+            "comment": "社评",
+            "ads": "启事与广告",
+        },
+    },
+}
 
 _TERRITORY_CAP = 8
 
@@ -1158,14 +1365,24 @@ def render_econ(data, history=None):
 def render_politics(data, history=None):
     L = []
     L.append(f"- 政体：{GOVT_NAMES.get(data.get('govt', ''), data.get('govt', '未知'))}")
-    ruler = data.get('ruler', '') or '（未知，当前年度统治者）'
+    ruler = _ruler_name(data)
+    extra = "，".join(x for x in (data.get("ruler_title"),
+                                  data.get("ruler_ideology"),
+                                  data.get("ruler_status")) if x)
+    if ruler and extra:
+        ruler += f"（{extra}）"
+    if not ruler:
+        ruler = '（未知，当前年度统治者）'
     L.append(f"- 统治者：{ruler}")
+    ruler_act = data.get("ruler_activity")
+    if ruler_act:
+        L.append(f"- 本期统治者活动（须据此如实报道，人物/地点/事件不得改写）：{ruler_act}")
     if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
         L.append(f"- 民意倾向：激进派占人口约{data.get('radicals_pct', '?')}%，"
                  f"效忠派占人口约{data.get('loyalists_pct', '?')}%")
     igs = data.get("interest_groups") or []
     if igs:
-        L.append("- 主要利益集团（按政治力量clout降序，执政者标注「执政」）：")
+        L.append("- 主要利益集团（按政治力量占比降序，执政者标注「执政」）：")
         for g in igs[:5]:
             nm = IG_NAMES.get(g.get('name'), IG_NAMES.get(g.get('definition'), g.get('name')))
             cl = g.get('clout_pct')
@@ -1189,9 +1406,9 @@ def render_politics(data, history=None):
         extra.sort(key=lambda mv: -(mv.get("radicalism") or 0))
         shown = list(mvs[:3]) + extra
         if extra:
-            L.append("- 政治运动（按支持度前三，另列出已达抗议/武斗档的运动）：")
+            L.append("- 政治运动（支持度前三，另列出已达抗议/武斗档的运动）：")
         else:
-            L.append("- 政治运动（按支持度前三）：")
+            L.append("- 政治运动（支持度前三）：")
         for mv in shown:
             nm = mv.get("name") or mv.get("type") or "未知运动"
             line = f"  - {nm}"
@@ -1214,12 +1431,12 @@ def render_politics(data, history=None):
                 if isinstance(prog, (int, float)):
                     if cw.get("type") == "revolution":
                         if prog <= 0.005:
-                            line += "；革命酝酿已现端倪"
+                            line += "；街头冲突愈演愈烈"
                         else:
                             line += f"；革命酝酿进程约{prog * 100:.0f}%"
                     else:
                         if prog <= 0.005:
-                            line += "；分离进程已启动"
+                            line += "；街头冲突愈演愈烈"
                         else:
                             line += f"；分离进程约{prog * 100:.0f}%"
             L.append(line)
@@ -1408,6 +1625,11 @@ def render_family(data):
     hub = fi.get("hub_name")
     loc = f"{hub}（{region}）" if hub else region
     L.append(f"- 采访对象：{loc}的一户{pop_zh}家庭（{culture}·{rel_zh}）")
+    if fi.get("ruler_visited"):
+        who = (data.get("ruler_title") or "") + (data.get("ruler") or "")
+        if who:
+            L.append(f"- 统治者走访：{who}近日曾走访本州（详见政界动态「本期统治者活动」），"
+                     f"受访者对此记忆犹新，可在访谈中自然提及")
     # 本土归属: 存档直读时按“该州域是否是该族本土(add_homeland)”判定
     homeland = fi.get("is_homeland")
     if homeland is not None:
@@ -1833,7 +2055,8 @@ def render_section_facts(key, data, history=None):
         return render_ads(data, history)
     return render_overview(data, history)
 
-def build_masthead_messages(data):
+def build_masthead_messages(data, style=DEFAULT_STYLE):
+    st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
     country = data.get("player", "未知")
     year = data.get("year", "?")
@@ -1841,17 +2064,16 @@ def build_masthead_messages(data):
     capital = data.get("capital", "")
     cap_note = capital if capital else "（数据缺失，请根据国名常识选用该国广为人知的都城名）"
     sys_msg = (
-        f"你是这份报纸的总编辑。本期报纸的关键变量如下，抬头必须**原样保留**国名：\n"
+        f"你是这份{st['name']}报纸的总编辑。本期报纸的关键变量如下，抬头必须**原样保留**国名：\n"
         f"【国名】{country}\n"
         f"【都城】{cap_note}\n"
         f"【政体】{govt_zh}\n"
         f"【年份】{year}\n\n"
+        f"{st['masthead']}\n\n"
         "请据此取报名并撰写抬头。要求：\n"
         "1. 国名**一字不改**地写入抬头（不得自创、不得替换）。\n"
         "2. 都城若缺失，请用该国广为人知的都城名。\n"
-        "3. 报名必须以首都/都城名直接派生，如《罗马公报》《巴黎回声报》《江户政闻录》，"
-        "可再结合政体微调（如《巴黎共和公报》）；不得使用「世界纪闻」这类通用名。\n"
-        f"4. 只输出 Markdown 抬头，格式：\n# 《报名》\n国名：{country}｜都城：{cap_note}｜政体：{govt_zh}｜年份：{year}"
+        f"3. 只输出 Markdown 抬头，格式：\n# 《报名》\n国名：{country}｜都城：{cap_note}｜政体：{govt_zh}｜年份：{year}"
     )
     user_msg = (
         f"本期报纸：【国名】={country}，【都城】={cap_note}，【政体】={govt_zh}，【年份】={year}。"
@@ -1859,20 +2081,83 @@ def build_masthead_messages(data):
     )
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
-def build_section_messages(key, data, cfg, history, masthead):
+def build_section_messages(key, data, cfg, history, masthead, style=None):
+    style = style or cfg.get("newspaper_style", DEFAULT_STYLE)
+    st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
     spec = next(s for s in SECTION_DEFS if s[0] == key)
+    title = st["section_titles"].get(key, spec[1])
     country = data.get("player", "未知")
     capital = data.get("capital", "未知")
-    sys_msg = (SECTION_STYLE +
-               f"\n\n本期报纸：【国名】={country}，【都城】={capital}。抬头如下，行文须与之呼应：\n{masthead}\n\n"
-               f"请撰写「{spec[1]}」板块。要求：{spec[2]}")
+    req = spec[2]
+    if key == "econ":
+        econ_guide = st.get("econ_guide")
+        if econ_guide:
+            req = f"{req}\n{econ_guide}"
+    elif key == "ads":
+        ads_guide = st.get("ads_guide")
+        if ads_guide:
+            req = f"{req}\n{ads_guide}"
+    parts = [st["voice"], FACT_GUIDE]
+    num_guide = st.get("number_guide")
+    if num_guide:
+        parts.append(f"数字格式要求：{num_guide}")
+    parts.append(f"本期报纸：【国名】={country}，【都城】={capital}。抬头如下，行文须与之呼应：\n{masthead}\n\n"
+                 f"请撰写「{title}」板块。要求：{req}")
+    sys_msg = "\n\n".join(parts)
     facts = render_section_facts(key, data, history)
-    user_msg = f"以下是本期报纸关于「{spec[1]}」板块的相关数据（涉及国名、都城请用上述变量，不得改动）：\n{facts}\n\n请撰写该板块正文。"
+    user_msg = f"以下是本期报纸关于「{title}」板块的相关数据（涉及国名、都城请用上述变量，不得改动）：\n{facts}\n\n请撰写该板块正文。"
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
+
+_MASTHEAD_ECHO_RE = re.compile(r"^#\s*《.+》\s*$")
+_HEADER_INFO_RE = re.compile(r"^\*{0,2}国名：.+｜都城：.+｜政体：.+｜年份：\d{4}\*{0,2}\s*$")
+_HEAD_RE = re.compile(r"^#{1,6}\s+")
+
+def _normalize_section_text(text, title, use_separators=False, paper_name=None):
+    """规范化板块正文的标题层级:
+    - 剔除模型回显的报名(# 《报名》)与抬头信息行(**国名：...｜都城：...**), 避免正文重复报头;
+    - 板块内的一级标题一律降为二级(保证 # 只留给报名);
+    - 正文没有标题时补上规范的 ## 板块名。"""
+    out = []
+    for raw in (text or "").split("\n"):
+        s = raw.strip()
+        if not s:
+            out.append("")
+            continue
+        if _MASTHEAD_ECHO_RE.match(s) or _HEADER_INFO_RE.match(s):
+            continue
+        if s.startswith("# "):
+            s = "## " + s[2:]
+        if paper_name and s.startswith("#"):
+            s = re.sub(r"^(#{1,6})\s*《" + re.escape(paper_name) + r"》",
+                       r"\1 ", s).strip()
+        out.append(s)
+    body = "\n".join(out).strip()
+    if use_separators:
+        body = _insert_thousand_separators(body)
+    if not body:
+        return f"## {title}\n\n(本板块生成失败)"
+    first = next((ln for ln in body.split("\n") if ln.strip()), "")
+    if not _HEAD_RE.match(first):
+        return f"## {title}\n\n{body}"
+    return body
+
+def _insert_thousand_separators(text):
+    """给阿拉伯数字串补千分位分隔符(提示词的兜底): 46077267 -> 46,077,267; 2186万 -> 2,186万。
+    只处理纯整数串, 不碰小数/百分比/4位年份(如 1861), 已带分隔符的也不重复处理。"""
+    text = re.sub(r"(?<![\d,])(\d{5,})(?![\d,])",
+                  lambda m: format(int(m.group(1)), ","), text)
+    text = re.sub(r"(?<![\d,])(\d{4})(?=万)",
+                  lambda m: format(int(m.group(1)), ","), text)
+    return text
 
 def generate_newspaper(data, cfg, history=None):
     """分板块生成: 先定抬头, 再并发调用各板块, 最后按序组合。"""
-    masthead = call_deepseek(build_masthead_messages(data), cfg).strip()
+    style = cfg.get("newspaper_style", DEFAULT_STYLE)
+    st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
+    use_sep = st.get("number_format") == "arabic"
+    masthead = call_deepseek(build_masthead_messages(data, style), cfg).strip()
+    m = re.search(r"《([^《》]+)》", masthead)
+    paper_name = m.group(1) if m else None
     section_cfg = dict(cfg)
     section_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 4000)
 
@@ -1880,16 +2165,15 @@ def generate_newspaper(data, cfg, history=None):
         try:
             msg = build_section_messages(key, data, cfg, history, masthead)
             text = call_deepseek(msg, section_cfg).strip()
-            if text.startswith("#"):
-                return text
-            return f"## {title}\n\n{text}"
+            return _normalize_section_text(text, title, use_separators=use_sep,
+                                           paper_name=paper_name)
         except Exception as e:
             log(f"板块「{title}」生成失败: {e}")
             return f"## {title}\n\n(本板块生成失败)"
 
     parts = [masthead]
     # 条件板块: 失业民生仅在随机州失业率>5%且有样本数据时发送
-    sections = [(k, t) for k, t, _d in SECTION_DEFS
+    sections = [(k, st["section_titles"].get(k, t)) for k, t, _d in SECTION_DEFS
                 if not (k == "unemployed" and not data.get("unemployed_interview"))]
     # 各板块彼此独立, 并发请求 (DeepSeek 并发充足时大幅提速)
     with ThreadPoolExecutor(max_workers=len(SECTION_DEFS)) as ex:
@@ -1908,6 +2192,7 @@ def generate_newspaper(data, cfg, history=None):
 # ---------------------------------------------------------------------------
 
 def call_deepseek(messages, cfg, retries=3):
+    _log_prompt(messages)
     url = cfg["deepseek_base_url"]
     headers = {
         "Authorization": f"Bearer {cfg['deepseek_api_key']}",
@@ -2126,7 +2411,9 @@ def cmd_check(cfg):
             print("          2. 年份尚未滚动(需等到每年 1 月 1 日);")
             print("          3. 游戏版本与 supported_version 不匹配。")
             print("          debug_log 在正常游玩下即可写入(已验证), 无需 -debug_mode。")
-    print(f"报纸输出目录: {cfg['journal_dir']}  (按国名分文件夹, 如 <国名>/报纸_<年份>.md)")
+    style = cfg.get("newspaper_style", DEFAULT_STYLE)
+    print(f"报纸输出目录: {cfg['journal_dir']}  (按国名分文件夹, 如 output/<国名>/报纸_<年份>.md)")
+    print(f"报纸风格: {style} - {NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])['name']}")
     print(f"API Key: {('已配置 ' + cfg['deepseek_api_key'][:6] + '...') if cfg.get('deepseek_api_key', '').startswith('sk-') else '未配置'}")
     return 0
 

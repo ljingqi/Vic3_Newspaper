@@ -15,6 +15,9 @@ data/
 **/data/
 **/报纸_*.md
 
+# 所有存档开局会话统一输出到 output/
+output/
+
 # 编辑器 / 系统文件
 .idea/
 .vscode/

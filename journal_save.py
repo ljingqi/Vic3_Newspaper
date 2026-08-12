@@ -127,6 +127,8 @@ def melt_with_rakaly(v3_path, force=False):
 
 GAME_LOCALIZATION = r"F:\Game\steamapps\common\Victoria 3\game\localization\simp_chinese"
 WORKSHOP_DIR = r"F:\Game\steamapps\workshop\content\529340"
+GOVERNMENT_TYPES_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\government_types"
+CHARACTER_TEMPLATES_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\character_templates"
 
 _NAME_CACHE = None
 _LOC_ALL = None
@@ -198,7 +200,7 @@ def _load_loc_all():
                     with open(os.path.join(root, fn), encoding="utf-8-sig",
                               errors="replace") as fp:
                         for line in fp:
-                            m = re.match(r"\s*([A-Za-z_][A-Za-z_0-9]*)(?::\d+)?:\s*\"([^\"]+)\"\s*$",
+                            m = re.match(r"\s*([A-Za-z_][A-Za-z_0-9]*)(?::\d+)?:\s*\"([^\"]+)\"\s*(?:#.*)?$",
                                          line)
                             if m:
                                 loc[m.group(1)] = m.group(2).strip()
@@ -540,7 +542,7 @@ def build_culture_map():
                 continue
             with open(os.path.join(loc_dir, fn), encoding="utf-8-sig", errors="replace") as fp:
                 for line in fp:
-                    m = re.match(r"\s*([a-z_]+):\s*\"([^\"]+)\"\s*$", line)
+                    m = re.match(r"\s*([a-z_]+):\s*\"([^\"]+)\"\s*(?:#.*)?$", line)
                     if m:
                         zh[m.group(1)] = m.group(2).strip()
     except Exception:
@@ -648,7 +650,7 @@ def build_goods_map():
             with open(os.path.join(GAME_LOCALIZATION, fn), encoding="utf-8-sig",
                       errors="replace") as fp:
                 for line in fp:
-                    m = re.match(r"\s*([a-z_]+):\s*\"([^\"]+)\"\s*$", line)
+                    m = re.match(r"\s*([a-z_]+):\s*\"([^\"]+)\"\s*(?:#.*)?$", line)
                     if m and m.group(1) in order:
                         zh[m.group(1)] = m.group(2).strip()
     except Exception:
@@ -667,27 +669,41 @@ def _resolve_loc_template(value, loc, depth=0):
         return m.group(0)
     return re.sub(r"\$([A-Za-z_][A-Za-z_0-9]*)\$", repl, value)
 
+def _hub_name_bad(v):
+    """hub 名解析失败判定: 空 / 含未替换占位符 / 仍是本地化键或全大写 key。"""
+    return (not isinstance(v, str) or not v or "$" in v
+            or v.startswith(("HUB_NAME_", "STATE_"))
+            or re.fullmatch(r"[A-Z][A-Z0-9_]*", v))
+
 def _hub_names(state_obj):
     """州对象 → 5 个 hub 名 (city/port/farm/mine/wood 顺序); 缺失项为 None。
-    优先 custom_hub_names(玩家改名), 其次 localized_hub_names(本地化)。"""
+    优先 custom_hub_names(玩家改名), 其次 localized_hub_names(动态命名州, 带后缀),
+    最后回退默认本地化 key HUB_NAME_<STATE_REGION>_<hub> —— 存档里普通州不写 hub key。"""
     if not state_obj:
         return [None] * 5
     nd = state_obj.get("naming_data") or {}
     keys = nd.get("localized_hub_names") or []
     custom = nd.get("custom_hub_names") or []
     loc = _load_loc_all()
+    region = state_obj.get("region") or ""
     out = []
-    for i in range(5):
+    for i, hub in enumerate(HUB_ORDER):
         c = custom[i] if i < len(custom) else ""
         if c:
             out.append(c)
             continue
         k = keys[i] if i < len(keys) else ""
+        if not k and region:
+            k = f"HUB_NAME_{region}_{hub}"
         if not k:
             out.append(None)
             continue
         v = _resolve_loc_template(loc.get(k, k), loc)
-        out.append(v if v and "$" not in v else None)
+        if _hub_name_bad(v) and region:
+            k2 = f"HUB_NAME_{region}_{hub}"
+            if k2 != k:
+                v = _resolve_loc_template(loc.get(k2, k2), loc)
+        out.append(v if not _hub_name_bad(v) else None)
     return out
 
 def _hub_for_building(btype):
@@ -815,7 +831,7 @@ def build_gov_map():
                 continue
             with open(os.path.join(loc_dir, fn), encoding="utf-8-sig", errors="replace") as fp:
                 for line in fp:
-                    m = re.match(r"\s*(gov_[a-z_]+):\s*\"([^\"]+)\"\s*$", line)
+                    m = re.match(r"\s*(gov_[a-z_]+):\s*\"([^\"]+)\"\s*(?:#.*)?$", line)
                     if m:
                         gov[m.group(1)] = m.group(2).strip()
     except Exception:
@@ -1320,6 +1336,21 @@ def _state_object(data, state_id):
         idx = data.find(pat, idx + 1, so_end)
     return None
 
+
+def _state_incorporation(data, state_id):
+    """州合并进度 (0~1 浮点); 未合并殖民地 (无 incorporation 字段) 记作 0。"""
+    obj = _state_object(data, state_id)
+    if not obj:
+        return None
+    incorp = obj.get("incorporation")
+    if incorp is None:
+        return 0.0
+    try:
+        return float(incorp)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _state_region_key(data, state_id):
     """州 id → 州域 key (如 STATE_HAUSALAND), 供本地化转中文名。"""
     obj = _state_object(data, state_id)
@@ -1536,20 +1567,22 @@ def _civil_war_progress(data, country_id):
 def _localize_character_name(first, last, loc):
     """角色名中文化: 存档存英文名, 游戏 names_l 本地化提供英文名→中文表。
     优先整词匹配 (如 Karam_Singh→卡拉姆·辛格), 否则按空格/下划线拆词逐个查表,
-    查不到保留原文。"""
+    查不到保留原文。存档姓氏里的连字符 (如 of_Saxe-Coburg-Gotha) 会先归一为
+    下划线再整词查表 (→萨克森‑科堡‑哥达)。"""
     parts = []
     for raw in (first, last):
         if not raw:
             continue
-        if raw in loc:
-            parts.append(loc[raw])
+        cand = raw.replace("-", "_")
+        if cand in loc:
+            parts.append(loc[cand])
             continue
         for tok in re.split(r"[ _]+", raw):
             parts.append(loc.get(tok, tok))
     return " ".join(p for p in parts if p)
 
 def _player_characters(data, country_id):
-    """character_manager.database 该国角色 → {id: {"name"(中文), "ideology"}}。"""
+    """character_manager.database 该国角色 → {id: {"name"(中文), "ideology", "template"}}。"""
     chars = {}
     if not country_id:
         return chars
@@ -1581,9 +1614,160 @@ def _player_characters(data, country_id):
             nm = _localize_character_name(str(obj.get("first_name") or ""),
                                           str(obj.get("last_name") or ""), loc)
             chars[int(m.group(1))] = {"name": nm or None,
-                                      "ideology": obj.get("ideology")}
+                                      "ideology": obj.get("ideology"),
+                                      "template": obj.get("template")}
         j = end
     return chars
+
+
+_RULER_TITLES_CACHE = None
+_FEMALE_TEMPLATES_CACHE = None
+
+_RULER_TITLE_FALLBACK = [
+    # (gov key 关键字, 男头衔, 女头衔) — 用于 gov 键在游戏文件里查不到时的兜底
+    ("shogun", "征夷大将军", "征夷大将军"),
+    ("empire", "皇帝", "女皇"),
+    ("emperor", "皇帝", "女皇"),
+    ("kingdom", "国王", "女王"),
+    ("monarchy", "国王", "女王"),
+    ("president", "总统", "总统"),
+    ("republic", "总统", "总统"),
+    ("dictator", "独裁者", "独裁者"),
+    ("theocracy", "教宗", "教宗"),
+    ("pope", "教宗", "教宗"),
+    ("caliph", "哈里发", "哈里发"),
+    ("chiefdom", "酋长", "女酋长"),
+    ("council", "主席", "主席"),
+]
+
+
+def _gov_block_body(txt, key):
+    """在政府类型文本里定位 gov_xxx = { ... } 并返回块内内容(含嵌套)。"""
+    m = re.search(r"\b" + re.escape(key) + r"\s*=\s*\{", txt)
+    if not m:
+        return None
+    i = txt.find("{", m.start())
+    depth = 0
+    j = i
+    while j < len(txt):
+        c = txt[j]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return txt[i + 1:j]
+        j += 1
+    return None
+
+
+def _load_ruler_titles():
+    """解析游戏 government_types → {gov_key: {"male": 中文头衔, "female": 中文头衔}}。
+    头衔原文取自游戏 simp_chinese 本地化 (government_l_simp_chinese.yml 的 RULER_TITLE_* 等)。"""
+    global _RULER_TITLES_CACHE
+    if _RULER_TITLES_CACHE is not None:
+        return _RULER_TITLES_CACHE
+    loc = _load_loc_all()
+    out = {}
+    try:
+        for fn in os.listdir(GOVERNMENT_TYPES_DIR):
+            if not fn.endswith(".txt"):
+                continue
+            with open(os.path.join(GOVERNMENT_TYPES_DIR, fn), encoding="utf-8",
+                      errors="replace") as fp:
+                txt = fp.read()
+            for m in re.finditer(r"\b(gov_[a-z0-9_]+)\s*=\s*\{", txt):
+                key = m.group(1)
+                body = _gov_block_body(txt, key)
+                if not body:
+                    continue
+                mm = re.search(r"male_ruler\s*=\s*\"([^\"]*)\"", body)
+                mf = re.search(r"female_ruler\s*=\s*\"([^\"]*)\"", body)
+                male_key = mm.group(1) if mm else ""
+                female_key = mf.group(1) if mf else male_key
+                out[key] = {
+                    "male": loc.get(male_key, "") if male_key else "",
+                    "female": loc.get(female_key, "") if female_key else "",
+                }
+    except Exception:
+        pass
+    _RULER_TITLES_CACHE = out
+    return out
+
+
+def _load_female_templates():
+    """历史角色模板中 female = yes 的模板名集合 (用于识别女王/女皇等)。"""
+    global _FEMALE_TEMPLATES_CACHE
+    if _FEMALE_TEMPLATES_CACHE is not None:
+        return _FEMALE_TEMPLATES_CACHE
+    names = set()
+    try:
+        for fn in os.listdir(CHARACTER_TEMPLATES_DIR):
+            if not fn.endswith(".txt"):
+                continue
+            with open(os.path.join(CHARACTER_TEMPLATES_DIR, fn), encoding="utf-8",
+                      errors="replace") as fp:
+                txt = fp.read()
+            for m in re.finditer(r"\b([a-z0-9_]+)\s*=\s*\{", txt):
+                key = m.group(1)
+                i = txt.find("{", m.start())
+                depth = 0
+                j = i
+                while j < len(txt):
+                    c = txt[j]
+                    if c == "{":
+                        depth += 1
+                    elif c == "}":
+                        depth -= 1
+                        if depth == 0:
+                            body = txt[i + 1:j]
+                            if re.search(r"\bfemale\s*=\s*yes\b", body):
+                                names.add(key)
+                            break
+                    j += 1
+    except Exception:
+        pass
+    _FEMALE_TEMPLATES_CACHE = names
+    return names
+
+
+def _ruler_title(gov_key, is_female=False):
+    """政体键 → 统治者中文头衔 (男/女), 查不到游戏数据时按关键字兜底。"""
+    if not gov_key:
+        return ""
+    t = _load_ruler_titles().get(gov_key)
+    if t:
+        title = (t.get("female") or t.get("male")) if is_female else (t.get("male") or t.get("female"))
+        if title:
+            return title
+    low = gov_key.lower()
+    for kw, male, female in _RULER_TITLE_FALLBACK:
+        if kw in low:
+            return female if is_female else male
+    return ""
+
+
+def _ruler_info(data, country_id, ruler_id, gov_key, chars=None):
+    """用与利益集团首领相同的方式解析统治者: 姓名 / 意识形态 / 在位状态 / 头衔。
+    头衔由政体键决定; 性别仅对历史角色模板可判 (存档无性别字段, 随机角色默认男性)。"""
+    if ruler_id is None:
+        return None
+    if chars is None:
+        chars = _player_characters(data, country_id)
+    ch = chars.get(ruler_id)
+    if not ch:
+        return None
+    loc = _load_loc_all()
+    lideo = ch.get("ideology")
+    is_female = (ch.get("template") or "") in _load_female_templates()
+    title = _ruler_title(gov_key, is_female=is_female)
+    return {
+        "name": ch.get("name") or None,
+        "ideology": (_clean_loc_name(loc.get(lideo, lideo), loc) if lideo else None),
+        "status": "在位",
+        "title": title,
+        "is_female": is_female,
+    }
 
 def _iter_pops_in_states(data, state_ids):
     """单次扫描 pops.database，产出位于指定州集合内的全部 POP 对象。"""
@@ -2084,10 +2268,95 @@ def _buildings_in_state(data, state_id):
         j = end
 
 
+def _buildings_by_state(data, state_ids):
+    """单次扫描 building_manager → {state_id: [建筑id]} (仅玩家州)。
+    供家庭采访与统治者活动多次取用, 避免每个州反复整文件扫描。"""
+    state_ids = set(state_ids or [])
+    out = {s: [] for s in state_ids}
+    if not state_ids:
+        return out
+    idx = data.find(b'"building_manager"')
+    if idx < 0:
+        return out
+    bm_end = _object_end(data, data.find(b'{', idx))
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return out
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, bm_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        head = data[ob2:min(ob2 + 400, len(data))]
+        m_st = re.search(rb'"state":(\d+)', head)
+        if not m_st or int(m_st.group(1)) not in state_ids:
+            j = data.find(b'}', ob2) + 1
+            continue
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and obj.get("state") in state_ids and obj.get("building"):
+            out[int(obj["state"])].append(int(m.group(1)))
+        j = end
+    return out
+
+
+def _pops_by_state(data, state_ids):
+    """单次扫描 pops → {state_id: [POP对象]} (仅玩家州)。
+    供家庭采访随机重试时直接取样, 避免每次尝试都整文件重扫 pops。"""
+    state_ids = set(state_ids or [])
+    out = {s: [] for s in state_ids}
+    if not state_ids:
+        return out
+    pop_db = data.find(b'"pops"')
+    if pop_db < 0:
+        return out
+    db = data.find(b'"database"', pop_db)
+    ob = data.find(b'{', db)
+    j = ob
+    while True:
+        i = data.find(b'":{', j)
+        if i < 0:
+            break
+        ob2 = data.find(b'{', i)
+        head = data[ob2:min(ob2 + 600, len(data))]
+        m_loc = re.search(rb'"location":(\d+)', head)
+        if not m_loc:
+            j = data.find(b'}', ob2) + 1
+            continue
+        sid = int(m_loc.group(1))
+        if sid not in state_ids:
+            j = data.find(b'}', ob2) + 1
+            continue
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and obj.get("location") == sid:
+            out[sid].append(obj)
+        j = end
+    return out
+
+
 def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price_map=None,
-                        cid=None, player_tag=None, max_tries=300):
+                        cid=None, player_tag=None, max_tries=300,
+                        preferred_state=None, ruler_visited=False,
+                        pops_index=None, buildings_index=None):
     """随机选一个州 → 随机选该州一个建筑 → 取建筑内 SoL 最低与最高两个 POP(人口>10)
     分别作为「民生访谈」与「邻里富户」数据块。
+    preferred_state: 优先在该州取材 (统治者走访联动); ruler_visited=True 且确实用到
+    该州时, 在民生访谈块上打 ruler_visited 标记, 供渲染时让受访者提及统治者到访。
     若该州失业率(失业POP劳动力/该州总人口)>5%, 再附加「失业民生」块:
     该州人口最多的失业 POP + 失业率。建筑内合格 POP 不足 2 个时重新随机。
     返回 {"family_interview", "top_sol_peer", "unemployed_interview"} (缺失为 None)。"""
@@ -2095,16 +2364,29 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
     result = {"family_interview": None, "top_sol_peer": None, "unemployed_interview": None}
     if not state_ids:
         return result
+    # 一次性索引 (单文件扫描), 之后所有随机重试只从内存取样
+    if pops_index is None:
+        pops_index = _pops_by_state(data, state_ids)
+    if buildings_index is None:
+        buildings_index = _buildings_by_state(data, state_ids)
+    state_order = sorted(state_ids)
+    # 走访联动: 前几次尝试固定用统治者走访的州, 取材失败再退回随机州
+    try_states = []
+    if preferred_state is not None and preferred_state in state_ids:
+        try_states = [preferred_state] * min(5, max_tries)
     sid = None
     lowest = highest = None
     for _ in range(max_tries):
-        sid = random.choice(sorted(state_ids))
-        buildings = list(_buildings_in_state(data, sid))
+        if try_states:
+            sid = try_states.pop(0)
+        else:
+            sid = random.choice(state_order)
+        buildings = buildings_index.get(sid) or []
         if not buildings:
             continue
         bid = random.choice(buildings)
         cands = []
-        for obj in _pops_in_state(data, sid):
+        for obj in pops_index.get(sid) or []:
             if obj.get("workplace") != bid:
                 continue
             sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
@@ -2157,14 +2439,17 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                              building_group=building_group, active_pms=active_pms,
                              institutions_active=bool(incorporation and incorporation >= 1)),
                   movement_names=movement_names)
-    result["family_interview"] = _family_from_pop(lowest, **common)
+    family = _family_from_pop(lowest, **common)
+    if ruler_visited and preferred_state is not None and sid == preferred_state:
+        family["ruler_visited"] = True
+    result["family_interview"] = family
     result["top_sol_peer"] = _family_from_pop(highest, **common)
     # 失业率: (该州失业POP的劳动力) / (该州总人口)
     total_pop = 0
     unemployed_work = 0
     unemployed_big = None
     unemployed_big_sz = 0
-    for obj in _pops_in_state(data, sid):
+    for obj in pops_index.get(sid) or []:
         wf = obj.get("workforce") or 0
         dep = obj.get("dependents") or 0
         total_pop += wf + dep
@@ -2457,7 +2742,6 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
     prev_dirs = []
     if folder:
         prev_dirs.append(os.path.join(journal_dir, folder, "data"))
-    prev_dirs.append(os.path.join(journal_dir, "data"))
     prev_wars = []
     for rd in prev_dirs:
         p = os.path.join(rd, f"raw_{year - 1}.json")
@@ -2506,26 +2790,24 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
 # ---------------------------------------------------------------------------
 
 def query_laws(data, country_id):
-    """从 laws.database 找该国的法律。每项 {law, country, ...}"""
+    """从 laws.database 找该国的法律。每项 {law, country, ...}
+    单次顺序扫描 (与 query_laws_changed 同款), 避免旧的 rfind 反向查找造成 O(n²)。"""
     laws = []
     idx = data.find(b'"laws"')
     if idx < 0 or not country_id:
         return laws
+    laws_end = _object_end(data, data.find(b'{', idx))
     db = data.find(b'"database"', idx)
     if db < 0:
         return laws
-    ob = data.find(b'{', db)
-    j = ob
-    # 用正则边界匹配, 避免 198 匹配到 1980 等
-    pat = re.compile(rb'"country":' + str(country_id).encode() + rb'[,}\]]')
+    j = data.find(b'{', db)
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
     while True:
-        m = pat.search(data, j)
+        m = _IDOBJ.search(data, j, laws_end - 1)
         if not m:
             break
-        i = m.start()
-        start = data.rfind(b'":{', 0, i)
-        ob_brace = data.find(b'{', start)
-        raw, end = extract_json_object(data, ob_brace)
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
         if not raw:
             break
         try:
@@ -2607,6 +2889,148 @@ def query_laws_changed(data, country_id, report_date=None):
 # 对接报纸生成 (复用 journal.py)
 # ---------------------------------------------------------------------------
 
+_RULER_ACTIVITY_POOL = [
+    # (权重, 活动类型)
+    (25, "inspect_building"),
+    (25, "cabinet_meeting"),
+    (20, "visit_pop"),
+    (15, "receive_envoys"),
+    (10, "review_troops"),
+    (5, "religious_ceremony"),
+]
+
+
+def _pick_state(snap, rnd=None, prefer_capital=True):
+    """从玩家州里挑一个: 优先首都所在州, 其次任一非空州。"""
+    states = snap.get("states") or []
+    if not states:
+        return None
+    rnd = rnd or random
+    if prefer_capital:
+        cap = snap.get("capital") or ""
+        for s in states:
+            if cap and s.get("name") and cap in (s.get("name") or ""):
+                return s
+    nonempty = [s for s in states if not s.get("empty")]
+    return rnd.choice(nonempty or states)
+
+
+def _pick_building(melted, state_id, rnd=None, buildings_index=None, building_type_map=None):
+    """随机挑一个该州建筑, 返回本地化中文名; 挑不到或名字没本地化则返回 None。"""
+    if state_id is None:
+        return None
+    rnd = rnd or random
+    if building_type_map is None:
+        building_type_map = _building_type_map(melted, [state_id])
+    if buildings_index is None:
+        bids = list(_buildings_in_state(melted, state_id))
+    else:
+        bids = buildings_index.get(state_id) or []
+    loc = _load_loc_all()
+    types = [building_type_map.get(b) for b in bids]
+    types = [t for t in types
+             if t and (loc.get(t) or "") not in ("", t)
+             and not t.startswith("building_company_")
+             and not t.startswith("building_port")]
+    if not types:
+        return None
+    return loc.get(rnd.choice(types))
+
+
+def _religion_zh(key):
+    """宗教 key → 中文名 (复用 journal.py 的映射表)。"""
+    if not key:
+        return ""
+    try:
+        from journal import RELIGION_NAMES
+        return RELIGION_NAMES.get(key, key)
+    except Exception:
+        return key
+
+
+def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
+                             building_type_map=None):
+    """按概率拼装一条「统治者活动」事实 (程序侧完成, 直接作为数据传给模型)。
+
+    活动池: 视察某地建筑 / 召集内阁会议 / 走访某州某文化某宗教的 POP 家庭 /
+    接见外国使节 / 检阅驻军 / 出席宗教典礼。以年份为随机种子, 同年重生成结果稳定。
+    任一素材缺失时自动换下一候选, 全部不可用返回 (None, None, None)。
+    返回 (事实文本, 活动类型, 走访州id); 走访类返回的州id供家庭采访联动取材。
+    """
+    ri = snap.get("ruler_info") or {}
+    name = ri.get("name")
+    title = ri.get("title") or ""
+    if not name:
+        return None, None, None
+    ruler = (title + name) if title else name
+    rnd = random.Random(snap.get("year") or 0)
+    states = snap.get("states") or []
+    capital = snap.get("capital") or ""
+    igs = snap.get("interest_groups") or []
+    powers = snap.get("powers") or []
+    pool = list(_RULER_ACTIVITY_POOL)
+    tried = set()
+    while pool:
+        kind = rnd.choices(pool, weights=[w for w, _t in pool])[0][1]
+        pool = [p for p in pool if p[1] != kind]
+        if kind in tried:
+            continue
+        tried.add(kind)
+        if kind == "inspect_building":
+            st = _pick_state(snap, rnd=rnd) or {}
+            bld = _pick_building(melted, st.get("id"), rnd=rnd,
+                                 buildings_index=buildings_index,
+                                 building_type_map=building_type_map)
+            if bld:
+                where = st.get("name") or capital or "某地"
+                return f"{ruler}视察了位于{where}的{bld}", kind, None
+        elif kind == "cabinet_meeting":
+            leaders = [g.get("leader_name") for g in igs
+                       if g.get("in_government") and g.get("leader_name")]
+            if leaders:
+                names = "、".join(list(dict.fromkeys(leaders))[:3])
+                where = capital or "宫中"
+                return f"{ruler}在{where}召集内阁会议，与{names}等共商国是", kind, None
+            if capital:
+                return f"{ruler}在{capital}召集内阁会议，与各部大臣共商国是", kind, None
+        elif kind == "visit_pop":
+            # 优先挑有建筑的非空州, 提高家庭采访联动成功率; 再优先首都州
+            cands = [s for s in states if not s.get("empty")
+                     and (buildings_index or {}).get(s.get("id"))]
+            if not cands:
+                cands = [s for s in states if not s.get("empty")]
+            cap_st = next((s for s in cands
+                           if capital and s.get("name") and capital in (s.get("name") or "")), None)
+            st = cap_st or (rnd.choice(cands) if cands else None) or {}
+            culture = st.get("top_culture") or ""
+            rel = snap.get("religion")
+            rel_zh = _religion_zh(rel)
+            stname = st.get("name") or ""
+            if stname and culture and rel_zh:
+                return (f"{ruler}走访了{stname}的{culture}人家，"
+                        f"在信奉{rel_zh}的居民家中体察民情", kind, st.get("id"))
+            if stname and culture:
+                return f"{ruler}走访了{stname}的{culture}人家，体察民情", kind, st.get("id")
+        elif kind == "receive_envoys":
+            foreign = next((p.get("name") for p in powers
+                            if not p.get("is_player")), "")
+            if not foreign and snap.get("treaties"):
+                foreign = next((t.get("second_name") for t in snap.get("treaties") or []
+                                if t.get("second_name")), "")
+            if foreign:
+                where = capital or "宫中"
+                return f"{ruler}在{where}接见了{foreign}的使节，就两国邦交交换意见", kind, None
+        elif kind == "review_troops":
+            where = capital or "京师"
+            return f"{ruler}检阅了驻防{where}的禁卫部队", kind, None
+        elif kind == "religious_ceremony":
+            rel_zh = _religion_zh(snap.get("religion"))
+            if rel_zh:
+                where = capital or "国都"
+                return f"{ruler}在{where}出席了{rel_zh}的宗教典礼", kind, None
+    return None, None, None
+
+
 def build_journal_data(snap):
     """把存档快照转成 journal.py 兼容的 data dict。"""
     data = {}
@@ -2626,7 +3050,14 @@ def build_journal_data(snap):
     data["literacy"] = snap.get("literacy", "未知")
     data["prestige"] = snap.get("prestige", "未知")
     data["religion"] = snap.get("religion", "未知")
-    # ruler id 对模型无用, 不输出; 首都名已由存档 state hub 解析(见 data["capital"])
+    # 统治者: 姓名/头衔/意识形态/在位状态来自 character_manager 解析(见 ruler_info);
+    # 首都名已由存档 state hub 解析(见 data["capital"])
+    ri = snap.get("ruler_info") or {}
+    data["ruler"] = ri.get("name") or ""
+    data["ruler_title"] = ri.get("title") or ""
+    data["ruler_ideology"] = ri.get("ideology")
+    data["ruler_status"] = ri.get("status")
+    data["ruler_activity"] = snap.get("ruler_activity")
     # 主流文化(国族): 来自国家对象的 primary cultures 列表(本地化中文名),
     # 与按人口占比排序的 pop_cultures 分开传递, 供社会板块提示词使用
     prim = []
@@ -2710,12 +3141,34 @@ def extract_full_snapshot(melted):
     snap["prev_year_wars"] = _prev_year_player_wars(snap.get("wars") or [], snap.get("year"))
     # 去年发生的战争(玩家/列强参战, 仅主要参加者), 供战事专电
     snap["last_year_wars"] = _last_year_wars(snap.get("wars") or [], snap.get("year"))
-    # 家庭采访样本: 随机州 → 随机建筑 → SoL 最低/最高两篇 + 条件失业篇
+    # 单文件扫描一次建索引: 角色 / 建筑 / POP, 供首领、统治者与家庭采访复用
+    chars = _player_characters(melted, cid)
+    buildings_index = _buildings_by_state(melted, state_ids)
+    pops_index = _pops_by_state(melted, state_ids)
     ig_slots = _country_ig_slots(melted, cid)
     building_map = _building_type_map(melted, state_ids)
     price_map = _market_price_map(melted, country)
+    snap["interest_groups"] = _extract_interest_groups(melted, cid, chars=chars)
+    snap["powers"] = _extract_powers(melted, names, index=index, gp_ids=gp_ids,
+                                     player_id=cid, player_tag=player_tag)
+    # 统治者: 用与利益集团首领相同的方式解析姓名/意识形态, 再据政体键读游戏头衔;
+    # 程序侧拼装统治者活动 (走访类先定州, 供家庭采访联动)
+    snap["ruler_info"] = _ruler_info(melted, cid, (country or {}).get("ruler"),
+                                     snap.get("govt"), chars=chars)
+    ruler_act, act_kind, visit_state = _assemble_ruler_activity(
+        melted, snap, cid, buildings_index=buildings_index,
+        building_type_map=building_map)
+    snap["ruler_activity"] = ruler_act
+    # 家庭采访样本: 随机州 → 随机建筑 → SoL 最低/最高两篇 + 条件失业篇
+    # 走访联动: 只有完全合并(incorporation>=1)的州才与家庭采访同州取材;
+    # 未合并/合并中的州另随机取材, 不把采访硬凑到走访州
+    link_visit = (act_kind == "visit_pop" and visit_state is not None
+                  and (_state_incorporation(melted, visit_state) or 0.0) >= 1.0)
     interview = _pick_interview_set(melted, state_ids, ig_slots, building_map, price_map,
-                                    cid=cid, player_tag=player_tag)
+                                    cid=cid, player_tag=player_tag,
+                                    preferred_state=visit_state if link_visit else None,
+                                    ruler_visited=link_visit,
+                                    pops_index=pops_index, buildings_index=buildings_index)
     snap["family_interview"] = interview.get("family_interview")
     snap["top_sol_peer"] = interview.get("top_sol_peer")
     snap["unemployed_interview"] = interview.get("unemployed_interview")
@@ -2732,12 +3185,9 @@ def extract_full_snapshot(melted):
     snap["treaties"] = _extract_treaties(melted, names, index=index, gp_ids=gp_ids, player_id=cid)
     snap["subjects"] = _extract_subjects(melted, cid, names, index=index)
     snap["rivals"] = _extract_rivals(melted, cid, names, index=index)
-    snap["interest_groups"] = _extract_interest_groups(melted, cid)
     snap["political_movements"] = _extract_political_movements(
         melted, cid, state_ids, (country.get("pop_statistics") or {}),
         player_tag=player_tag)
-    snap["powers"] = _extract_powers(melted, names, index=index, gp_ids=gp_ids,
-                                     player_id=cid, player_tag=player_tag)
     # 列强交战状态: 依据进行中战争的参与者
     gp_war_ids = {p.get("id") for w in snap["wars"] if not w.get("ended")
                   for p in w.get("participants", []) if p.get("rank") == "great_power"}
@@ -3246,15 +3696,17 @@ def _extract_rivals(data, player_id, names, index=None):
     return rivals
 
 
-def _extract_interest_groups(data, player_id):
+def _extract_interest_groups(data, player_id, chars=None):
     """从 interest_groups.database 提取玩家全部利益集团。
     返回按 clout 降序的 [{name, definition, clout_pct, in_government, approval_state,
-    leader_name, leader_ideology}]。
+    leader_name, leader_ideology}]。chars 可由调用方复用 _player_characters 结果,
+    避免与统治者解析重复扫描 character_manager。
     in_government=True 的即当前执政(组阁)利益集团。"""
     groups = []
     if not player_id:
         return groups
-    chars = _player_characters(data, player_id)
+    if chars is None:
+        chars = _player_characters(data, player_id)
     loc = _load_loc_all()
     idx = data.find(b'"interest_groups"')
     if idx < 0:
