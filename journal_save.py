@@ -17,6 +17,7 @@ journal.py 的分板块报纸生成管线。
   python journal_save.py melt              熔化最新存档 → tools/melt.json (缓存)
   python journal_save.py sniff             从熔化结果提取玩家国家精确数据
   python journal_save.py newspaper <年份>  用存档数据生成一份报纸 (复用 journal.py)
+  python journal_save.py magazine <年份>   用存档数据生成一份杂志 (magazine.py)
   python journal_save.py watch             监控 autosave, 每年生成报纸
   python journal_save.py continue          续传: 沿用该国家最新文件夹(海地→海地2),
                                            停止后重启不再新建文件夹; 缺当年报纸则先补生成
@@ -47,51 +48,51 @@ SAVE_DIR = os.path.join(os.path.expanduser("~"), "Documents",
 def _skip_string(data, j):
     """跳过 JSON 字符串, 返回字符串结束后的位置。"""
     j += 1
-    while j < len(data):
-        b = data[j]
-        if b == 0x5c:      # backslash
-            j += 2
-            continue
-        if b == 0x22:      # double quote
-            return j + 1
-        j += 1
-    return j
+    n = len(data)
+    while True:
+        q = data.find(b'"', j, n)
+        if q < 0:
+            return n
+        bs = 0
+        k = q - 1
+        while k >= j and data[k] == 0x5c:
+            bs += 1
+            k -= 1
+        if bs % 2 == 0:
+            return q + 1
+        j = q + 1
 
 def extract_json_object(data, open_brace_idx):
     """从 '{' 起匹配完整 JSON 对象, 返回 (bytes, end_idx)。"""
-    depth = 0
-    j = open_brace_idx
-    while j < len(data):
-        b = data[j]
-        if b == 0x22:
-            j = _skip_string(data, j)
-            continue
-        if b == 0x7b:      # {
-            depth += 1
-        elif b == 0x7d:    # }
-            depth -= 1
-            if depth == 0:
-                return data[open_brace_idx:j + 1], j + 1
-        j += 1
-    return None, len(data)
+    end = _object_end(data, open_brace_idx)
+    if end <= open_brace_idx + 1:
+        return None, len(data)
+    return data[open_brace_idx:end], end
 
 def _object_end(data, brace_idx):
     """只计算 '{' 起完整 JSON 对象的结束位置 (不复制数据)。"""
     depth = 0
     j = brace_idx
-    while j < len(data):
-        b = data[j]
-        if b == 0x22:
-            j = _skip_string(data, j)
+    n = len(data)
+    while True:
+        lb = data.find(b'{', j, n)
+        rb = data.find(b'}', j, n)
+        q = data.find(b'"', j, n)
+        cand = [x for x in (lb, rb, q) if x >= 0]
+        if not cand:
+            return n
+        nxt = min(cand)
+        c = data[nxt]
+        if c == 0x22:
+            j = _skip_string(data, nxt)
             continue
-        if b == 0x7b:
+        if c == 0x7b:
             depth += 1
-        elif b == 0x7d:
+        else:
             depth -= 1
             if depth == 0:
-                return j + 1
-        j += 1
-    return len(data)
+                return nxt + 1
+        j = nxt + 1
 
 def find_latest_v3():
     if not os.path.isdir(SAVE_DIR):
@@ -246,13 +247,57 @@ def load_current_country_names(data, index=None):
     for entry in index.values():
         tag = entry.get("definition")
         dyn_key = entry.get("dyn_name")
+        if not entry.get("is_main_tag"):
+            continue
         if tag and dyn_key and loc.get(dyn_key):
-            names[tag] = _clean_loc_name(loc[dyn_key], loc)
+            names[tag] = _resolve_country_dyn_name(tag, dyn_key, loc) or names[tag]
     return names
 
 # ---------------------------------------------------------------------------
 # 玩家国家提取
 # ---------------------------------------------------------------------------
+
+def _country_adjective_zh(tag, loc):
+    if not tag:
+        return None
+    v = loc.get(f"{tag}_ADJ")
+    if not v:
+        return None
+    return _clean_loc_name(v, loc)
+
+
+def _resolve_country_dyn_name(tag, dyn_key, loc):
+    if not dyn_key:
+        return None
+    v = loc.get(dyn_key)
+    if not v:
+        return None
+    if "$ADJECTIVE$" in v:
+        adj = _country_adjective_zh(tag, loc)
+        if adj:
+            v = v.replace("$ADJECTIVE$", adj)
+        else:
+            v = _LOC_PLACEHOLDER_RE.sub("", v)
+            v = re.sub(r"\$+", "", v)
+            return v.strip() or None
+    return _clean_loc_name(v, loc)
+
+
+def build_country_id_names(data, index=None):
+    if index is None:
+        index, _, _ = _build_indexes(data)
+    tag_names = load_current_country_names(data, index)
+    loc = _load_loc_all()
+    out = {}
+    for cid, e in index.items():
+        tag = e.get("definition")
+        dyn = e.get("dyn_name")
+        nm = None
+        if dyn and loc.get(dyn):
+            nm = _resolve_country_dyn_name(tag, dyn, loc)
+        out[cid] = nm if nm else (tag_names.get(tag) if tag else str(cid))
+    return out
+
 
 def _first_player_name(raw):
     """从熔化的 JSON 开头提取 meta_data.name。"""
@@ -330,6 +375,39 @@ def _find_country_by_definition(data, tag):
         if isinstance(obj, dict) and obj.get("definition") == tag:
             return obj, int(m.group(1))
         j = end
+
+
+def _find_country_by_id(data, cid):
+    """在 country_manager.database 中按国家 id 找国家对象, 返回 obj 或 None。"""
+    if cid is None:
+        return None
+    cm = data.find(b'"country_manager"')
+    if cm < 0:
+        return None
+    cm_brace = data.find(b'{', cm)
+    cm_end = _object_end(data, cm_brace)
+    db = data.find(b'"database"', cm)
+    if db < 0 or db > cm_end:
+        return None
+    j = data.find(b'{', db)
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    while True:
+        m = _IDOBJ.search(data, j, cm_end - 1)
+        if not m:
+            return None
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            return None
+        if int(m.group(1)) != cid:
+            j = end
+            continue
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            return None
+        return obj if isinstance(obj, dict) else None
+
 
 def _find_country_by_dynamic_name(data, dyn_key):
     """在 country_manager.database 中按 dynamic_name.dynamic_country_name 找国家对象。
@@ -1342,12 +1420,9 @@ def _state_object(data, state_id):
     注意: states.database 内嵌其他数字键对象 (如某州对象 trade.goods 的商品 id
     映射, 键形如 "13":{value, prestige_goods}), 不能直接返回第一个 'N':{ 匹配;
     须解析后校验对象像州 (含 capital/region 字段) 才返回, 否则继续往后找。"""
-    sd = data.find(b'"states":{"database"')
-    if sd < 0:
+    sob, so_end = _states_db_bounds(data)
+    if so_end <= sob:
         return None
-    db = data.find(b'"database"', sd)
-    sob = data.find(b'{', db)
-    so_end = _object_end(data, sob)
     pat = ('"' + str(state_id) + '":{').encode()
     idx = data.find(pat, sob, so_end)
     while idx >= 0:
@@ -1362,6 +1437,26 @@ def _state_object(data, state_id):
                 return obj
         idx = data.find(pat, idx + 1, so_end)
     return None
+
+
+_STATES_DB_BOUNDS = {}
+
+
+def _states_db_bounds(data):
+    """states.database 起始/结束字节位 (按 bytes 对象 id 缓存, 每次熔化一份)。"""
+    key = id(data)
+    m = _STATES_DB_BOUNDS.get(key)
+    if m:
+        return m
+    sd = data.find(b'"states":{"database"')
+    if sd < 0:
+        _STATES_DB_BOUNDS[key] = (0, 0)
+        return (0, 0)
+    db = data.find(b'"database"', sd)
+    sob = data.find(b'{', db)
+    so_end = _object_end(data, sob)
+    _STATES_DB_BOUNDS[key] = (sob, so_end)
+    return (sob, so_end)
 
 
 def _state_incorporation(data, state_id):
@@ -2280,7 +2375,8 @@ def _extract_player_states(data, state_ids):
     hm = build_homeland_map()
     result = []
     for sid in sorted(state_ids):
-        rk = _state_region_key(data, sid)
+        sobj = _state_object(data, sid)
+        rk = (sobj or {}).get("region") if sobj else _state_region_key(data, sid)
         name = loc.get(rk) if rk else None
         counts = cult_by_state.get(sid) or {}
         top = None
@@ -2291,8 +2387,42 @@ def _extract_player_states(data, state_ids):
         elif rk and hm.get(rk):
             keys = sorted(hm[rk])
             top = "、".join(zh_map.get(k, k) for k in keys)
-        result.append({"id": sid, "name": name or f"州{sid}",
-                       "top_culture": top, "empty": empty})
+        entry = {"id": sid, "name": name or f"州{sid}",
+                 "top_culture": top, "empty": empty}
+        if sobj:
+            dev = sobj.get("devastation")
+            if isinstance(dev, (int, float)):
+                entry["devastation"] = round(float(dev), 3)
+            pol = sobj.get("pollution")
+            if isinstance(pol, (int, float)):
+                entry["pollution"] = round(float(pol), 3)
+            buckets = _state_migration_buckets(sobj)
+            if buckets:
+                total = sum(r.get("num") or 0 for r in buckets
+                            if isinstance(r.get("num"), (int, float)))
+                dest = {}
+                for r in buckets:
+                    tname = _state_zh(data, r.get("target_state"))
+                    key = tname or f"州{r.get('target_state')}"
+                    dest[key] = dest.get(key, 0) + (r.get("num") or 0)
+                top_dest = sorted(dest.items(), key=lambda kv: -kv[1])[:3]
+                entry["migration_out"] = {
+                    "bucket_count": len(buckets),
+                    "total": round(total, 3),
+                    "top_destinations": [{"state": k, "num": round(v, 3)}
+                                         for k, v in top_dest],
+                }
+            em = sobj.get("last_week_pop_migration_statistics")
+            if isinstance(em, dict):
+                ew = em.get("weekly_emigration")
+                if isinstance(ew, (int, float)):
+                    entry["emigration"] = {
+                        "weekly": round(float(ew), 4),
+                        "to_states": [{"state": s, "name": _state_zh(data, s)}
+                                      for s in (em.get("emigration_states") or [])
+                                      if s is not None],
+                    }
+        result.append(entry)
     return result
 
 def _buildings_in_state(data, state_id):
@@ -2660,6 +2790,30 @@ def _dp_casualties(dp_obj):
     return cas
 
 
+def _dp_wounded(dp_obj):
+    """从 diplomatic_play 对象提取负伤: {cid: 总负伤} (不含死亡)。
+    与 _dp_casualties 同口径: 优先 *_by_front 汇总, 避免与 *_by_culture 重复计算。"""
+    wnd = {}
+    for c in dp_obj.get("casualties") or []:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get("country")
+        if cid is None:
+            continue
+        total = _sum_casualty_fields(c, (
+            "wounded_from_battles_by_front",
+            "wounded_from_attrition_by_front",
+        ))
+        if total == 0.0:
+            total = _sum_casualty_fields(c, (
+                "wounded_from_battles_by_culture",
+                "wounded_from_attrition_by_culture",
+            ))
+        if total:
+            wnd[cid] = round(wnd.get(cid, 0) + total, 6)
+    return wnd
+
+
 def _sum_casualty_fields(entry, keys):
     """累加某国 casualties 对象中指定字段的数值之和。"""
     total = 0.0
@@ -2713,6 +2867,7 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
            dp_initiator, dp_target}]"""
     if index is None or gp_ids is None or dp_index is None:
         index, gp_ids, dp_index = _build_indexes(data)
+    id_names = build_country_id_names(data, index)
     wars = []
     wm = data.find(b'"war_manager"')
     if wm < 0:
@@ -2774,7 +2929,7 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
                         side = "target"
                 parts.append({
                     "id": cid, "definition": tag,
-                    "name": names.get(tag, tag) if tag else str(cid),
+                    "name": id_names.get(cid) or (names.get(tag, tag) if tag else str(cid)),
                     "side": side,
                     "rank": "great_power" if is_gp else "minor_power",
                     "prestige": entry.get("prestige"),
@@ -2783,14 +2938,20 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
                 })
         # 伤亡/花费: 关联的 diplomatic_play (dp id 4294967295 = 无关联)
         cas_by_cid = _dp_casualties(dp) if dp else {}
+        wnd_by_cid = _dp_wounded(dp) if dp else {}
         cost_by_cid = _dp_costs_by_country(dp) if dp else {}
         total_cost = round(sum(cost_by_cid.values()), 2) if cost_by_cid else None
         casualties_by_side = {}
+        wounded_by_side = {}
         costs_by_side = {}
         for cid, val in cas_by_cid.items():
             side = side_by_cid.get(cid)
             if side:
                 casualties_by_side[side] = round(casualties_by_side.get(side, 0.0) + val, 6)
+        for cid, val in wnd_by_cid.items():
+            side = side_by_cid.get(cid)
+            if side:
+                wounded_by_side[side] = round(wounded_by_side.get(side, 0.0) + val, 6)
         for cid, val in cost_by_cid.items():
             side = side_by_cid.get(cid)
             if side:
@@ -2810,6 +2971,9 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
             "casualties": cas_by_cid,
             "casualties_total": round(sum(cas_by_cid.values()), 3) if cas_by_cid else None,
             "casualties_by_side": casualties_by_side,
+            "wounded": wnd_by_cid,
+            "wounded_total": round(sum(wnd_by_cid.values()), 3) if wnd_by_cid else None,
+            "wounded_by_side": wounded_by_side,
             "total_cost": total_cost,
             "costs_by_side": costs_by_side,
             "participants": parts,
@@ -2872,6 +3036,958 @@ def _last_year_wars(wars, year):
         out.append(w2)
     out.sort(key=lambda x: _v3_date_tuple(x.get("start_date")) or (0, 0, 0))
     return out
+
+
+# ===========================================================================
+# 杂志数据层: 战役 / 移民 / 同化改信 / 士兵POP / 跨年指纹比对
+# ===========================================================================
+
+POP_FP_TYPES = {
+    "peasants", "laborers", "farmers", "aristocrats", "officers",
+    "clergymen", "capitalists", "bureaucrats", "clerks", "engineers",
+    "machinists", "shopkeepers", "soldiers", "slaves", "academics",
+}
+
+
+def _state_zh(data, state_id):
+    """州 id → 中文名 (本地化失败回退 STATE_ key, 再失败 None)。"""
+    rk = _state_region_key(data, state_id)
+    if not rk:
+        return None
+    return _load_loc_all().get(rk) or rk
+
+
+def _state_zh_from_sobj(sobj):
+    """已解析州对象 → 中文名。"""
+    rk = (sobj or {}).get("region")
+    if not rk:
+        return None
+    return _load_loc_all().get(rk) or rk
+
+
+def _state_migration_buckets(sobj):
+    """从州对象提取迁移桶列表。
+    存档结构: migration_buckets = [身份对象{culture,religion,type,is_slave},
+    数据对象{num_to_migrate,target_state,pops{pop_id:数量},expiration_date}, ...交替]。"""
+    buckets = (sobj or {}).get("migration_buckets") or []
+    if not isinstance(buckets, list):
+        return []
+    out = []
+    identity = {}
+    for b in buckets:
+        if not isinstance(b, dict):
+            continue
+        if "culture" in b or "religion" in b:
+            identity = {
+                "culture_id": b.get("culture"),
+                "religion": b.get("religion"),
+                "type": b.get("type"),
+                "is_slave": bool(b.get("is_slave")),
+            }
+            continue
+        if "target_state" not in b:
+            continue
+        rec = dict(identity)
+        rec.update({
+            "num": b.get("num_to_migrate"),
+            "expiration_date": b.get("expiration_date"),
+            "target_state": b.get("target_state"),
+            "pops": b.get("pops") or {},
+        })
+        out.append(rec)
+    return out
+
+
+def _migration_records_zh(data, sobj):
+    """迁移桶 → 带中文州名/文化/宗教的完整记录。"""
+    out = []
+    for r in _state_migration_buckets(sobj):
+        rec = dict(r)
+        rec["origin_state"] = _state_zh_from_sobj(sobj)
+        rec["target_name"] = _state_zh(data, r.get("target_state"))
+        cid = r.get("culture_id")
+        rec["culture_zh"] = culture_id_to_name(cid) if cid is not None else None
+        rec["religion_zh"] = _religion_zh(r.get("religion"))
+        rec["pop_list"] = [{"pop_id": k, "amount": v}
+                           for k, v in (r.get("pops") or {}).items()]
+        out.append(rec)
+    return out
+
+
+def _character_index(data, ids):
+    """批量读取角色: 单次扫描 character_manager.database, 返回 {id: 信息}。"""
+    ids = {int(x) for x in ids if x is not None}
+    ids.discard(4294967295)
+    if not ids:
+        return {}
+    cm = data.find(b'"character_manager"')
+    if cm < 0:
+        return {}
+    ob = data.find(b'{', cm)
+    end = _object_end(data, ob)
+    db = data.find(b'"database"', cm)
+    if db < 0 or db > end:
+        return {}
+    dob = data.find(b'{', db)
+    pat = re.compile(rb'"(\d+)":\{')
+    loc = _load_loc_all()
+    out = {}
+    j = dob
+
+    def _skip_object(s):
+        depth = 0
+        k = s
+        while k < len(data):
+            c = data[k:k + 1]
+            if c == b'{':
+                depth += 1
+            elif c == b'}':
+                depth -= 1
+                if depth == 0:
+                    return k + 1
+            k += 1
+        return len(data)
+
+    while True:
+        m = pat.search(data, j, end - 1)
+        if not m:
+            break
+        cid = int(m.group(1))
+        ob2 = m.start() + len(m.group(0)) - 1
+        if cid not in ids:
+            j = _skip_object(ob2)
+            continue
+        raw, nxt = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = nxt
+            continue
+        if isinstance(obj, dict):
+            nm = _localize_character_name(str(obj.get("first_name") or ""),
+                                          str(obj.get("last_name") or ""), loc)
+            hr = obj.get("home_region")
+            ideo = obj.get("ideology")
+            out[cid] = {
+                "name": nm or None,
+                "culture": (culture_id_to_name(obj.get("culture"))
+                            if obj.get("culture") is not None else None),
+                "home_region": (_clean_loc_name(loc.get(hr, hr), loc) if hr else None),
+                "ideology": (_clean_loc_name(loc.get(ideo, ideo), loc) if ideo else None),
+                "roles": obj.get("character_roles") or [],
+            }
+            if len(out) == len(ids):
+                break
+        j = nxt
+    return out
+
+
+def _country_zh_map(data):
+    """国家 id → 中文名 + 列强国 id 集合 (供战役解析复用)。"""
+    index, gp_ids, _dp = _build_indexes(data)
+    return build_country_id_names(data, index), gp_ids
+
+
+def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
+    """解析 battle_manager.database 的战役对象。
+
+    战役含: 战争/前线/发生地(州域本地化名)/起止日期/胜负/攻守双方(国家、将领、
+    编成、营数、兵力、CE、士气)/占领州。存档无逐营→POP 映射, 营仅为数量字段。
+    过滤: 优先玩家参战战役; 玩家无战役时保留列强参战战役。返回按日期倒序 ≤12 场。
+    """
+    bm = data.find(b'"battle_manager"')
+    if bm < 0:
+        return []
+    ob = data.find(b'{', bm)
+    end = _object_end(data, ob)
+    db = data.find(b'"database"', bm)
+    if db < 0 or db > end:
+        return []
+    dob = data.find(b'{', db)
+    if zh is None or gp_ids is None:
+        zh, gp_ids = _country_zh_map(data)
+    war_by_id = {str(w.get("id")): w for w in (wars or [])}
+    loc = _load_loc_all()
+    pat = re.compile(rb'"(\d+)":\{')
+    battles = []
+    commander_ids = []
+    pending = []
+    j = dob
+    while True:
+        m = pat.search(data, j, end - 1)
+        if not m:
+            break
+        bid = m.group(1).decode()
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, nxt = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = nxt
+            continue
+        if not isinstance(obj, dict) or "type" not in obj:
+            j = nxt
+            continue
+        bd = obj.get("battle_data") or {}
+        atk = bd.get("attacker") or {}
+        dfd = bd.get("defender") or {}
+        pids = [x for x in (atk.get("country"), dfd.get("country"),
+                            obj.get("capturing_country"),
+                            obj.get("lost_provinces_country"))
+                if x is not None]
+        player_involved = player_id is not None and player_id in pids
+        has_gp = bool(gp_ids) and any(c in gp_ids for c in pids)
+        occ = []
+        for o in obj.get("occupation_data") or []:
+            if isinstance(o, dict) and o.get("state") is not None:
+                occ.append({
+                    "state": o["state"],
+                    "name": _state_zh(data, o["state"]),
+                    "fraction": round(float(o.get("fraction") or 0), 3),
+                })
+        nv = obj.get("name") or {}
+        var = {}
+        for v in (nv.get("variables") or []):
+            if isinstance(v, dict):
+                var[v.get("key")] = v.get("value")
+        place_key = var.get("STATE_REGION_NAME")
+        place = loc.get(place_key) if place_key else None
+        if not place and occ:
+            place = occ[0].get("name")
+        war = war_by_id.get(str(obj.get("war")))
+        for d in (atk, dfd):
+            if d.get("commander") is not None:
+                commander_ids.append(d.get("commander"))
+        pending.append((bid, obj, atk, dfd, occ, place, war,
+                        player_involved, has_gp, pids))
+        j = nxt
+
+    chars = _character_index(data, commander_ids)
+
+    def _side(d, prefix):
+        if not d:
+            return None
+        ch = chars.get(d.get("commander"))
+        cid = d.get("country")
+        return {
+            "country_id": cid,
+            "country": zh.get(cid) if cid is not None else None,
+            "commander": (ch or {}).get("name"),
+            "commander_home": (ch or {}).get("home_region"),
+            "formation": d.get("formation"),
+            "condition": d.get("battle_condition"),
+            "order_type": d.get("order_type"),
+            "initial_size": (d.get("initial_battle_size") or {}).get("script_value_data_result"),
+            "battalions_start": obj.get(prefix + "_start_battalions"),
+            "battalions_end": obj.get(prefix + "_ending_battalions"),
+            "manpower_start": obj.get(prefix + "_starting_manpower"),
+            "ce_start": obj.get(prefix + "_start_ce"),
+            "ce_end": obj.get(prefix + "_end_ce"),
+            "morale_start": obj.get(prefix + "_starting_morale"),
+            "morale_end": obj.get(prefix + "_ending_morale"),
+        }
+
+    for bid, obj, atk, dfd, occ, place, war, pi, hgp, _pids in pending:
+        entry = {
+            "id": bid,
+            "type": obj.get("type"),
+            "war": obj.get("war"),
+            "front": obj.get("front"),
+            "place": place,
+            "start_date": obj.get("start_date"),
+            "end_date": obj.get("end_date"),
+            "status": obj.get("status"),
+            "attacker": _side(atk, "attacker"),
+            "defender": _side(dfd, "defender"),
+            "occupation": occ,
+            "captured_provinces": obj.get("num_captured_provinces"),
+            "player_involved": bool(pi),
+            "has_gp": bool(hgp),
+        }
+        if war:
+            entry["war_participants"] = [p.get("name")
+                                         for p in (war.get("participants") or [])]
+            entry["war_start"] = war.get("start_date")
+        battles.append(entry)
+
+    if player_id is not None:
+        pb = [b for b in battles if b.get("player_involved")]
+        battles = pb if pb else [b for b in battles if b.get("has_gp")]
+    battles.sort(key=lambda b: str(b.get("start_date") or ""), reverse=True)
+    return battles[:12]
+
+
+# ===========================================================================
+# 战争目的 / 军团 / 营 / 舰船 解析 (供杂志战争上下文)
+# ===========================================================================
+
+def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
+                    dp_index=None):
+    """解析 war_goal_manager.database 的战争目的。
+    返回 [{war, diplomatic_play, holder, holder_zh, target, target_zh, type,
+           type_zh, state, state_zh, region, region_zh, demand_type,
+           demand_type_zh, status, nl, article_zh}]。
+    nl 为自然语言 (不含地区 ID 括号)。"""
+    if zh is None or gp_ids is None:
+        zh, gp_ids = _country_zh_map(data)
+    if dp_index is None:
+        _i, _g, dp_index = _build_indexes(data)
+    dp_to_war = {}
+    for dpid, dp in dp_index.items():
+        w = dp.get("war") if isinstance(dp, dict) else None
+        if w is not None:
+            dp_to_war[str(dpid)] = w
+    loc = _load_loc_all()
+    i = data.find(b'"war_goal_manager"')
+    if i < 0:
+        return []
+    db = data.find(b'"database"', i)
+    ob = data.find(b'{', db)
+    raw, _end = extract_json_object(data, ob)
+    if not raw:
+        return []
+    try:
+        wg = json.loads(raw)
+    except Exception:
+        return []
+    out = []
+    for _wid, v in wg.items():
+        if not isinstance(v, dict) or v.get("status") != "active":
+            continue
+        typ = v.get("type")
+        if not typ:
+            continue
+        target = v.get("target") or {}
+        tcid = target.get("country")
+        state_id = target.get("state")
+        region = target.get("region")
+        dp = v.get("diplomatic_play")
+        war_id = dp_to_war.get(str(dp)) if dp is not None else None
+        state_zh = _state_zh(data, state_id) if state_id is not None else None
+        region_zh = loc.get(region) if region else None
+        target_zh = zh.get(tcid) if tcid is not None else None
+        holder_zh = zh.get(v.get("holder")) if v.get("holder") is not None else None
+        type_zh = loc.get(f"war_goal_{typ}_type_name") or str(typ)
+        demand = v.get("demand_type") or ""
+        demand_zh = ("主战目的" if demand == "primary_demand"
+                     else "次生目的" if demand == "secondary_demand" else demand)
+        article_zh = None
+        opts = target.get("options") or {}
+        art = opts.get("article")
+        if art:
+            article_zh = loc.get(art) or art
+        st = state_zh or region_zh
+        if typ == "conquer_state":
+            nl = f"征服{target_zh}的{st}" if st else f"征服{target_zh}"
+        elif typ == "annex_country":
+            nl = f"吞并{target_zh}"
+        elif typ == "humiliation":
+            nl = f"羞辱{target_zh}"
+        elif typ == "return_state":
+            nl = f"归还{target_zh}的{st}" if st else "归还地区"
+        elif typ == "transfer_subject":
+            nl = f"转让属国{target_zh}"
+        elif typ == "liberate_subject":
+            nl = f"解放附属国{target_zh}"
+        elif typ == "liberate_country":
+            nl = f"解放{target_zh}"
+        elif typ == "colonization_rights":
+            nl = f"索取{target_zh}的殖民权"
+        elif typ == "enforce_treaty_article":
+            nl = f"强制{target_zh}执行{article_zh or '条约'}条款"
+        else:
+            nl = f"{type_zh}（目标{target_zh}）"
+        out.append({
+            "war": war_id, "diplomatic_play": dp, "holder": v.get("holder"),
+            "holder_zh": holder_zh, "target": tcid, "target_zh": target_zh,
+            "state": state_id, "state_zh": state_zh, "region": region,
+            "region_zh": region_zh, "type": typ, "type_zh": type_zh,
+            "demand_type": demand, "demand_type_zh": demand_zh,
+            "status": v.get("status"), "nl": nl, "article_zh": article_zh,
+        })
+    return out
+
+
+def parse_formations(data, country_ids=None):
+    """解析 military_formation_manager 的军团/舰队对象。
+    返回 [{id, type(army/fleet), country, name(自定义或本地化名, 可空),
+           ordinal_number, units_name_type, home_hq, supply_hub, origin,
+           current_location, flags, creation_date}]。"""
+    want = {int(x) for x in country_ids} if country_ids else None
+    i = data.find(b'"military_formation_manager"')
+    if i < 0:
+        return []
+    db = data.find(b'"database"', i)
+    ob = data.find(b'{', db)
+    raw, _end = extract_json_object(data, ob)
+    if not raw:
+        return []
+    try:
+        fm = json.loads(raw)
+    except Exception:
+        return []
+    loc = _load_loc_all()
+    out = []
+    for fid, v in fm.items():
+        if not isinstance(v, dict) or v.get("type") not in ("army", "fleet"):
+            continue
+        cid = v.get("country")
+        if want is not None and cid not in want:
+            continue
+        name = v.get("name") or ""
+        if not name and v.get("localizable_name"):
+            ln = v["localizable_name"]
+            if isinstance(ln, dict):
+                ln = ln.get("name")
+            if ln:
+                name = loc.get(ln, "") or ""
+        out.append({
+            "id": str(fid),
+            "type": v.get("type"),
+            "country": cid,
+            "name": name,
+            "ordinal_number": v.get("ordinal_number"),
+            "units_name_type": v.get("units_name_type"),
+            "home_hq": v.get("home_hq"),
+            "supply_hub": v.get("supply_hub"),
+            "origin": v.get("origin"),
+            "current_location": v.get("current_location"),
+            "flags": v.get("flags") or [],
+            "creation_date": v.get("creation_date"),
+        })
+    return out
+
+
+_BUILDING_STATE_CACHE = {}
+
+
+def _building_state_map(data):
+    """building id → state id (按熔化 bytes id 缓存, 单次扫描)。"""
+    key = id(data)
+    m = _BUILDING_STATE_CACHE.get(key)
+    if m is not None:
+        return m
+    out = {}
+    i = data.find(b'"building_manager"')
+    if i >= 0:
+        db = data.find(b'"database"', i)
+        ob = data.find(b'{', db)
+        raw, _end = extract_json_object(data, ob)
+        if raw:
+            try:
+                bm = json.loads(raw)
+                for bid, v in bm.items():
+                    if isinstance(v, dict) and v.get("state") is not None:
+                        out[str(bid)] = v["state"]
+            except Exception:
+                pass
+    _BUILDING_STATE_CACHE[key] = out
+    return out
+
+
+def parse_combat_units(data, country_id, formations=None):
+    """解析 new_combat_unit_manager 中某国的营。
+    营名按游戏命名规则重建: 第{name_number}{文化名}{兵种名}营。
+    返回 [{id, name, name_number, type, type_zh, culture, culture_zh,
+           formation, formation_name, building, building_state, manpower,
+           veterancy, mobilization}]。"""
+    i = data.find(b'"new_combat_unit_manager"')
+    if i < 0:
+        return []
+    db = data.find(b'"database"', i)
+    ob = data.find(b'{', db)
+    raw, _end = extract_json_object(data, ob)
+    if not raw:
+        return []
+    try:
+        units = json.loads(raw)
+    except Exception:
+        return []
+    loc = _load_loc_all()
+    bmap = _building_state_map(data)
+    fm_by_id = {f.get("id"): f for f in (formations or [])}
+    out = []
+    for uid, v in units.items():
+        if not isinstance(v, dict) or v.get("country") != country_id:
+            continue
+        t = v.get("type")
+        cult = v.get("culture")
+        cult_zh = culture_id_to_name(cult) if cult is not None else None
+        type_zh = loc.get(t, t) if t else None
+        fid = v.get("formation")
+        formation_name = ""
+        if fid is not None:
+            formation_name = (fm_by_id.get(str(fid)) or {}).get("name") or ""
+        out.append({
+            "id": str(uid),
+            "name": f"第{v.get('name_number')}{cult_zh or ''}{type_zh or ''}营",
+            "name_number": v.get("name_number"),
+            "type": t,
+            "type_zh": type_zh,
+            "culture": cult,
+            "culture_zh": cult_zh,
+            "formation": fid,
+            "formation_name": formation_name,
+            "building": v.get("building"),
+            "building_state": bmap.get(str(v.get("building"))) if v.get("building") is not None else None,
+            "manpower": v.get("current_manpower"),
+            "veterancy": v.get("current_veterancy_level"),
+            "mobilization": bool(v.get("mobilization")),
+        })
+    return out
+
+
+_SHIP_DEFS_CACHE = None
+
+
+def _ship_name_definitions():
+    """解析游戏 common/ship_name_definitions: {def_key: {"prefixes", "name_lists"}}。
+    name_lists 为按定义内出现顺序的若干名字数组 (属性顺序与存档 dynamic_name 对齐)。"""
+    global _SHIP_DEFS_CACHE
+    if _SHIP_DEFS_CACHE is not None:
+        return _SHIP_DEFS_CACHE
+    base = os.path.join(os.path.dirname(GAME_LOCALIZATION), "..",
+                        "common", "ship_name_definitions")
+    dirs = [base] if os.path.isdir(base) else []
+    defs = {}
+    pat = re.compile(rb'ship_names_([a-zA-Z0-9_]+)\s*=\s*\{')
+    for d in dirs:
+        try:
+            files = sorted(os.listdir(d))
+        except Exception:
+            continue
+        for fn in files:
+            if not fn.endswith(".txt"):
+                continue
+            try:
+                b = open(os.path.join(d, fn), "rb").read()
+            except Exception:
+                continue
+            for m in pat.finditer(b):
+                key = m.group(1).decode()
+                start = m.end() - 1  # 定义块的开括号 (正则已含 = {)
+                depth = 0
+                k = start
+                while k < len(b):
+                    c = b[k:k + 1]
+                    if c == b'{':
+                        depth += 1
+                    elif c == b'}':
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    k += 1
+                block = b[start:k + 1]
+                block = re.sub(rb'#[^\r\n]*', b'', block)
+                prefixes = [x.decode()
+                            for x in re.findall(rb'custom_text\s*=\s*"([^"]+)"', block)]
+                name_lists = []
+                for nlm in re.finditer(rb'name_list\s*=\s*\{([^}]*)\}', block):
+                    names = [x.decode()
+                             for x in re.findall(rb'\bsn_[A-Za-z0-9_]+', nlm.group(1))]
+                    if names:
+                        name_lists.append(names)
+                defs[key] = {"prefixes": prefixes, "name_lists": name_lists}
+    _SHIP_DEFS_CACHE = defs
+    return defs
+
+
+def _resolve_ship_name(ship, loc, defs):
+    """舰船 name 字段 → 中文舰名 (prefix + 舰名), 无法解析返回 None。"""
+    nm = ship.get("name") or {}
+    if not isinstance(nm, dict):
+        return None
+    ln = nm.get("localizable_name")
+    if isinstance(ln, dict) and ln.get("name"):
+        return loc.get(ln["name"], ln["name"])
+    dyn = nm.get("dynamic_name")
+    if not isinstance(dyn, dict):
+        return None
+    defkey = dyn.get("definition") or ""
+    if not defkey.startswith("ship_names_"):
+        return None
+    d = defs.get(defkey[len("ship_names_"):])
+    if not d:
+        return None
+    prefix = ""
+    name_key = None
+    nl_seen = 0
+    prefix_done = False
+    for pr in (dyn.get("properties") or []):
+        if not isinstance(pr, dict):
+            continue
+        if "text" in pr:
+            tv = (pr.get("text") or {}).get("value")
+            if tv and not prefix_done:
+                prefix = loc.get(tv, "")
+                prefix_done = True
+        elif "name_list" in pr:
+            idx = (pr.get("name_list") or {}).get("name", 0)
+            lists = d.get("name_lists") or []
+            if not lists:
+                return None
+            lst = lists[nl_seen] if nl_seen < len(lists) else lists[-1]
+            nl_seen += 1
+            if isinstance(idx, int) and 0 <= idx < len(lst):
+                name_key = lst[idx]
+    if not name_key:
+        return None
+    return prefix + loc.get(name_key, name_key)
+
+
+def parse_ships(data, country_ids=None, formations=None):
+    """解析 ship_manager 的舰船: 舰队→国家、模板版本→舰种、舰名本地化。
+    返回 [{id, fleet, country, name(中文), type, type_zh, hit_points,
+           veterancy, flags}]。"""
+    want = {int(x) for x in country_ids} if country_ids else None
+    if formations is None:
+        formations = parse_formations(data)
+    fleet_country = {str(f.get("id")): f.get("country")
+                     for f in formations if f.get("type") == "fleet"}
+    i = data.find(b'"ship_manager"')
+    if i < 0:
+        return []
+    db = data.find(b'"database"', i)
+    ob = data.find(b'{', db)
+    raw, _end = extract_json_object(data, ob)
+    if not raw:
+        return []
+    try:
+        ships = json.loads(raw)
+        if isinstance(ships, dict) and "database" in ships:
+            ships = ships["database"]
+    except Exception:
+        return []
+    ver_type = {}
+    ti = data.find(b'"ship_templates_manager"')
+    if ti >= 0:
+        tdb = data.find(b'"database"', ti)
+        tob = data.find(b'{', tdb)
+        traw, _ = extract_json_object(data, tob)
+        if traw:
+            try:
+                tmpl = json.loads(traw)
+                for v in tmpl.values():
+                    if isinstance(v, dict):
+                        for ver in (v.get("versions") or []):
+                            ver_type[str(ver)] = v.get("type")
+            except Exception:
+                pass
+    defs = _ship_name_definitions()
+    loc = _load_loc_all()
+    out = []
+    for sid, s in ships.items():
+        if not isinstance(s, dict):
+            continue
+        cid = fleet_country.get(str(s.get("fleet")))
+        if want is not None and cid not in want:
+            continue
+        typ = ver_type.get(str(s.get("version")))
+        out.append({
+            "id": str(sid),
+            "fleet": s.get("fleet"),
+            "country": cid,
+            "name": _resolve_ship_name(s, loc, defs),
+            "type": typ,
+            "type_zh": loc.get(typ, typ) if typ else None,
+            "hit_points": s.get("hit_points"),
+            "veterancy": s.get("veterancy_experience"),
+            "flags": s.get("flags") or [],
+        })
+    return out
+
+
+def build_pop_fingerprint(pops):
+    """{pop_id: pop对象} → 紧凑指纹 {id: [type, state, culture, religion, workforce]}。"""
+    fp = {}
+    for pid, obj in (pops or {}).items():
+        t = obj.get("type")
+        if t in POP_FP_TYPES:
+            fp[pid] = [t, obj.get("location"), obj.get("culture"),
+                       obj.get("religion"), obj.get("workforce")]
+    return fp
+
+
+def export_pop_fingerprint(pops, folder, year):
+    """把玩家州 POP 指纹写入 <folder>/data/pops_<year>.json。"""
+    fp = build_pop_fingerprint(pops)
+    rd = os.path.join(folder, "data")
+    try:
+        os.makedirs(rd, exist_ok=True)
+    except Exception:
+        pass
+    path = os.path.join(rd, f"pops_{year}.json")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(fp, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"写入 POP 指纹失败: {e}")
+        return None
+    return path
+
+
+def load_pop_fingerprint(folder, year):
+    """读取 <folder>/data/pops_<year>.json, 缺失返回 None。"""
+    path = os.path.join(folder, "data", f"pops_{year}.json")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def diff_pop_fingerprints(prev, cur):
+    """跨年指纹比对。
+    同 id 类型变化 = 升职/降职 (如劳工→技工), 同 id 所在州变化 = 迁移。
+    返回 (promotions, migrations) 两个列表, 均含真实职业 POP 信息。"""
+    prev = prev or {}
+    promotions, migrations = [], []
+    for pid, c in (cur or {}).items():
+        p = prev.get(pid)
+        if (not p or not isinstance(p, list) or len(p) < 5
+                or not isinstance(c, list) or len(c) < 5):
+            continue
+        if p[0] != c[0] and p[0] in POP_FP_TYPES and c[0] in POP_FP_TYPES:
+            promotions.append({
+                "pop_id": pid,
+                "state": c[1],
+                "old_state": p[1],
+                "old_type": p[0],
+                "new_type": c[0],
+                "culture": c[2],
+                "religion": c[3],
+                "workforce": c[4],
+            })
+        elif p[1] != c[1] and c[0] in POP_FP_TYPES:
+            migrations.append({
+                "pop_id": pid,
+                "old_state": p[1],
+                "state": c[1],
+                "old_type": p[0],
+                "new_type": c[0],
+                "culture": c[2],
+                "religion": c[3],
+                "workforce": c[4],
+            })
+    return promotions, migrations
+
+
+def _player_pops_with_id(data, state_ids):
+    """单次扫描 pops.database, 返回玩家州内 {pop_id: pop对象}。
+    仅收录含 workforce 字段的真实 POP。供指纹与杂志样本共用, 避免重复整文件扫描。"""
+    state_set = set(state_ids or [])
+    out = {}
+    pop_db = data.find(b'"pops"')
+    if pop_db < 0:
+        return out
+    db = data.find(b'"database"', pop_db)
+    ob = data.find(b'{', db)
+    j = ob
+    while True:
+        i = data.find(b'":{', j)
+        if i < 0:
+            break
+        ob2 = data.find(b'{', i)
+        head = data[ob2:min(ob2 + 600, len(data))]
+        m_loc = re.search(rb'"location":(\d+)', head)
+        if not m_loc:
+            j = data.find(b'}', ob2) + 1
+            continue
+        sid = int(m_loc.group(1))
+        if sid not in state_set:
+            j = data.find(b'}', ob2) + 1
+            continue
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and obj.get("location") == sid and "workforce" in obj:
+            q = data.rfind(b'"', max(0, i - 120), i)
+            pid = data[q + 1:i].decode("utf-8", "replace")
+            out[pid] = obj
+        j = end
+    return out
+
+
+def build_magazine_data(melted, snap, folder, year):
+    """汇总杂志数据 (全部来自真实存档, 采样由 year 播种保证同年稳定)。
+    返回 dict: battles / migrations / promotions / pop_migrations / conversions /
+    soldiers / families / elites / civilians / war_states / cabinet / ruler。"""
+    rnd = random.Random(year or 0)
+    state_ids = [s.get("id") for s in (snap.get("states") or [])
+                 if s.get("id") is not None]
+    data = {}
+
+    # 国家名/列强/外交博弈索引: 战役、战争目的共用一份
+    index0, gp_ids0, dp_index0 = _build_indexes(melted)
+    zh = build_country_id_names(melted, index0)
+
+    # 战役 (玩家或列强参战, ≤12 场)
+    data["battles"] = parse_battles(melted, player_id=snap.get("country_id"),
+                                    wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0)
+    battle_state_ids = set()
+    for b in data["battles"]:
+        for o in b.get("occupation") or []:
+            battle_state_ids.add(o.get("state"))
+
+    # 战争目的 (主战+次生, 自然语言, 不含地区 ID)
+    data["war_goals"] = parse_war_goals(
+        melted, wars=snap.get("wars"), player_id=snap.get("country_id"),
+        zh=zh, gp_ids=gp_ids0, dp_index=dp_index0)
+
+    # 军团 / 营 / 舰船
+    cid = snap.get("country_id")
+    formations = parse_formations(melted)
+    data["formations"] = [f for f in formations if f.get("country") == cid]
+    data["units"] = parse_combat_units(melted, cid, formations=formations)
+    naval_cids = set()
+    for b in data["battles"]:
+        if b.get("type") in ("naval", "naval_invasion_landing"):
+            for side in ("attacker", "defender"):
+                scid = (b.get(side) or {}).get("country_id")
+                if scid is not None:
+                    naval_cids.add(scid)
+    data["ships"] = (parse_ships(melted, country_ids=naval_cids,
+                                 formations=formations) if naval_cids else [])
+
+    # 玩家州迁移记录 (migration_buckets)
+    mig = []
+    for sid in state_ids:
+        sobj = _state_object(melted, sid)
+        if not sobj:
+            continue
+        mig.extend(_migration_records_zh(melted, sobj))
+    data["migrations"] = mig
+
+    # POP 单次扫描: 指纹导出 + 跨年比对 + 分类样本
+    pops = _player_pops_with_id(melted, state_ids)
+    export_pop_fingerprint(pops, folder, year)
+    cur_fp = build_pop_fingerprint(pops)
+    prev_fp = load_pop_fingerprint(folder, year - 1) if year else None
+    promotions, pop_migrations = diff_pop_fingerprints(prev_fp, cur_fp)
+    for p in promotions:
+        p["state_name"] = _state_zh(melted, p.get("state"))
+        p["old_state_name"] = _state_zh(melted, p.get("old_state"))
+        p["culture_zh"] = (culture_id_to_name(p.get("culture"))
+                           if p.get("culture") is not None else None)
+        p["religion_zh"] = _religion_zh(p.get("religion"))
+        p["type_zh"] = p.get("new_type")
+        p["old_type_zh"] = p.get("old_type")
+    for p in pop_migrations:
+        p["state_name"] = _state_zh(melted, p.get("state"))
+        p["old_state_name"] = _state_zh(melted, p.get("old_state"))
+        p["culture_zh"] = (culture_id_to_name(p.get("culture"))
+                           if p.get("culture") is not None else None)
+        p["religion_zh"] = _religion_zh(p.get("religion"))
+    data["promotions"] = promotions
+    data["pop_migrations"] = pop_migrations
+
+    soldiers, elites, civilians, convs = [], [], [], []
+    civ_by_state = {}
+    for pid, obj in pops.items():
+        t = obj.get("type")
+        if t in ("soldiers", "officers"):
+            soldiers.append((pid, obj))
+        if t in ("aristocrats", "capitalists", "bureaucrats"):
+            elites.append((pid, obj))
+        if t in ("laborers", "farmers", "peasants", "clerks", "machinists",
+                 "shopkeepers", "slaves"):
+            civilians.append((pid, obj))
+            civ_by_state.setdefault(obj.get("location"), []).append((pid, obj))
+        if obj.get("conversion_religion") or obj.get("assimilation_culture"):
+            convs.append((pid, obj))
+    # 战役州 POP 优先: 士兵/平民样本贴近真实战场与前线后方
+    soldiers.sort(key=lambda x: x[1].get("location") in battle_state_ids, reverse=True)
+    civilians.sort(key=lambda x: x[1].get("location") in battle_state_ids, reverse=True)
+
+    def _pick(lst, n):
+        if not lst:
+            return []
+        return [lst[i] for i in sorted(rnd.sample(range(len(lst)), min(n, len(lst))))]
+
+    def _info(pid, obj, extra=None):
+        d = {
+            "pop_id": pid,
+            "state": obj.get("location"),
+            "state_name": _state_zh(melted, obj.get("location")),
+            "type": obj.get("type"),
+            "culture": (culture_id_to_name(obj.get("culture"))
+                        if obj.get("culture") is not None else None),
+            "religion": _religion_zh(obj.get("religion")),
+            "workforce": obj.get("workforce"),
+            "sol": obj.get("previous_quality_of_life"),
+            "wealth": obj.get("wealth"),
+            "in_battle_state": obj.get("location") in battle_state_ids,
+        }
+        if extra:
+            d.update(extra)
+        return d
+
+    soldier_samples = _pick(soldiers, 6)
+    data["soldiers"] = [_info(pid, obj) for pid, obj in soldier_samples]
+    data["elites"] = [_info(pid, obj) for pid, obj in _pick(elites, 6)]
+    data["civilians"] = [_info(pid, obj) for pid, obj in _pick(civilians, 6)]
+
+    fam = []
+    for pid, obj in soldier_samples:
+        cand = civ_by_state.get(obj.get("location")) or []
+        if cand:
+            fam.append(_info(*_pick(cand, 1)[0], extra={
+                "soldier_state": obj.get("location"),
+                "soldier_state_name": _state_zh(melted, obj.get("location")),
+            }))
+    data["families"] = fam
+
+    conv_out = []
+    for pid, obj in _pick(convs, 8):
+        extra = {}
+        cr = obj.get("conversion_religion")
+        if cr:
+            extra["converting_to_religion"] = _religion_zh(cr)
+        ac = obj.get("assimilation_culture")
+        if ac is not None:
+            extra["assimilating_to_culture"] = culture_id_to_name(ac)
+        conv_out.append(_info(pid, obj, extra))
+    data["conversions"] = conv_out
+
+    # 迁移/升职样本: 保持记录本身完整, 仅截取前若干条供提示词
+    data["migrations"] = _pick(data["migrations"], 6)
+    data["promotions"] = _pick(promotions, 6)
+    data["pop_migrations"] = _pick(pop_migrations, 6)
+
+    # 战乱州民生 (玩家州中荒废度>0 或 有战役占领)
+    war_states = []
+    for s in (snap.get("states") or []):
+        if s.get("devastation") or s.get("id") in battle_state_ids:
+            war_states.append(s)
+    data["war_states"] = war_states
+
+    # 大臣 (执政利益集团) 与统治者
+    igs = snap.get("interest_groups") or []
+    data["cabinet"] = [g for g in igs if g.get("in_government")]
+    ri = snap.get("ruler_info") or {}
+    data["ruler"] = {
+        "name": ri.get("name"),
+        "title": ri.get("title"),
+        "ideology": ri.get("ideology"),
+        "status": ri.get("status"),
+        "culture": ri.get("culture"),
+        "religion": ri.get("religion"),
+        "home_region": ri.get("home_region"),
+        "activity": snap.get("ruler_activity"),
+    }
+    return data
+
 
 def _merge_prev_year_wars(snap, journal_dir, folder):
     """存档层落盘: 生成本年快照时, 把上一年存档中仍在进行的战争并入
@@ -3461,9 +4577,15 @@ def build_journal_data(snap):
     data["last_year_wars"] = snap.get("last_year_wars")
     return data
 
-def extract_full_snapshot(melted):
-    """从熔化数据提取玩家完整快照 (精确数值 + 本年度法律变化 + pop占比 + 战争 + 政体中文)。"""
-    country, meta, tag, cid = find_player_country(melted)
+def extract_full_snapshot(melted, cid=None):
+    """从熔化数据提取完整快照 (精确数值 + 本年度法律变化 + pop占比 + 战争 + 政体中文)。
+    cid 为 None 时取玩家国; 指定 cid 时可提取任意国家 (供 test 等批量生成复用)。"""
+    if cid is None:
+        country, meta, tag, cid = find_player_country(melted)
+    else:
+        country = _find_country_by_id(melted, cid)
+        meta = _parse_meta(melted)
+        tag = (country or {}).get("definition")
     snap = snapshot_from_country(country, meta)
     if not country:
         return snap
@@ -3508,6 +4630,10 @@ def extract_full_snapshot(melted):
     snap["player_country_id"] = cid
     index, gp_ids, dp_index = _build_indexes(melted)
     names = load_current_country_names(melted, index)
+    if cid is not None and tag:
+        # 非玩家国: 用国家名覆盖 meta.name(玩家名), 供杂志/报纸以该国名义写作
+        snap["player"] = (build_country_id_names(melted, index).get(cid)
+                          or names.get(tag, tag))
     state_ids = (country or {}).get("states") or []
     pops = _aggregate_pops(melted, state_ids)
     prim_cultures = _get_primary_cultures(melted, state_ids)
@@ -3975,7 +5101,10 @@ def _article_detail(a):
         law_zh = _load_loc_all().get(law, law.replace("law_", ""))
         return f"施行法律{law_zh}", {"kind": "law", "law": law_zh, "law_key": law}
     if state is not None:
-        state_zh = _load_loc_all().get(state, state.replace("STATE_", ""))
+        if isinstance(state, str):
+            state_zh = _load_loc_all().get(state, state.replace("STATE_", ""))
+        else:
+            state_zh = str(state)
         return f"州{state_zh}", {"kind": "state", "state": state_zh, "state_key": state}
     if qty is not None:
         return f"{qty}单位", {"kind": "quantity", "quantity": qty}
@@ -4457,12 +5586,50 @@ def make_newspaper(year=None, force=True, melted=None, snap=None):
     print("报纸生成完成")
     return 0
 
-def _generate_async(year, snap):
-    """后台线程: 生成某年报纸, 不阻塞存档监控循环。"""
+
+def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None):
+    """用存档数据生成杂志 (magazine.py), 复用 make_newspaper 的熔化/快照/
+    会话文件夹逻辑, 避免同一年份重复熔化解析。
+    cfg 可传入覆盖(如 test 目录), 缺省重新读取 config.json。"""
+    import journal
+    if snap is None:
+        if melted is None:
+            data = ensure_fresh_melt()
+            if data[1]:
+                print(data[1])
+                return 1
+            melted, _ = data
+        snap = extract_full_snapshot(melted)
+    if year and snap.get("year") != year:
+        print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
+    cfg = cfg or journal.load_config()
+    if not journal.SESSION["folder"]:
+        with journal._FOLDER_LOCK:
+            if not journal.SESSION["folder"]:
+                journal.SESSION["folder"] = journal.determine_folder(
+                    snap.get("player") or "未知名国家", cfg["journal_dir"])
+    _merge_prev_year_wars(snap, cfg["journal_dir"], journal.SESSION["folder"])
+    jdata = build_journal_data(snap)
+    jdata["output_dir"] = journal.SESSION["folder"]
+    session_dir = os.path.join(cfg["journal_dir"], journal.SESSION["folder"])
+    jdata["magazine"] = build_magazine_data(
+        melted, snap, session_dir, snap.get("year"))
+    import magazine
+    magazine.generate_magazine(jdata, cfg, force=force)
+    print("杂志生成完成")
+    return 0
+
+
+def _generate_async(year, snap, melted=None):
+    """后台线程: 生成某年报纸与杂志(同一快照, 不重复熔化解析), 不阻塞监控。"""
     try:
         make_newspaper(year=year, force=True, snap=snap)
     except Exception as e:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年报纸生成失败: {e}")
+    try:
+        make_magazine(year=year, force=True, melted=melted, snap=snap)
+    except Exception as e:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年杂志生成失败: {e}")
 
 # ---------------------------------------------------------------------------
 # 命令行
@@ -4528,11 +5695,16 @@ def cmd_watch(continue_mode=False):
         if year:
             md_path = os.path.join(cfg["journal_dir"], journal.SESSION["folder"],
                                    f"报纸_{year}.md")
+            mg_path = os.path.join(cfg["journal_dir"], journal.SESSION["folder"],
+                                   f"杂志_{year}.md")
             if not os.path.exists(md_path):
                 print(f"续传模式: {year} 年报纸缺失, 先用当前存档补生成")
                 make_newspaper(year=year, force=True, melted=melted, snap=snap)
-            else:
-                print(f"续传模式: {year} 年报纸已存在, 进入监控等待下一年。")
+            if cfg.get("magazine_enabled", True) and not os.path.exists(mg_path):
+                print(f"续传模式: {year} 年杂志缺失, 先用当前存档补生成")
+                make_magazine(year=year, force=True, melted=melted, snap=snap)
+            if os.path.exists(md_path) and os.path.exists(mg_path):
+                print(f"续传模式: {year} 年报纸与杂志均存在, 进入监控等待下一年。")
     last_mtime = None
     last_year = None
     last_player = None
@@ -4555,9 +5727,10 @@ def cmd_watch(continue_mode=False):
                             print(f"  玩家: {player} (新局或换国)")
                             last_player = player
                         if year is not None and year != last_year:
-                            print(f"  新年份 {year}, 后台生成报纸 (不阻塞监控)")
+                            print(f"  新年份 {year}, 后台生成报纸+杂志 (不阻塞监控)")
                             threading.Thread(target=_generate_async,
-                                             args=(year, snap), daemon=True).start()
+                                             args=(year, snap, melted[0]),
+                                             daemon=True).start()
                             last_year = year
                         else:
                             print(f"  年份 {year} 未变, 跳过(避免重复)")
@@ -4572,14 +5745,15 @@ def cmd_continue():
 
 def main():
     cmds = {"check": cmd_check, "melt": cmd_melt, "sniff": cmd_sniff,
-            "newspaper": make_newspaper, "watch": cmd_watch,
+            "newspaper": make_newspaper, "magazine": make_magazine,
+            "watch": cmd_watch,
             "continue": cmd_continue}
     cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
     args = sys.argv[2:] if len(sys.argv) > 2 else []
     if cmd not in cmds:
-        print("可用: check | melt | sniff | newspaper [年份] | watch | continue"); return 1
+        print("可用: check | melt | sniff | newspaper [年份] | magazine [年份] | watch | continue"); return 1
     kwargs = {}
-    if cmd == "newspaper" and args:
+    if cmd in ("newspaper", "magazine") and args:
         kwargs["year"] = int(args[0]) if args[0].isdigit() else None
     return cmds[cmd](**kwargs)
 

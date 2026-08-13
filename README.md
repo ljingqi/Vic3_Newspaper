@@ -29,12 +29,16 @@
 | --- | --- |
 | `%USERPROFILE%\Documents\Paradox Interactive\Victoria 3\mod\v3journal\` | **游戏 mod**（.metadata / common / localization / thumbnail） |
 | `<项目目录>\journal.py` | **Python 伴生程序**（主程序） |
+| `<项目目录>\magazine.py` | **杂志生成程序**（复用 journal.py 的 API 调用，按政体定制基调） |
 | `<项目目录>\config.json` | 配置文件（由 `config.example.json` 复制而来；含你的 DeepSeek Key，**勿上传**） |
 | `<项目目录>\config.example.json` | 配置模板（所有参数已填好，仅 API Key 留空） |
 | `<项目目录>\requirements.txt` | Python 依赖（requests） |
 | `<项目目录>\README.md` | 本文档 |
 | `<项目目录>\output\<国名>\报纸_<年份>.md` | 生成的报纸（每个存档开局一个文件夹，自动产生） |
+| `<项目目录>\output\<国名>\杂志_<年份>.md` | 生成的杂志（与报纸同文件夹，每年一份） |
 | `<项目目录>\output\<国名>\data\raw_<年份>.json` | 每年导出的原始数据（随报纸同放于该会话文件夹，用于 regen 重试） |
+| `<项目目录>\output\<国名>\data\pops_<年份>.json` | 每年玩家州 POP 指纹（跨年比对升职/迁移） |
+| `<项目目录>\output\<国名>\data\magazine_<年份>.json` | 每年杂志专属数据（战役/移民/改信样本） |
 
 > 注意：GitHub 仓库**不包含**以下内容（已在 `.gitignore` 中排除），使用前需自行准备：
 > - `config.json`（含你的 DeepSeek API Key，切勿上传；仓库提供 `config.example.json` 模板，复制改名即可）
@@ -112,7 +116,9 @@ python journal_save.py watch                 :: 持续监控自动存档(建议�
 ```
 
 `journal_save.py watch` 会监控最新存档，检测到新年度即调用 DeepSeek 生成当期报纸并写入
-`<项目目录>\output\<国名>\报纸_<年份>.md`。
+`<项目目录>\output\<国名>\报纸_<年份>.md`；同一快照还会生成当期杂志
+`杂志_<年份>.md`（`config.json` 的 `magazine_enabled: false` 可关闭）。
+熔化与解析只做一次，两份输出共享同一快照与本地化缓存。
 > 首次运行会以玩家国名在 `output\` 内新建文件夹；同一国家再次开新档则生成 `国名2`。
 > （`journal.py` 现主要作为渲染库被 `journal_save.py` 复用，其 `watch`/`once` 为旧的
 > debug_log 路线，仅作保留。）
@@ -129,7 +135,8 @@ python journal_save.py watch                 :: 持续监控自动存档(建议�
 | `python journal.py config` | 打印当前生效的配置（隐藏密钥） |
 
 > 当前主入口为 `journal_save.py`：`watch`（监控新存档）、`continue`（续传并沿用该国家
-> 最新文件夹）、`newspaper <年份>`（用当前存档补生成）。
+> 最新文件夹）、`newspaper <年份>`（用当前存档补生成报纸）、`magazine <年份>`
+>（用当前存档补生成杂志；每年报纸与杂志为两个独立文件）。
 
 ---
 
