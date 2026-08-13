@@ -455,38 +455,57 @@ class BlockBuilder:
 # ---------------------------------------------------------------------------
 
 PACT_NAMES = {
-    # 附庸关系 (pacts 中 first=宗主, second=附庸)
-    "colony": "殖民地",
+    # 附庸关系 (pacts 中 first=宗主, second=附庸; 官方简体中文)
+    "colony": "殖民领",
     "dominion": "自治领",
-    "protectorate": "保护国",
+    "protectorate": "受保护国",
     "puppet": "傀儡国",
     "tributary": "朝贡国",
     "vassal": "附庸",
-    "crown_land": "王室领地",
+    "crown_land": "王冠领地",
     "chartered_company": "特许公司",
     "personal_union": "共主邦联",
-    # 其他条约
+    # 其他条约/外交行动 (官方简体中文)
     "alliance": "同盟",
-    "defensive_pact": "防御条约",
-    "rivalry": "敌对",
+    "defensive_pact": "共同防御条约",
+    "rivalry": "宿敌",
     "embargo": "禁运",
-    "guarantee_independence": "独立保障",
+    "guarantee_independence": "保证独立",
+    # 当前版本无 trade_agreement 键 (贸易条款为 trade_privilege), 保留作兼容
     "trade_agreement": "贸易协定",
-    "da_knowledge_sharing": "知识共享",
+    "da_knowledge_sharing": "分享知识",
     "da_support_regime": "支持政权",
-    "da_overlord_grant_investment_rights": "宗主授予投资权",
+    "da_overlord_grant_investment_rights": "投资权",
     "da_evangelize": "传教",
     "increase_relations": "改善关系",
-    "damage_relations": "损害关系",
+    "damage_relations": "破坏关系",
     "expel_diplomats": "驱逐外交官",
-    "fund_lobbies": "资助游说集团",
-    "raiding_pact": "袭击协议",
-    "disapproval_pact": "不满协议",
-    "exempt_from_service": "豁免服役",
-    "grant_own_market": "自主市场",
-    "decrease_payments": "减少付款",
+    "fund_lobbies": "资助游说团",
+    "raiding_pact": "劫掠",
+    "disapproval_pact": "反对",
+    "exempt_from_service": "免除军事服务",
+    "grant_own_market": "给予自有市场",
+    "decrease_payments": "降低附属国贡金",
+    "raise_payments": "提高附属国贡金",
+    "support_separatism": "支持分离主义",
+    "colonization_rights": "殖民权",
+    "war_reparations": "战争赔款",
+    "humiliation": "羞辱",
+    "force_become_subject": "降服",
+    "request_market_control": "要求市场控制权",
+    "orchestrate_coup": "策划政变",
     "none": "无特殊关系",
 }
+
+# 与 journal_save.py 的 SUBJECT_ACTIONS 保持一致: 附庸关系单独成节,
+# 渲染“其他外交行动”时需排除, 避免重复。
+SUBJECT_ACTIONS = {"colony", "dominion", "protectorate", "puppet", "tributary",
+                   "vassal", "crown_land", "chartered_company", "personal_union"}
+
+# 附庸国展示顺序: 每种类型单独一行, 按此固定顺序输出
+SUBJECT_DISPLAY_ORDER = ("protectorate", "puppet", "tributary", "vassal",
+                         "dominion", "colony", "crown_land",
+                         "chartered_company", "personal_union")
 
 GOVT_NAMES = {
     "council_republic": "委员会制共和国",
@@ -503,8 +522,8 @@ RELIGION_NAMES = {
     "catholic": "天主教", "protestant": "新教", "orthodox": "东正教",
     "oriental_orthodox": "东方正统教会", "sunni": "逊尼派", "shiite": "什叶派",
     "ibadi": "伊巴德派", "jewish": "犹太教", "mahayana": "大乘佛教",
-    "gelugpa": "格鲁派(藏传佛教)", "theravada": "上座部佛教",
-    "confucian": "儒教(儒家)", "hindu": "印度教", "shinto": "神道教",
+    "gelugpa": "格鲁派", "theravada": "上座部佛教",
+    "confucian": "儒教", "hindu": "印度教", "shinto": "神道教",
     "sikh": "锡克教", "animist": "泛灵信仰", "atheist": "无神论",
 }
 
@@ -623,20 +642,66 @@ def law_zh(law):
 
 POP_TYPE_NAMES = {
     "peasants": "自给农", "laborers": "劳工", "farmers": "农民",
-    "aristocrats": "贵族", "officers": "军官", "clergymen": "神职人员",
+    "aristocrats": "贵族", "officers": "军官", "clergymen": "教士",
     "capitalists": "资本家", "bureaucrats": "官僚", "clerks": "职员",
-    "engineers": "工程师", "machinists": "机械师", "shopkeepers": "店主",
-    "soldiers": "士兵", "slaves": "奴隶", "academics": "学者",
+    "engineers": "工程师", "machinists": "技工", "shopkeepers": "店主",
+    "soldiers": "军人", "slaves": "奴隶", "academics": "学者",
 }
 
-SOL_GUIDE = ("生活水平(SoL)为0~30量级的民生指数：5以下=赤贫潦倒，5~10=艰难糊口，"
-             "10~15=温饱尚可，15~20=小康殷实，20以上=富足安乐。请据此在行文中体现民生状况。")
+def sol_band(sol):
+    """生活水平数值 → 区间名 (5以下=赤贫潦倒, 5~10=艰难糊口, 10~15=温饱尚可,
+    15~20=小康殷实, 20以上=富足安乐); 数值缺失返回 None。"""
+    if not isinstance(sol, (int, float)):
+        return None
+    if sol < 5:
+        return "赤贫潦倒"
+    if sol < 10:
+        return "艰难糊口"
+    if sol < 15:
+        return "温饱尚可"
+    if sol < 20:
+        return "小康殷实"
+    return "富足安乐"
+
+
+def _division_label(govt_key):
+    """政体原始键 → 行政区划称谓 (仅"省/州"两种, 无括号):
+    共和系政体 → 州; 君主/帝国/摄政/殖民地等 → 省; 无法识别返回 None (沿用旧格式)。"""
+    if not govt_key:
+        return None
+    low = str(govt_key).lower()
+    if any(k in low for k in (
+            "republic", "democracy", "soviet", "commune",
+            "technate", "phalanstere", "council", "presidential")):
+        return "州"
+    if any(k in low for k in (
+            "monarch", "empire", "kingdom", "duchy", "regency",
+            "principality", "sultan", "khan", "shah", "caliph",
+            "emir", "bakufu", "shogun", "theocracy", "papal",
+            "chiefdom", "colony", "dominion", "chartered", "crown")):
+        return "省"
+    return None
+
+def engel_band(engel):
+    """恩格尔系数(%) → 档位名 (沿用原注解口径, 含上界):
+    >60 赤贫, 50~60 温饱, 40~50 小康, <40 宽裕。"""
+    if not isinstance(engel, (int, float)):
+        return None
+    if engel > 60:
+        return "赤贫"
+    if engel > 50:
+        return "温饱"
+    if engel > 40:
+        return "小康"
+    return "宽裕"
 
 FOOD_SECURITY_NAMES = {
-    "secure": "充足", "secured": "充足", "moderate": "尚可",
-    "insecure": "紧张", "starving": "饥荒",
-    "starvation": "饥荒", "severe_starvation": "严重饥荒",
-    "moderate_starvation": "轻度饥饿",
+    # 官方简体中文: 市场/粮食安全面板等级标签 (interfaces_l_simp_chinese.yml)
+    "secure": "安全", "secured": "安全", "moderate": "适中",
+    "insecure": "紧张", "starving": "较低",
+    "starvation": "较低", "severe_starvation": "严峻",
+    # 官方概念名 (concepts_l_simp_chinese.yml): 轻微饥饿
+    "moderate_starvation": "轻微饥饿",
 }
 
 def food_security_zh(fs):
@@ -741,8 +806,9 @@ IG_NAMES = {
 JOB_SATISFACTION_GUIDE = ("职业满意度为该POP对当前工作/薪水的满意程度："
                           "正值=满意，负值=不满，数值越大情绪越强烈。")
 
-def load_history(data, cfg, years_back=6):
+def load_history(data, cfg, years_back=9):
     """加载当前年份之前若干年的原始数据, 供模型做发展对比。
+    默认前 9 年 + 当年 = 历年发展对照 10 行。
     仅读取当前会话文件夹的 data/（中央 data/ 逻辑已弃用）。"""
     folder = data.get("output_dir") or SESSION.get("folder") or ""
     cur = data.get("year")
@@ -772,6 +838,29 @@ def _ruler_name(data):
     return ruler
 
 
+def _ruler_name_title(data):
+    """统治者「姓名+头衔」, 如「佩德罗 德·布拉干萨皇帝」; 缺失返回空串。"""
+    ruler = _ruler_name(data)
+    if not ruler:
+        return ""
+    return ruler + (data.get("ruler_title") or "")
+
+
+def _leader_bg_phrase(home, religion, culture, data):
+    """按「文化非主流 / 宗教非国教 / 家乡非首都州」生成领袖背景前缀。
+    只拼出「非主流」的部分: 如「戈亚斯的南意大利人」；主流文化/国教/首都州不写入。
+    例如主流文化为巴西、家乡为帕拉时仅返回「帕拉的」。"""
+    s = ""
+    if home and data.get("capital_region") and home != data.get("capital_region"):
+        s += f"{home}的"
+    if religion and data.get("state_religion") and religion != data.get("state_religion"):
+        s += religion
+    prim = data.get("primary_cultures") or []
+    if culture and prim and culture not in prim:
+        s += f"{culture}人"
+    return s
+
+
 # ---------------------------------------------------------------------------
 # 分板块生成: 每次请求只生成一个板块, 最后由程序组合成完整报纸
 # ---------------------------------------------------------------------------
@@ -786,8 +875,13 @@ SECTION_DEFS = [
     ("politics", "政界动态", "报道政体、统治者、当前执政利益集团（标注「执政」者即组阁集团，"
      "数据含其政治力量占比、首领姓名与首领个人意识形态）、主要利益集团力量格局、"
      "当前影响最大的政治运动，"
-     "含名称、核心意识形态、活跃度档位、支持者规模与支持度，"
-     "、本年度法律变化(新施行/废除的法律)。"
+     "含名称（发起意识形态已并入名称表述）、活跃状况（如引发部分群众不满、街头抗议、"
+     "街头暴力冲突）、支持者规模与支持度、"
+     "本年度法律变化(新施行/废除的法律)。"
+     "若利益集团首领或统治者的数据含个人背景（文化/宗教/家乡），且满足"
+     "「文化非主流文化、宗教非国教、家乡非首都州」任一条件，"
+     "须在报道中以「{家乡}的{宗教}{文化}人{姓名}……目前是{集团}的领袖」一类句式介绍"
+     "（数据未给出的部分不得编造；全部条件均不满足时不必写背景）。"
      "每期**必须**至少有一条以「（头衔）（统治者姓名）……」为主干的统治者活动新闻，"
      "若数据给出「本期统治者活动」一行，必须以该行事实为基础（人物、头衔、地点、事件不得改写），"
      "在其上扩写细节；该行缺失时头衔按政体与国名常识选用，"
@@ -813,32 +907,7 @@ FACT_GUIDE = (
     "「执政利益集团」指当前组阁执政的利益集团（即数据中标注「执政」的集团），"
     "其政治力量为该集团在政坛的影响力占比；报道政界动态时应以执政集团为核心，"
     "结合其力量消长说明朝局与施政倾向，但不得虚构具体数字。"
-    "政治运动的活跃度分四档：消极(低于25)、不满(25~50)、抗议(50~75)、武斗(75及以上)。"
 )
-
-# 只有本期确实存在抗议/武斗档(激进指数≥0.5)或附带内战/分离进程的运动时才追加,
-# 避免模型在无此类运动时也收到「抗议档起…」的解读
-MOVEMENT_ESCALATION_GUIDE = (
-    "抗议档起每月会使部分支持者激进化并在州内制造抗拒，"
-    "只有抗议及以上档位的运动才可能附带内战/分离进程；"
-    "数据给出该进程时须如实报道其进度，不得自行推断战争爆发。"
-)
-
-
-def has_escalated_movement(data):
-    """本期是否存在达到抗议/武斗档或附带内战/分离进程的政治运动。"""
-    for mv in (data.get("political_movements") or []):
-        if not isinstance(mv, dict):
-            continue
-        if mv.get("activism") in ("抗议", "武斗"):
-            return True
-        rad = mv.get("radicalism")
-        if isinstance(rad, (int, float)) and rad >= 0.5:
-            return True
-        cw = mv.get("civil_war")
-        if isinstance(cw, dict) and cw.get("type"):
-            return True
-    return False
 
 
 DEFAULT_STYLE = 1
@@ -1044,13 +1113,14 @@ NEWSPAPER_STYLES = {
 _TERRITORY_CAP = 8
 
 def _v3_date_zh(v3date):
-    """把存档日期 '1836.5.14' 转成 '1836年5月14日'; 空或无效时返回空串。"""
+    """把存档日期 '1836.5.14' / '1843.7.1.6' 转成 '1836年5月14日' / '1843年7月1日';
+    空或无效时返回空串。"""
     if not v3date:
         return ""
     parts = str(v3date).split(".")
-    if len(parts) == 3:
+    if len(parts) >= 3:
         try:
-            y, m, d = (int(x) for x in parts)
+            y, m, d = (int(x) for x in parts[:3])
             return f"{y}年{m}月{d}日"
         except ValueError:
             return str(v3date)
@@ -1062,14 +1132,14 @@ def _state_change_line(verb, state):
     culture = state.get("top_culture")
     if verb == "新获":
         if culture and not state.get("empty"):
-            return f"我国新获「{name}」，该地居民以{culture}为主"
+            return f"我国新获「{name}」，该地居民以{culture}人为主"
         if culture:
-            return f"我国新获「{name}」，该地尚少人烟（本土为{culture}）"
+            return f"我国新获「{name}」，该地尚少人烟（本土为{culture}人）"
         return f"我国新获「{name}」"
     if culture and not state.get("empty"):
-        return f"我国失去「{name}」，该地原以{culture}为主"
+        return f"我国失去「{name}」，该地原以{culture}人为主"
     if culture:
-        return f"我国失去「{name}」，该地原少人烟（本土为{culture}）"
+        return f"我国失去「{name}」，该地原少人烟（本土为{culture}人）"
     return f"我国失去「{name}」"
 
 def _render_territory_change(data, history=None):
@@ -1103,7 +1173,8 @@ def _render_territory_change(data, history=None):
 def _merged_last_year_wars(data, history):
     """去年战争: 当前存档记录 + 上一年存档中仍在进行的战争(按 id 去重)。
     V3 存档的 war_manager 只保留仍在进行的战争, 去年开打但在今年存档前已
-    结束的战争会从存档消失; 上一年存档中的战争必然覆盖上一历年, 据此补回。"""
+    结束的战争会从存档消失; 上一年存档中的战争必然覆盖上一历年, 据此补回。
+    补回/已有记录中凡不在本年 war_manager 的战争, 一律按已结束处理。"""
     wars = list(data.get("last_year_wars") or [])
     seen = {w.get("id") for w in wars if w.get("id") is not None}
     if history:
@@ -1119,6 +1190,10 @@ def _merged_last_year_wars(data, history):
             wars.append(w2)
             if wid is not None:
                 seen.add(wid)
+    # 本年仍在进行的战争 = data["wars"] (war_manager 只保留进行中战争)
+    if data.get("wars") is not None:
+        ongoing = {w.get("id") for w in data["wars"] if w.get("id") is not None}
+        wars = [_mark_merged_ended(w, ongoing) for w in wars]
     wars.sort(key=lambda x: str(x.get("start_date") or ""))
     return wars
 
@@ -1137,12 +1212,26 @@ def _merged_prev_year_player_wars(data, history):
             wars.append(w)
             if wid is not None:
                 seen.add(wid)
+    if data.get("wars") is not None:
+        ongoing = {w.get("id") for w in data["wars"] if w.get("id") is not None}
+        wars = [_mark_merged_ended(w, ongoing) for w in wars]
     return wars
+
+
+def _mark_merged_ended(w, ongoing_ids):
+    """合并自上年存档的战争若已不在本年 war_manager, 标记为已结束(和约日期未知)。"""
+    wid = w.get("id")
+    if wid is not None and wid not in ongoing_ids and not w.get("ended"):
+        w2 = dict(w)
+        w2["ended"] = True
+        w2["peace_date"] = None
+        return w2
+    return w
 
 
 def _war_parties_line(participants):
     """把一场战争的参战方拼成直接句式：发起方与应战方之间用「与」连接, 同侧用顿号。
-    例如「东印度公司与卡尔萨帝国开战」「大不列颠、东印度公司与大清开战」；
+    例如「布拉克纳与大不列颠开战」；有无法判定阵营的参战方时附加「（另有…参战）」；
     无 side 数据时退化为顿号名单 + 「交战」。"""
     named = []
     for p in (participants or []):
@@ -1155,9 +1244,35 @@ def _war_parties_line(participants):
         return ""
     init = [nm for p, nm in named if p.get("side") == "initiator"]
     tgt = [nm for p, nm in named if p.get("side") == "target"]
-    if init and tgt and len(init) + len(tgt) == len(named):
-        return f"{'、'.join(init)}与{'、'.join(tgt)}开战"
+    if init and tgt:
+        core = f"{'、'.join(init)}与{'、'.join(tgt)}开战"
+        extra = [nm for p, nm in named if p.get("side") not in ("initiator", "target")]
+        if extra:
+            return f"{core}（另有{'、'.join(extra)}参战）"
+        return core
     return "、".join(nm for _, nm in named) + "交战"
+
+
+# 恶名档位: 档位名取自官方简体中文本地化 (diplomacy_l_simp_chinese.yml:
+# infamy_reputable/infamous/notorious/pariah), 阈值取自
+# common/defines/00_defines.txt (INFAMY_THRESHOLD_INFAMOUS/NOTORIOUS/PARIAH = 25/50/100)。
+# 只把档位传给模型, 不传具体数值。
+INFAMY_BANDS = (
+    (25, "声誉良好"),
+    (50, "臭名昭著"),
+    (100, "声名狼藉"),
+    (float("inf"), "国际弃民"),
+)
+
+
+def _infamy_band(infamy):
+    """恶名数值 → 官方档位名；数值缺失/非法时返回「未知」。"""
+    if not isinstance(infamy, (int, float)):
+        return "未知"
+    for threshold, name in INFAMY_BANDS:
+        if infamy < threshold:
+            return name
+    return "国际弃民"
 
 
 def render_overview(data, history=None):
@@ -1166,7 +1281,7 @@ def render_overview(data, history=None):
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
     L.append(f"【国家】{data.get('player', '未知')}  【都城】{capital}  【政体】{govt_zh}  【年份】{data.get('year', '?')}（{data.get('date', '')}）")
     L.append(f"- GDP：{data.get('gdp', '未知')}英镑；人口：{data.get('pop', '未知')}；生活水平：{data.get('sol', '未知')};识字率：{data.get('literacy', '未知')}")
-    L.append(f"- 国际声望(恶名)：{data.get('infamy', '未知')}")
+    L.append(f"- 恶名：{_infamy_band(data.get('infamy'))}")
     if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
         L.append(f"- 政治倾向：激进派占人口约{data.get('radicals_pct', '?')}%，"
                  f"效忠派占人口约{data.get('loyalists_pct', '?')}%")
@@ -1238,7 +1353,11 @@ def render_war(data, history=None):
         L.append("  (去年无相关战事记录)")
     for w in wars:
         parties = _war_parties_line(w.get('participants') or [])
-        status = f"已结束（和约 {w.get('peace_date')}）" if w.get('ended') else "仍在进行"
+        if w.get('ended'):
+            pz = w.get('peace_date')
+            status = f"已结束（和约 {pz}）" if pz and pz != "1.1.1" else "已结束"
+        else:
+            status = "仍在进行"
         start = w.get('start_date')
         line = f"- {parties}：{status}" if parties else f"- 交战方未知：{status}"
         if start:
@@ -1246,7 +1365,9 @@ def render_war(data, history=None):
         extra = []
         cas = w.get('casualties_total')
         if cas is not None:
-            extra.append(f"双方死伤{cas:.2f}万" if cas >= 10 else f"双方死伤{cas:.2f}")
+            # 存档伤亡为「千」单位 (1单位 = 1000人), 换算成实际人数后按整数传递
+            people = int(round(cas * 1000))
+            extra.append(f"双方死伤{people}人")
         cost = w.get('total_cost')
         if cost:
             extra.append(f"耗资{cost:.0f}英镑")
@@ -1254,6 +1375,16 @@ def render_war(data, history=None):
             line += "（" + "、".join(extra) + "）"
         L.append(line)
     return "\n".join(L)
+
+def _format_pact_date(sd):
+    """存档 pact 起始日期 "1847.11.5.18" → "1847年11月5日"; 异常值原样返回。"""
+    if not sd:
+        return "？"
+    s = str(sd).strip()
+    parts = s.split(".")
+    if len(parts) >= 3 and all(x.isdigit() for x in parts[:3]):
+        return f"{int(parts[0])}年{int(parts[1])}月{int(parts[2])}日"
+    return s
 
 def render_diplo(data):
     L = []
@@ -1267,41 +1398,55 @@ def render_diplo(data):
         L.append("- 本国条约：")
         for t in treaties:
             L.append(f"  - {strip_loc_formatting(t['name'])}：{strip_loc_formatting(t['first_name'])}"
-                     f"与{strip_loc_formatting(t['second_name'])}签订于{t.get('date') or '?'}")
+                     f"与{strip_loc_formatting(t['second_name'])}签订于{_format_pact_date(t.get('date'))}")
             for a in t.get("articles") or []:
                 meta = a.get("meta") or {}
-                kind = meta.get("kind")
-                if kind == "free_text":
+                if meta.get("kind") == "free_text":
                     note = meta.get("text") or a.get("detail")
                     if note:
                         L.append(f"    · 备注：{note}")
                     continue
-                if kind == "goods" and a.get("from") and a.get("to"):
-                    gz = meta.get("goods")
-                    qty = meta.get("quantity")
-                    if gz:
-                        if qty is not None:
-                            L.append(f"    · {a['from']}向{a['to']}移交{qty}单位的{gz}")
-                        else:
-                            L.append(f"    · {a['from']}向{a['to']}移交{gz}")
-                        continue
-                line = f"    · {a['zh']}"
-                if a.get('from') and a.get('to'):
-                    line += f": {a['from']}→{a['to']}"
-                if a.get('detail'):
-                    line += f" ({a['detail']})"
-                L.append(line)
+                nat = a.get("natural")
+                if nat:
+                    L.append(f"    · {nat}")
+                elif a.get("zh"):
+                    L.append(f"    · {a['zh']}")
     else:
         L.append("- 本国条约：(无数据)")
     subs = data.get("subjects") or []
     if subs:
-        L.append("- 附庸国：" + "、".join(
-            f"{strip_loc_formatting(s['name'])}({PACT_NAMES.get(s.get('type'), s.get('type'))})"
-            if isinstance(s, dict) else str(s)
-            for s in subs))
+        grouped = {}
+        for s in subs:
+            if isinstance(s, dict):
+                nm = strip_loc_formatting(s.get('name', '?'))
+                typ = s.get('type')
+            else:
+                nm, typ = str(s), None
+            grouped.setdefault(typ, []).append(nm)
+        lines = []
+        for typ in SUBJECT_DISPLAY_ORDER:
+            if typ in grouped:
+                lines.append(f"- {PACT_NAMES.get(typ, typ)}：" + "、".join(grouped.pop(typ)))
+        for typ, names in grouped.items():
+            lines.append(f"- {PACT_NAMES.get(typ, typ)}：" + "、".join(names))
+        L.extend(lines)
     else:
         L.append("- 附庸国：(无)")
-    L.append(f"- 国际声望(恶名)：{data.get('infamy', '未知')}")
+    # 其他外交行动: pacts.database 中除宿敌与附庸外的全部生效 pact
+    # (first=发起方/宗主, second=对象/附庸), 用自然语言而非箭头描述
+    other_pacts = [p for p in (data.get("pacts") or [])
+                   if p.get("action") not in SUBJECT_ACTIONS
+                   and p.get("action") != "rivalry"]
+    if other_pacts:
+        L.append("- 其他外交行动（进行中）：")
+        for p in other_pacts:
+            act = PACT_NAMES.get(p.get("action"), p.get("action"))
+            f = strip_loc_formatting(p.get("first_name") or "?")
+            s = strip_loc_formatting(p.get("second_name") or "?")
+            L.append(f"  - 自{_format_pact_date(p.get('start_date'))}起，{f}对{s}{act}")
+    else:
+        L.append("- 其他外交行动：(无)")
+    L.append(f"- 恶名：{_infamy_band(data.get('infamy'))}")
     powers = data.get("powers") or []
     if powers:
         L.append("- 世界前八强战况(外交背景)（其中标注「我国」者即本报所属国家）：")
@@ -1309,8 +1454,57 @@ def render_diplo(data):
             nm = strip_loc_formatting(p['name'])
             if p.get("is_player"):
                 nm += "（我国）"
-            L.append(f"  - {nm}：{'交战中' if p.get('war') else '和平'}")
+            if p.get("war"):
+                detail = _power_war_detail(p, data.get("wars") or [])
+                L.append(f"  - {nm}：交战中（{detail}）" if detail else f"  - {nm}：交战中")
+            else:
+                L.append(f"  - {nm}：和平")
     return "\n".join(L)
+
+
+def _power_war_detail(pw, wars):
+    """返回该列强当前交战详情（如「对手：布拉克纳」「随大不列颠参战」）。
+    依据进行中战争的参与者与外交博弈主方(initiator/target)判定阵营；
+    无法判定时优先按同场唯一列强给保守表述, 再退化为空串。"""
+    me = pw.get("definition")
+    opponents = []
+    fallback = ""
+    for w in wars:
+        if w.get("ended"):
+            continue
+        parts = [x for x in (w.get("participants") or []) if x.get("primary")]
+        mine = next((x for x in parts if x.get("definition") == me), None)
+        if mine is None:
+            continue
+        init, tgt = w.get("dp_initiator"), w.get("dp_target")
+        side = mine.get("side")
+        if side == "initiator" or mine.get("id") == init:
+            camp = "initiator"
+        elif side == "target" or mine.get("id") == tgt:
+            camp = "target"
+        else:
+            camp = None
+        if camp:
+            for x in parts:
+                if x.get("definition") == me:
+                    continue
+                if camp == "initiator" and (x.get("side") == "target" or x.get("id") == tgt):
+                    opponents.append(strip_loc_formatting(x.get("name", "?")))
+                elif camp == "target" and (x.get("side") == "initiator" or x.get("id") == init):
+                    opponents.append(strip_loc_formatting(x.get("name", "?")))
+        else:
+            # 阵营不明(如附庸随宗主参战且存档未记阵营): 同场只有一个列强时保守写「随其参战」
+            gps = [x for x in parts if x.get("rank") == "great_power"
+                   and x.get("definition") != me and x.get("side")]
+            if len(gps) == 1 and not fallback:
+                fallback = f"随{strip_loc_formatting(gps[0].get('name', '?'))}参战"
+    if opponents:
+        seen = []
+        for n in opponents:
+            if n not in seen:
+                seen.append(n)
+        return "对手：" + "、".join(seen)
+    return fallback
 
 def _yoy_pct(prev, cur):
     """同比变化率 (%), 上年数据缺失或为 0 时返回 None。"""
@@ -1324,6 +1518,30 @@ def _yoy_pct(prev, cur):
     if prev == 0:
         return None
     return (cur - prev) / prev * 100
+
+
+def _yoy_delta(prev, cur):
+    """同比绝对差值 (生活水平/识字率等使用), 数据缺失或非法时返回 None。"""
+    if prev is None or cur is None:
+        return None
+    try:
+        prev = float(prev)
+        cur = float(cur)
+    except (TypeError, ValueError):
+        return None
+    return cur - prev
+
+
+def _pct_value(v):
+    """把 '18.79%' / '18.79' / 18.79 统一解析成数值; 不可解析返回 None。"""
+    if v is None:
+        return None
+    if isinstance(v, str):
+        v = v.strip().rstrip("%").strip()
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 def render_econ(data, history=None):
     L = []
@@ -1340,23 +1558,44 @@ def render_econ(data, history=None):
     if pop_pct is not None:
         pop_line += f"（比去年同期{'增长' if pop_pct >= 0 else '减少'}{abs(pop_pct):.1f}%）"
     L.append(pop_line)
-    L.append(f"- 平均生活水平：{data.get('sol', '未知')}")
-    L.append(f"  - {SOL_GUIDE}")
+    sol = data.get('sol', '未知')
+    band = sol_band(sol)
+    sol_line = f"- 平均生活水平：{sol}" + (f"（{band}）" if band else "")
+    sol_delta = _yoy_delta(prev.get("sol"), sol if isinstance(sol, (int, float)) else None)
+    if sol_delta is not None:
+        if abs(sol_delta) < 1e-9:
+            tail = "与去年同期持平"
+        else:
+            tail = f"比去年同期{'提高' if sol_delta > 0 else '下降'}{abs(sol_delta):.2f}"
+        if band:
+            sol_line = sol_line[:-1] + f"，{tail}）"
+        else:
+            sol_line += f"（{tail}）"
+    L.append(sol_line)
     if data.get("sol_below"):
         L.append("  - 注：当前生活水平**低于民众预期**，民生怨望上升")
-    L.append(f"- 识字率：{data.get('literacy', '未知')}")
+    lit_line = f"- 识字率：{data.get('literacy', '未知')}"
+    lit_delta = _yoy_delta(_pct_value(prev.get("literacy")),
+                           _pct_value(data.get("literacy")))
+    if lit_delta is not None:
+        if abs(lit_delta) < 1e-9:
+            tail = "与去年同期持平"
+        else:
+            tail = f"比去年同期{'提高' if lit_delta > 0 else '下降'}{abs(lit_delta):.2f}个百分点"
+        lit_line += f"（{tail}）"
+    L.append(lit_line)
     return "\n".join(L)
 
 def render_politics(data, history=None):
     L = []
     L.append(f"- 政体：{GOVT_NAMES.get(data.get('govt', ''), data.get('govt', '未知'))}")
-    ruler = _ruler_name(data)
-    extra = "，".join(x for x in (data.get("ruler_title"),
-                                  data.get("ruler_ideology"),
-                                  data.get("ruler_status")) if x)
-    if ruler and extra:
-        ruler += f"（{extra}）"
-    if not ruler:
+    ruler = _leader_bg_phrase(data.get("ruler_home_region"), data.get("ruler_religion"),
+                              data.get("ruler_culture"), data) + _ruler_name_title(data)
+    if ruler:
+        ideology = data.get("ruler_ideology")
+        if ideology:
+            ruler += f" - {ideology}"
+    else:
         ruler = '（未知，当前年度统治者）'
     L.append(f"- 统治者：{ruler}")
     ruler_act = data.get("ruler_activity")
@@ -1373,12 +1612,17 @@ def render_politics(data, history=None):
             cl = g.get('clout_pct')
             cl_s = f"约{cl:.1f}%" if isinstance(cl, (int, float)) else "占比未知"
             gov = "，执政" if g.get("in_government") else ""
+            band = ""
+            if g.get("approval_band"):
+                band = f"，当前状态：{g['approval_band']}"
             lead = ""
             if g.get("leader_name"):
-                lead = f"，首领：{g['leader_name']}"
+                bg = _leader_bg_phrase(g.get("leader_home_region"), g.get("leader_religion"),
+                                       g.get("leader_culture"), data)
+                lead = f"，首领：{bg}{g['leader_name']}"
                 if g.get("leader_ideology"):
-                    lead += f"（{g['leader_ideology']}）"
-            L.append(f"  - {nm}（{cl_s}{gov}{lead}）")
+                    lead += f"，意识形态：{g['leader_ideology']}"
+            L.append(f"  - {nm}（{cl_s}{gov}{lead}{band}）")
         ruling = [g for g in igs if g.get("in_government")]
         if ruling:
             L.append("- 当前执政利益集团：" + "、".join(
@@ -1391,23 +1635,29 @@ def render_politics(data, history=None):
         extra.sort(key=lambda mv: -(mv.get("radicalism") or 0))
         shown = list(mvs[:3]) + extra
         if extra:
-            L.append("- 政治运动（支持度前三，另列出已达抗议/武斗档的运动）：")
+            L.append("- 政治运动（支持度前三，另列出开始抗议和暴力冲突的运动）：")
         else:
             L.append("- 政治运动（支持度前三）：")
         for mv in shown:
             nm = mv.get("name") or mv.get("type") or "未知运动"
-            line = f"  - {nm}"
             if mv.get("ideology"):
-                line += f"（核心意识形态：{mv['ideology']}）"
+                nm = f"由{mv['ideology']}发起的{nm}"
             bits = []
             if isinstance(mv.get("support_pct"), (int, float)):
                 bits.append(f"支持度约{mv['support_pct']:.1f}%")
             if mv.get("supporters"):
                 bits.append(f"支持者约{mv['supporters'] / 10000:.1f}万人")
-            if mv.get("activism") and mv["activism"] != "消极":
-                bits.append(f"活跃度：{mv['activism']}")
+            tier = mv.get("activism") or "消极"
+            if tier == "武斗":
+                line = f"  - {nm}引发了街头暴力冲突"
+            elif tier == "抗议":
+                line = f"  - {nm}引发了街头抗议"
+            elif tier == "不满":
+                line = f"  - {nm}引发了部分群众不满"
+            else:
+                line = f"  - {nm}"
             if bits:
-                line += "：" + "，".join(bits)
+                line += ("：" if tier == "消极" else "，") + "，".join(bits)
             cw = mv.get("civil_war")
             rad = mv.get("radicalism")
             if cw and isinstance(rad, (int, float)) and rad >= 0.5:
@@ -1449,6 +1699,14 @@ def render_politics(data, history=None):
                 L.append("- 本年度废除法律：" + "、".join(law_zh(l) for l in removed))
             if not added and not removed:
                 L.append("- 法律：与上年无异")
+    for lp in (data.get("laws_in_progress") or []):
+        law_nm = law_zh(lp.get("law"))
+        phase = lp.get("phase_zh") or f"阶段{lp.get('phase')}"
+        sub = _v3_date_zh(lp.get("start_date"))
+        rep = lp.get("replace_law")
+        rep_s = f"以替代「{law_zh(rep)}」" if rep else ""
+        L.append(f"- 立法进行中：当前「{law_nm}」法案处于「{phase}」阶段，"
+                 f"该法案于{sub}提交{rep_s}")
     return "\n".join(L)
 
 def render_society(data):
@@ -1465,15 +1723,20 @@ def render_society(data):
                   for p in prim]
     prim_names = [n for n in prim_names if n]
     if prim_names:
-        L.append("- 主流文化（国族/主体文化）：" + "、".join(prim_names))
-    cultures = data.get("pop_cultures") or data.get("cultures") or []
+        L.append("- 主流文化（国族/主体文化）：" + "、".join(f"{n}人" for n in prim_names))
+    cultures = [c for c in (data.get("pop_cultures") or data.get("cultures") or [])
+                if isinstance(c, dict)]
     weight = {"majority": 3, "large": 2, "notable": 1, "minor": 0}
     if cultures:
-        names = []
+        L.append("- 主要民族(按人口占比取前三)：")
         for c in sorted(cultures, key=lambda x: -(x.get('count') or 0) if x.get('count') else int(str(x.get('rank', 9))))[:3]:
-            nm = c.get('name', '') or f"（第{c.get('rank','?')}大族，请据国名常识补填）"
-            names.append(nm)
-        L.append(f"- 主要民族：{'、'.join(names)}")
+            raw_nm = c.get('name', '') or f"（第{c.get('rank','?')}大族，请据国名常识补填）"
+            nm = f"{raw_nm}人" if c.get('name') else raw_nm
+            if c.get('pct') is not None:
+                sh = f"占人口{c['pct']:.1f}%"
+            else:
+                sh = SHARE_NAMES.get(c.get('share'), c.get('share')) if c.get('share') else '(占比数据缺)'
+            L.append(f"  - {nm}（{sh}）")
     else:
         L.append("- 民族构成：(无数据)")
     religions = data.get("pop_religions") or data.get("religions") or []
@@ -1546,10 +1809,11 @@ def _render_vital_stats(obj):
                  f"劳动条件极为恶劣，壮年男子死伤甚多，死亡率较该州其他人群高约{hx:.0f}%")
     pol = obj.get("pollution_pct")
     if isinstance(pol, (int, float)) and pol > 0:
-        L.append(f"- 污染影响：约{pol:.1f}%（{_pollution_band(pol)}）")
+        # 只传档位, 不传具体百分比 (模型对原始数值不敏感)
+        L.append(f"- 污染影响：{_pollution_band(pol)}")
     dev = obj.get("devastation")
     if isinstance(dev, (int, float)) and dev > 0:
-        L.append(f"- 荒废度：约{dev:.0f}点（{_devastation_band(dev)}）")
+        L.append(f"- 荒废度：{_devastation_band(dev)}")
     # 卫生/教育机构只对完全并入本土的州生效: 殖民地与合并中州不展示法律与机构
     if incorp is None or incorp < 1:
         if incorp is None or incorp <= 0:
@@ -1574,10 +1838,11 @@ def _render_vital_stats(obj):
     return L
 
 
-def _render_pop_politics(obj):
+def _render_pop_politics(obj, data=None):
     """政治倾向（激进/效忠派占该人群百分比）与该人群参与比例最高的两个政治运动。
     存档口径: loyalists_and_radicals 为每 10 万人净值,
-    效忠人数 = max(0,净值)×10万, 激进人数 = max(0,-净值)×10万。"""
+    效忠人数 = max(0,净值)×10万, 激进人数 = max(0,-净值)×10万。
+    人群参与的运动按其全国档位以自然语态表述: 抗议=街头示威, 武斗=暴力冲突。"""
     L = []
     lr = obj.get("loyalists_and_radicals")
     lp = obj.get("loyalists_pct")
@@ -1588,12 +1853,51 @@ def _render_pop_politics(obj):
         L.append(f"- 政治倾向：激进派占该人群约{rp:.1f}%")
     elif lr is not None:
         L.append("- 政治倾向：无明显效忠/激进倾向")
-    items = [(m.get("name", "未知运动"), m.get("pct"))
+    items = [(m.get("id"), m.get("name", "未知运动"), m.get("pct"))
              for m in (obj.get("political_movements") or [])[:2]
              if isinstance(m.get("pct"), (int, float))]
     if items:
-        segs = [f"{pct:.1f}%参加{name}" for name, pct in items]
+        mov_tiers = {}
+        for m in (data or {}).get("political_movements") or []:
+            if isinstance(m, dict) and m.get("id") is not None:
+                mov_tiers[m["id"]] = m.get("activism") or "消极"
+        segs = []
+        for mid, name, pct in items:
+            tier = mov_tiers.get(mid, "消极")
+            if tier == "武斗":
+                segs.append(f"{pct:.1f}%参加了{name}的暴力冲突")
+            elif tier == "抗议":
+                segs.append(f"{pct:.1f}%参加了{name}的街头示威")
+            else:
+                segs.append(f"{pct:.1f}%参加{name}")
         L.append("- 政治运动：人群中" + "，".join(segs))
+    return L
+
+
+def _render_pop_igs(obj):
+    """该 POP 的政治阵营: 吸引力前三的利益集团 (占劳动力比例) + 无政治阵营。
+    兼容旧存档数据 (仅单一 interest_group 字段)。"""
+    L = []
+    igs = obj.get("interest_groups") or []
+    if igs:
+        segs = []
+        for g in igs[:3]:
+            nm = IG_NAMES.get(g.get("name"), g.get("name")) if isinstance(g, dict) else str(g)
+            pct = g.get("pct_of_workforce") if isinstance(g, dict) else None
+            segs.append(f"{nm}（{pct:.0f}%）" if isinstance(pct, (int, float)) else nm)
+        line = "- 政治阵营：该人群前三利益集团为" + "、".join(segs)
+        una = obj.get("unaffiliated_pct")
+        if isinstance(una, (int, float)):
+            line += f"，其余约{una:.0f}%为无政治阵营"
+        L.append(line)
+    elif obj.get("interest_group"):
+        ig = obj.get("interest_group")
+        ig_zh = IG_NAMES.get(ig.get("name"), ig.get("name")) if isinstance(ig, dict) else str(ig)
+        ig_line = f"- 利益集团（政治倾向占比最高）：{ig_zh}"
+        share_pct = ig.get("share_pct") if isinstance(ig, dict) else None
+        if isinstance(share_pct, (int, float)):
+            ig_line += f"（占该群体政治倾向约{share_pct:.1f}%）"
+        L.append(ig_line)
     return L
 
 
@@ -1608,10 +1912,11 @@ def render_family(data):
     culture = fi.get("culture") or "（族属数据缺）"
     rel_zh = RELIGION_NAMES.get(fi.get("religion"), fi.get("religion") or "（信仰数据缺）")
     hub = fi.get("hub_name")
-    loc = f"{hub}（{region}）" if hub else region
-    L.append(f"- 采访对象：{loc}的一户{culture}{rel_zh}{pop_zh}家庭")
+    div = _division_label(data.get("govt_key"))
+    loc = f"{region}{div}{hub}" if div and hub else (f"{hub}（{region}）" if hub else region)
+    L.append(f"- 采访对象：{loc}的一户{culture}人{rel_zh}{pop_zh}家庭")
     if fi.get("ruler_visited"):
-        who = (data.get("ruler_title") or "") + (data.get("ruler") or "")
+        who = _ruler_name_title(data)
         if who:
             L.append(f"- 统治者走访：{who}近日曾走访本州（详见政界动态「本期统治者活动」），"
                      f"受访者对此记忆犹新，可在访谈中自然提及")
@@ -1619,9 +1924,9 @@ def render_family(data):
     homeland = fi.get("is_homeland")
     if homeland is not None:
         if homeland:
-            L.append(f"- 本土归属：此地（{region}）是{culture}的本土故土，世代居住")
+            L.append(f"- 本土归属：{culture}人世代居住于{region}")
         else:
-            L.append(f"- 本土归属：此地（{region}）并非{culture}的本土，系外来/迁徙定居")
+            L.append(f"- 本土归属：{region}并非{culture}人的本土，系外来/迁徙定居")
     # 行政地位: 合并州 = 本土, 未合并 = 殖民地/边疆 (存档 incorporation 进度 0~1)
     incorp = fi.get("incorporation")
     if incorp is not None:
@@ -1667,23 +1972,16 @@ def render_family(data):
         L.append(f"- 工作场所：{fi.get('workplace')}")
     engel = fi.get("engel_coefficient")
     if engel is not None:
-        L.append(f"- 恩格尔系数（按需求权重估算）：约{engel}%"
-                 f"（食品与基本糊口需求占需求结构比重；>60%≈赤贫，50~60%≈温饱，"
-                 f"40~50%≈小康，<40%≈宽裕）")
+        band = engel_band(engel)
+        L.append(f"- 恩格尔系数：约{engel}%"
+                 + (f"（{band}）" if band else ""))
     literacy = fi.get("literacy_pct")
     if literacy is not None:
         L.append(f"- 识字率：约{literacy:.2f}%（该POP识字人口占比）")
     acc_status = fi.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
-    ig = fi.get("interest_group")
-    if ig:
-        ig_zh = IG_NAMES.get(ig.get("name"), ig.get("name")) if isinstance(ig, dict) else str(ig)
-        ig_line = f"- 利益集团（政治倾向占比最高）：{ig_zh}"
-        share_pct = ig.get("share_pct") if isinstance(ig, dict) else None
-        if isinstance(share_pct, (int, float)):
-            ig_line += f"（占该群体政治倾向约{share_pct:.1f}%）"
-        L.append(ig_line)
+    L.extend(_render_pop_igs(fi))
     job_sat = fi.get("job_satisfaction")
     if job_sat is not None:
         mood = "满意" if job_sat > 0 else ("不满" if job_sat < 0 else "一般")
@@ -1713,7 +2011,7 @@ def render_family(data):
         L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
                  f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
                  if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
-    L.extend(_render_pop_politics(fi))
+    L.extend(_render_pop_politics(fi, data))
     fs = fi.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
@@ -1732,26 +2030,29 @@ def render_peer(data):
     culture = peer.get("culture") or "（族属数据缺）"
     rel_zh = RELIGION_NAMES.get(peer.get("religion"), peer.get("religion") or "（信仰数据缺）")
     hub = peer.get("hub_name")
-    loc = f"{hub}（{region}）" if hub else region
+    div = _division_label(data.get("govt_key"))
+    loc = f"{region}{div}{hub}" if div and hub else (f"{hub}（{region}）" if hub else region)
     sol = peer.get("sol")
-    sol_guide = SOL_GUIDE if isinstance(sol, (int, float)) else ""
-    L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}{rel_zh}{pop_zh}"
-             f"【生活水平约{sol}，{sol_guide}】" if isinstance(sol, (int, float))
-             else f"- 追踪对象：{loc}中生活水平最高的一群{culture}{rel_zh}{pop_zh}")
+    if isinstance(sol, (int, float)):
+        band = sol_band(sol)
+        sol_txt = f"【生活水平约{sol}" + (f"（{band}）" if band else "") + "】"
+        L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}{sol_txt}")
+    else:
+        L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
     # 与民生访谈的关联: 同建筑或同州对照
     fi = data.get("family_interview")
     if fi:
         fi_zh = POP_TYPE_NAMES.get(fi.get("pop_type"), fi.get("pop_type") or "平民")
         if peer.get("workplace_id") is not None and fi.get("workplace_id") == peer.get("workplace_id"):
-            L.append(f"- 对照关系：与《民生访谈》的{fi_zh}家庭同在一处谋生（同一工作场所）")
+            L.append(f"- 对照关系：与《民生访谈》的{fi_zh}家庭同在一处谋生")
         else:
-            L.append(f"- 对照关系：与《民生访谈》的{fi_zh}家庭同处{region}一地（本州之内）")
+            L.append(f"- 对照关系：与《民生访谈》的{fi_zh}家庭同处{region}一地")
     homeland = peer.get("is_homeland")
     if homeland is not None:
         if homeland:
-            L.append(f"- 本土归属：此地（{region}）是{culture}的本土故土，世代居住")
+            L.append(f"- 本土归属：{culture}人世代居住于{region}")
         else:
-            L.append(f"- 本土归属：此地（{region}）并非{culture}的本土，系外来/迁徙定居")
+            L.append(f"- 本土归属：{region}并非{culture}人的本土，系外来/迁徙定居")
     incorp = peer.get("incorporation")
     if incorp is not None:
         if isinstance(incorp, (int, float)):
@@ -1794,23 +2095,16 @@ def render_peer(data):
         L.append(f"- 工作场所：{peer.get('workplace')}")
     engel = peer.get("engel_coefficient")
     if engel is not None:
-        L.append(f"- 恩格尔系数（按需求权重估算）：约{engel}%"
-                 f"（食品与基本糊口需求占需求结构比重；>60%≈赤贫，50~60%≈温饱，"
-                 f"40~50%≈小康，<40%≈宽裕）")
+        band = engel_band(engel)
+        L.append(f"- 恩格尔系数：约{engel}%"
+                 + (f"（{band}）" if band else ""))
     literacy = peer.get("literacy_pct")
     if literacy is not None:
         L.append(f"- 识字率：约{literacy:.2f}%（该POP识字人口占比）")
     acc_status = peer.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
-    ig = peer.get("interest_group")
-    if ig:
-        ig_zh = IG_NAMES.get(ig.get("name"), ig.get("name")) if isinstance(ig, dict) else str(ig)
-        ig_line = f"- 利益集团（政治倾向占比最高）：{ig_zh}"
-        share_pct = ig.get("share_pct") if isinstance(ig, dict) else None
-        if isinstance(share_pct, (int, float)):
-            ig_line += f"（占该群体政治倾向约{share_pct:.1f}%）"
-        L.append(ig_line)
+    L.extend(_render_pop_igs(peer))
     job_sat = peer.get("job_satisfaction")
     if job_sat is not None:
         mood = "满意" if job_sat > 0 else ("不满" if job_sat < 0 else "一般")
@@ -1840,7 +2134,7 @@ def render_peer(data):
         L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
                  f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
                  if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
-    L.extend(_render_pop_politics(peer))
+    L.extend(_render_pop_politics(peer, data))
     fs = peer.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
@@ -1859,17 +2153,18 @@ def render_unemployed(data):
     culture = uni.get("culture") or "（族属数据缺）"
     rel_zh = RELIGION_NAMES.get(uni.get("religion"), uni.get("religion") or "（信仰数据缺）")
     hub = uni.get("hub_name")
-    loc = f"{hub}（{region}）" if hub else region
+    div = _division_label(data.get("govt_key"))
+    loc = f"{region}{div}{hub}" if div and hub else (f"{hub}（{region}）" if hub else region)
     rate = uni.get("unemployment_rate_pct")
     rate_s = f"约{rate:.1f}%" if isinstance(rate, (int, float)) else "（数据缺）"
-    L.append(f"- 追踪对象：{loc}的一群失业的{culture}{rel_zh}{pop_zh}")
+    L.append(f"- 追踪对象：{loc}的一群失业的{culture}人{rel_zh}{pop_zh}")
     L.append(f"- 该州失业率（失业人口/该州总人口）：{rate_s}")
     homeland = uni.get("is_homeland")
     if homeland is not None:
         if homeland:
-            L.append(f"- 本土归属：此地（{region}）是{culture}的本土故土，世代居住")
+            L.append(f"- 本土归属：{culture}人世代居住于{region}")
         else:
-            L.append(f"- 本土归属：此地（{region}）并非{culture}的本土，系外来/迁徙定居")
+            L.append(f"- 本土归属：{region}并非{culture}人的本土，系外来/迁徙定居")
     incorp = uni.get("incorporation")
     if incorp is not None:
         if isinstance(incorp, (int, float)):
@@ -1912,23 +2207,16 @@ def render_unemployed(data):
         L.append(f"- 工作场所：{uni.get('workplace')}")
     engel = uni.get("engel_coefficient")
     if engel is not None:
-        L.append(f"- 恩格尔系数（按需求权重估算）：约{engel}%"
-                 f"（食品与基本糊口需求占需求结构比重；>60%≈赤贫，50~60%≈温饱，"
-                 f"40~50%≈小康，<40%≈宽裕）")
+        band = engel_band(engel)
+        L.append(f"- 恩格尔系数：约{engel}%"
+                 + (f"（{band}）" if band else ""))
     literacy = uni.get("literacy_pct")
     if literacy is not None:
         L.append(f"- 识字率：约{literacy:.2f}%（该POP识字人口占比）")
     acc_status = uni.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
-    ig = uni.get("interest_group")
-    if ig:
-        ig_zh = IG_NAMES.get(ig.get("name"), ig.get("name")) if isinstance(ig, dict) else str(ig)
-        ig_line = f"- 利益集团（政治倾向占比最高）：{ig_zh}"
-        share_pct = ig.get("share_pct") if isinstance(ig, dict) else None
-        if isinstance(share_pct, (int, float)):
-            ig_line += f"（占该群体政治倾向约{share_pct:.1f}%）"
-        L.append(ig_line)
+    L.extend(_render_pop_igs(uni))
     job_sat = uni.get("job_satisfaction")
     if job_sat is not None:
         mood = "满意" if job_sat > 0 else ("不满" if job_sat < 0 else "一般")
@@ -1958,7 +2246,7 @@ def render_unemployed(data):
         L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
                  f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
                  if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
-    L.extend(_render_pop_politics(uni))
+    L.extend(_render_pop_politics(uni, data))
     fs = uni.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
@@ -2002,7 +2290,7 @@ def _top_culture_name(cs):
             r = 99
         return (1, r, nm)
 
-    return sorted(items, key=key)[0][0]
+    return sorted(items, key=key)[0][0] + "人"
 
 
 def _top_religion_name(rs):
@@ -2037,7 +2325,8 @@ def render_history_table(data, history=None, include_flavor=True):
             L.append(pf)
     L.append("| 年份 | GDP | 人口 | 生活水平 | 识字率 | 激进派% | 效忠派% | 第一大族 | 第一大教 |")
     L.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
-    rows = (history or []) + [data]
+    # 当年 + 前 9 年, 共 10 行; 传入更长历史时也只取最近 9 年
+    rows = ((history or [])[-9:]) + [data]
     for h in rows:
         cs = h.get("pop_cultures") or h.get("cultures") or []
         rs = h.get("pop_religions") or h.get("religions") or []
@@ -2139,6 +2428,14 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     country = data.get("player", "未知")
     capital = data.get("capital", "未知")
     req = spec[2]
+    # 采访板块: 受访人群不参与任何政治运动时, 只要求体现政治倾向,
+    # 不要求「参与比例最高的两个政治运动」, 避免模型无数据可写时编造「数据缺失」。
+    if key in ("family", "peer", "unemployed"):
+        iv_key = {"family": "family_interview", "peer": "top_sol_peer",
+                  "unemployed": "unemployed_interview"}[key]
+        iv = data.get(iv_key)
+        if isinstance(iv, dict) and not (iv.get("political_movements") or []):
+            req = req.replace("与参与比例最高的两个政治运动", "")
     if key == "econ":
         econ_guide = st.get("econ_guide")
         if econ_guide:
@@ -2148,8 +2445,6 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
         if ads_guide:
             req = f"{req}\n{ads_guide}"
     parts = [st["voice"], FACT_GUIDE]
-    if has_escalated_movement(data):
-        parts.append(MOVEMENT_ESCALATION_GUIDE)
     num_guide = st.get("number_guide")
     if num_guide:
         parts.append(f"数字格式要求：{num_guide}")

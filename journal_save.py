@@ -437,6 +437,10 @@ def snapshot_from_country(country, meta):
     snap["capital_id"] = country.get("capital")
     snap["religion"] = country.get("religion")
     snap["country_type"] = country.get("country_type")
+    infamy = country.get("infamy")
+    # V3 存档省略值为 0 的字段: 恶名为 0 时 country 对象没有 infamy 键,
+    # 缺省按 0 处理, 避免渲染层收到 None
+    snap["infamy"] = round(infamy, 1) if isinstance(infamy, (int, float)) else 0.0
     # 精确数值: gdp/prestige/literacy/avgsoltrend 是时序, 取最后值
     for key, field in [("gdp", "gdp"), ("prestige", "prestige"),
                        ("literacy", "literacy"), ("sol", "avgsoltrend")]:
@@ -1054,8 +1058,10 @@ _WORKING_CONDITIONS_MORT = {
 
 BUILDINGS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\buildings"
 PRODUCTION_METHODS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\production_methods"
+LAWS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\laws"
 
 _BG_CACHE = None
+_LAW_GROUP_CACHE = None
 _PM_MORT_CACHE = None
 
 
@@ -1097,6 +1103,27 @@ def _load_building_groups():
                     if m:
                         _BG_CACHE[name] = m.group(1).decode()
     return _BG_CACHE
+
+
+def _load_law_groups():
+    """法律 → 法律组 (lawgroup_*) 映射, 读取 game/common/laws/*.txt。
+    用于推断进行中的法律将替代同组的哪条现行法。"""
+    global _LAW_GROUP_CACHE
+    if _LAW_GROUP_CACHE is None:
+        _LAW_GROUP_CACHE = {}
+        if os.path.isdir(LAWS_DIR):
+            for fn in os.listdir(LAWS_DIR):
+                if not fn.endswith(".txt"):
+                    continue
+                with open(os.path.join(LAWS_DIR, fn), "rb") as f:
+                    text = f.read()
+                for name, block in _clausewitz_blocks(text):
+                    if not name.startswith("law_"):
+                        continue
+                    m = re.search(rb'group\s*=\s*"?([a-z0-9_]+)"?', block)
+                    if m:
+                        _LAW_GROUP_CACHE[name] = m.group(1).decode()
+    return _LAW_GROUP_CACHE
 
 
 def _load_pm_mortality():
@@ -1582,7 +1609,8 @@ def _localize_character_name(first, last, loc):
     return " ".join(p for p in parts if p)
 
 def _player_characters(data, country_id):
-    """character_manager.database 该国角色 → {id: {"name"(中文), "ideology", "template"}}。"""
+    """character_manager.database 该国角色 → {id: {"name"(中文), "ideology", "template",
+    "culture"(中文), "religion"(中文), "home_region"(中文), 及对应原始 key/id}}。"""
     chars = {}
     if not country_id:
         return chars
@@ -1613,9 +1641,20 @@ def _player_characters(data, country_id):
         if isinstance(obj, dict) and obj.get("country") == country_id:
             nm = _localize_character_name(str(obj.get("first_name") or ""),
                                           str(obj.get("last_name") or ""), loc)
-            chars[int(m.group(1))] = {"name": nm or None,
-                                      "ideology": obj.get("ideology"),
-                                      "template": obj.get("template")}
+            culture = obj.get("culture")
+            religion = obj.get("religion")
+            home_region = obj.get("home_region")
+            chars[int(m.group(1))] = {
+                "name": nm or None,
+                "ideology": obj.get("ideology"),
+                "template": obj.get("template"),
+                "culture_id": culture,
+                "culture": culture_id_to_name(culture) if isinstance(culture, int) else None,
+                "religion_key": religion,
+                "religion": _clean_loc_name(loc.get(religion, religion), loc) if religion else None,
+                "home_region_key": home_region,
+                "home_region": _clean_loc_name(loc.get(home_region, home_region), loc) if home_region else None,
+            }
         j = end
     return chars
 
@@ -1748,7 +1787,8 @@ def _ruler_title(gov_key, is_female=False):
 
 
 def _ruler_info(data, country_id, ruler_id, gov_key, chars=None):
-    """用与利益集团首领相同的方式解析统治者: 姓名 / 意识形态 / 在位状态 / 头衔。
+    """用与利益集团首领相同的方式解析统治者: 姓名 / 意识形态 / 在位状态 / 头衔,
+    以及文化 / 宗教 / 家乡(均中文, 供政界动态按非主流背景介绍)。
     头衔由政体键决定; 性别仅对历史角色模板可判 (存档无性别字段, 随机角色默认男性)。"""
     if ruler_id is None:
         return None
@@ -1767,6 +1807,9 @@ def _ruler_info(data, country_id, ruler_id, gov_key, chars=None):
         "status": "在位",
         "title": title,
         "is_female": is_female,
+        "culture": ch.get("culture"),
+        "religion": ch.get("religion"),
+        "home_region": ch.get("home_region"),
     }
 
 def _iter_pops_in_states(data, state_ids):
@@ -2059,20 +2102,35 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
     # 社会地位(Acceptance)与职业满意度：存档可见时一并带出
     acc = pop.get("acceptance_data") or {}
     job_sat = pop.get("job_satisfaction")
-    # 利益集团：取该 POP 支持度占比最高的一个
+    # 利益集团：存档的 interest_group_support_array 存的是每 10 万人的支持人数,
+    # 一个 POP 的政治倾向按吸引力分散在多个 IG 上 (其余为无政治阵营)。
+    # 取吸引力前三的 IG, 并算出无政治阵营人数 = 劳动力 - 全部 IG 支持人数。
     ig_support = (pop.get("interest_group_support_data") or {}).get("interest_group_support_array") or []
+    ig_items = []
+    if isinstance(ig_support, list) and len(ig_support) >= 2:
+        for d in ig_support[1:]:
+            if not isinstance(d, dict):
+                continue
+            for k, v in d.items():
+                if isinstance(k, str) and k.isdigit() and isinstance(v, (int, float)) and v > 0:
+                    ig_items.append((int(k), v))
+    ig_items.sort(key=lambda kv: -kv[1])
+    wf_i = int(round(wf))
+    top_igs = []
+    for idx, val in ig_items[:3]:
+        name = (ig_slots or {}).get(idx)
+        if name:
+            n = round(val * 100000)
+            top_igs.append({"name": name, "supporters": n,
+                            "pct_of_workforce": round(n / wf_i * 100, 1) if wf_i else None})
+    ig_aligned = sum(round(v * 100000) for _, v in ig_items)
+    unaff = max(0, wf_i - ig_aligned) if wf_i else None
+    # 兼容旧字段: interest_group 仍为吸引力最高者 (share_pct 为其占全部 IG 支持的比例)
     top_ig = None
-    if (isinstance(ig_support, list) and len(ig_support) >= 2
-            and isinstance(ig_support[1], dict) and ig_support[1]):
-        items = [(int(k), v) for k, v in ig_support[1].items()
-                 if isinstance(k, str) and k.isdigit() and isinstance(v, (int, float))]
-        if items:
-            idx, val = max(items, key=lambda kv: kv[1])
-            name = (ig_slots or {}).get(idx)
-            if name:
-                ig_total = sum(v for _, v in items) or 0
-                share_pct = round(val / ig_total * 100, 1) if ig_total else None
-                top_ig = {"name": name, "share_pct": share_pct}
+    if top_igs:
+        top_ig = {"name": top_igs[0]["name"],
+                  "share_pct": round(top_igs[0]["supporters"] / ig_aligned * 100, 1)
+                  if ig_aligned else None}
     # 工作建筑：POP 有 workplace 时按建筑id查类型并本地化；无 workplace 视为失业
     wp_id = pop.get("workplace")
     btype = (building_map or {}).get(wp_id)
@@ -2116,6 +2174,9 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "literacy_pct": literacy,
         "acceptance_status": acc.get("acceptance_status"),
         "interest_group": top_ig,
+        "interest_groups": top_igs,
+        "politically_unaffiliated": unaff,
+        "unaffiliated_pct": round(unaff / wf_i * 100, 1) if wf_i and unaff is not None else None,
         "job_satisfaction": round(job_sat, 2) if isinstance(job_sat, (int, float)) else None,
         "workplace": workplace,
         "unemployed": unemployed,
@@ -2593,7 +2654,8 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
     """解析 war_manager.database 中的战争, 只保留玩家或列强参与的。
     伤亡/花费从关联的 diplomatic_play 对象读取(war.diplomatic_play → dp)。
     返回 [{start_date, peace_date, participants:[{id,definition,name,side,rank}],
-           casualties, casualties_total, total_cost, ended, player_involved}]"""
+           casualties, casualties_total, total_cost, ended, player_involved,
+           dp_initiator, dp_target}]"""
     if index is None or gp_ids is None or dp_index is None:
         index, gp_ids, dp_index = _build_indexes(data)
     wars = []
@@ -2628,13 +2690,16 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
         dp = dp_index.get(dp_id) if dp_id is not None else None
         side_by_cid = {}
         primary_ids = set()
+        dp_initiator = None
+        dp_target = None
         if player_id is not None:
             primary_ids.add(player_id)
         if dp:
             side_by_cid = {r.get("country"): r.get("side", "")
                            for r in dp.get("country_records") or [] if isinstance(r, dict)}
-            for k in ("initiator", "target"):
-                v = dp.get(k)
+            dp_initiator = dp.get("initiator")
+            dp_target = dp.get("target")
+            for v in (dp_initiator, dp_target):
                 if isinstance(v, int):
                     primary_ids.add(v)
         parts = []
@@ -2645,10 +2710,17 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
                 tag = entry.get("definition")
                 ws = p.get("war_support")
                 is_gp = cid in gp_ids
+                side = side_by_cid.get(cid, p.get("side", ""))
+                # 外交博弈主方不在 country_records 时, 用 dp 的 initiator/target 补全阵营
+                if not side:
+                    if cid == dp_initiator:
+                        side = "initiator"
+                    elif cid == dp_target:
+                        side = "target"
                 parts.append({
                     "id": cid, "definition": tag,
                     "name": names.get(tag, tag) if tag else str(cid),
-                    "side": side_by_cid.get(cid, p.get("side", "")),
+                    "side": side,
                     "rank": "great_power" if is_gp else "minor_power",
                     "prestige": entry.get("prestige"),
                     "war_support": round(ws, 1) if isinstance(ws, (int, float)) else None,
@@ -2673,6 +2745,8 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
             "casualties_total": round(sum(cas_by_cid.values()), 3) if cas_by_cid else None,
             "total_cost": total_cost,
             "participants": parts,
+            "dp_initiator": dp_initiator,
+            "dp_target": dp_target,
         })
         j = end
     return wars
@@ -2735,7 +2809,9 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
     """存档层落盘: 生成本年快照时, 把上一年存档中仍在进行的战争并入
     last_year_wars / prev_year_wars, 补回 V3 war_manager 只保留进行中战争
     而丢失的「去年战争」。仅并入报告字段, 不改 wars, 避免影响基于进行中
-    战争的列强交战状态等判定。"""
+    战争的列强交战状态等判定。
+    上一年存档中仍在进行的战争若已不在本年 war_manager, 说明在本年初已结束,
+    并入时标记 ended=True (和约日期未知), 避免战事专电误报「仍在进行」。"""
     year = snap.get("year")
     if not year:
         return
@@ -2757,6 +2833,17 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
             break
     if not prev_wars:
         return
+    # 本年仍在进行的战争 (war_manager 只保留进行中战争)
+    ongoing_ids = {w.get("id") for w in (snap.get("wars") or [])
+                   if w.get("id") is not None and not w.get("ended")}
+    def _as_merged(w):
+        w2 = dict(w)
+        wid = w2.get("id")
+        if (wid is not None and wid not in ongoing_ids
+                and not w2.get("ended")):
+            w2["ended"] = True
+            w2["peace_date"] = None
+        return w2
     lyw = list(snap.get("last_year_wars") or [])
     lyw_seen = {w.get("id") for w in lyw if w.get("id") is not None}
     for w in prev_wars:
@@ -2766,7 +2853,7 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
         ps = [p for p in (w.get("participants") or []) if p.get("primary")]
         if not ps:
             continue
-        w2 = dict(w)
+        w2 = _as_merged(w)
         w2["participants"] = ps
         lyw.append(w2)
         if wid is not None:
@@ -2780,7 +2867,7 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
             continue
         if wid is not None and wid in pyw_seen:
             continue
-        pyw.append(w)
+        pyw.append(_as_merged(w))
         if wid is not None:
             pyw_seen.add(wid)
     snap["prev_year_wars"] = pyw
@@ -2821,6 +2908,92 @@ def query_laws(data, country_id):
         j = end
     # 去重
     return list(dict.fromkeys(laws))
+
+
+def _enactment_phase_suffix(laws):
+    """按游戏 common/customizable_localization/03_misc.txt 的触发链, 由现行
+    治理法律决定立法阶段名的后缀 (tec/courep/autocracy/demrep/conmon/mon/generic)。
+    has_law_or_variant 以基础 law key 近似判断 (相关法律变体极少)。"""
+    laws = set(laws or [])
+    if "law_technocracy" in laws:
+        return "tec"
+    if "law_council_republic" in laws:
+        return "courep"
+    if "law_autocracy" in laws:
+        return "autocracy"
+    if ({"law_parliamentary_republic", "law_presidential_republic"} & laws
+            and {"law_landed_voting", "law_census_voting", "law_wealth_voting",
+                 "law_universal_suffrage"} & laws):
+        return "demrep"
+    if ({"law_monarchy", "law_social_monarchy"} & laws
+            and {"law_census_voting", "law_wealth_voting",
+                 "law_universal_suffrage"} & laws):
+        return "conmon"
+    if ({"law_monarchy", "law_social_monarchy"} & laws
+            and {"law_landed_voting", "law_oligarchy",
+                 "law_single_party_state"} & laws):
+        return "mon"
+    return "generic"
+
+
+def _enactment_phase_names_zh(suffix):
+    """阶段名后缀 → 三个立法阶段的中文名列表; 缺失时回退 generic。"""
+    loc = _load_loc_all()
+    names = []
+    for i in range(3):
+        nm = (loc.get(f"enactment_phase_{i}_{suffix}")
+              or loc.get(f"enactment_phase_{i}_generic"))
+        names.append(nm or f"阶段{i}")
+    return names
+
+
+def query_laws_in_progress(data, country_id):
+    """从 laws.database 提取该国**正在制定**的法律。
+
+    进行中: 带 enactment_start_date 且未生效 (无 active) 的条目。
+    返回 [{law, phase, progress, start_date, last_checkpoint_result,
+    last_checkpoint_date}], 按 phase/progress 语义: phase 0~2 对应政体专属的
+    三个立法阶段 (存档在 phase=0 时不写该字段, 缺省按 0 处理),
+    progress 为当前阶段立法周期 (检查点间隔) 内的 0~1 进度。"""
+    out = []
+    if not country_id:
+        return out
+    idx = data.find(b'"laws"')
+    if idx < 0:
+        return out
+    laws_end = _object_end(data, data.find(b'{', idx))
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return out
+    j = data.find(b'{', db)
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    while True:
+        m = _IDOBJ.search(data, j, laws_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if (isinstance(obj, dict) and obj.get("law")
+                and obj.get("country") == country_id
+                and obj.get("enactment_start_date") and not obj.get("active")):
+            out.append({
+                "law": obj["law"],
+                "phase": obj.get("phase") or 0,
+                "progress": obj.get("progress"),
+                "start_date": obj.get("enactment_start_date"),
+                "last_checkpoint_result": obj.get("enactment_last_checkpoint_result"),
+                "last_checkpoint_date": obj.get("enactment_last_checkpoint_or_stop_date"),
+            })
+        j = end
+    return out
+
 
 def _v3_date_tuple(s):
     """'Y.M.D' → (y, m, d) 元组, 用于日期比较; 无法解析返回 None。"""
@@ -2948,6 +3121,49 @@ def _religion_zh(key):
         return key
 
 
+def _pick_envoy_country(snap, rnd):
+    """选「接见外国使节」的对象国:
+    优先有外交关系(非附庸、非宿敌、非玩家)的国家, 在候选中随机取一个;
+    没有则回退为随机非玩家列强; 再不行从条约里取非玩家对方国。
+    """
+    player = snap.get("player") or ""
+    subs = {s.get("name") for s in (snap.get("subjects") or []) if s.get("name")}
+
+    def partner_of(first, second):
+        if not first or not second:
+            return None
+        if first == player:
+            return second
+        if second == player:
+            return first
+        return None
+
+    rels = []
+    for t in snap.get("treaties") or []:
+        p = partner_of(t.get("first_name"), t.get("second_name"))
+        if p and p != player and p not in subs and p not in rels:
+            rels.append(p)
+    for p in snap.get("pacts") or []:
+        if p.get("action") in SUBJECT_ACTIONS or p.get("action") == "rivalry":
+            continue
+        pn = partner_of(p.get("first_name"), p.get("second_name"))
+        if pn and pn != player and pn not in subs and pn not in rels:
+            rels.append(pn)
+    if rels:
+        return rnd.choice(rels)
+    others = [p.get("name") for p in (snap.get("powers") or [])
+              if not p.get("is_player") and p.get("name")]
+    others = [o for o in dict.fromkeys(others) if o != player]
+    if others:
+        return rnd.choice(others)
+    for t in snap.get("treaties") or []:
+        if t.get("first_name") and t.get("first_name") != player:
+            return t["first_name"]
+        if t.get("second_name") and t.get("second_name") != player:
+            return t["second_name"]
+    return ""
+
+
 def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
                              building_type_map=None):
     """按概率拼装一条「统治者活动」事实 (程序侧完成, 直接作为数据传给模型)。
@@ -2967,7 +3183,6 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
     states = snap.get("states") or []
     capital = snap.get("capital") or ""
     igs = snap.get("interest_groups") or []
-    powers = snap.get("powers") or []
     pool = list(_RULER_ACTIVITY_POOL)
     tried = set()
     while pool:
@@ -3012,11 +3227,7 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
             if stname and culture:
                 return f"{ruler}走访了{stname}的{culture}人家，体察民情", kind, st.get("id")
         elif kind == "receive_envoys":
-            foreign = next((p.get("name") for p in powers
-                            if not p.get("is_player")), "")
-            if not foreign and snap.get("treaties"):
-                foreign = next((t.get("second_name") for t in snap.get("treaties") or []
-                                if t.get("second_name")), "")
+            foreign = _pick_envoy_country(snap, rnd)
             if foreign:
                 where = capital or "宫中"
                 return f"{ruler}在{where}接见了{foreign}的使节，就两国邦交交换意见", kind, None
@@ -3042,6 +3253,8 @@ def build_journal_data(snap):
     data["tag"] = snap.get("tag")
     data["player_country_id"] = snap.get("player_country_id")
     data["govt"] = snap.get("govt_zh") or gov_to_name(snap.get("govt", "other"))
+    # 政体原始键 (如 gov_constitutional_empire), 供采访地点按政体标注"省/州"
+    data["govt_key"] = snap.get("govt")
     # 首都: 由首都 state 的 hub 名(城市)解析, 失败回退州域名; 不再让模型凭空猜测
     data["capital"] = snap.get("capital") or ""
     data["gdp"] = snap.get("gdp", "未知")
@@ -3049,7 +3262,13 @@ def build_journal_data(snap):
     data["sol"] = snap.get("avgsoltrend", "未知")
     data["literacy"] = snap.get("literacy", "未知")
     data["prestige"] = snap.get("prestige", "未知")
+    data["infamy"] = snap.get("infamy")
     data["religion"] = snap.get("religion", "未知")
+    # 国教中文名: 供政界动态判断领袖宗教是否非国教
+    data["state_religion"] = _religion_zh(snap.get("religion")) or None
+    # 首都州(区域)中文名/key: 供判断领袖家乡是否非首都州
+    data["capital_region"] = snap.get("capital_region")
+    data["capital_region_key"] = snap.get("capital_region_key")
     # 统治者: 姓名/头衔/意识形态/在位状态来自 character_manager 解析(见 ruler_info);
     # 首都名已由存档 state hub 解析(见 data["capital"])
     ri = snap.get("ruler_info") or {}
@@ -3058,6 +3277,9 @@ def build_journal_data(snap):
     data["ruler_ideology"] = ri.get("ideology")
     data["ruler_status"] = ri.get("status")
     data["ruler_activity"] = snap.get("ruler_activity")
+    data["ruler_culture"] = ri.get("culture")
+    data["ruler_religion"] = ri.get("religion")
+    data["ruler_home_region"] = ri.get("home_region")
     # 主流文化(国族): 来自国家对象的 primary cultures 列表(本地化中文名),
     # 与按人口占比排序的 pop_cultures 分开传递, 供社会板块提示词使用
     prim = []
@@ -3069,12 +3291,14 @@ def build_journal_data(snap):
     data["laws"] = snap.get("laws") or []
     data["laws_enacted"] = snap.get("laws_enacted") or []
     data["laws_repealed"] = snap.get("laws_repealed") or []
+    data["laws_in_progress"] = snap.get("laws_in_progress") or []
     data["free_speech_law"] = snap.get("free_speech_law")
     data["techs"] = snap.get("techs") or []
     data["powers"] = snap.get("powers") or []
     data["treaties"] = snap.get("treaties") or []
     data["subjects"] = snap.get("subjects") or []
     data["rivals"] = snap.get("rivals") or []
+    data["pacts"] = snap.get("pacts") or []
     data["interest_groups"] = snap.get("interest_groups") or []
     data["political_movements"] = snap.get("political_movements") or []
     data["states"] = snap.get("states") or []
@@ -3107,13 +3331,39 @@ def extract_full_snapshot(melted):
     player_tag = tag or (country or {}).get("definition")
     snap["govt_zh"] = gov_to_name(snap.get("govt"))
     snap["capital"] = _capital_name(melted, country)
+    # 首都州(区域)键与中文名: 供领袖/统治者「家乡非首都州」判定
+    cap_rk = _state_region_key(melted, (country or {}).get("capital"))
+    snap["capital_region_key"] = cap_rk
+    snap["capital_region"] = _load_loc_all().get(cap_rk) if cap_rk else None
     # 法律: 只保留本年度内发生变化的法律 (新施行 + 废除), 不再输出全部现行法
     enacted, repealed = query_laws_changed(melted, cid, snap.get("date"))
     snap["laws_enacted"] = enacted
     snap["laws_repealed"] = repealed
     snap["laws"] = list(dict.fromkeys(enacted + repealed))
+    active_laws = query_laws(melted, cid)
     snap["free_speech_law"] = next(
-        (l for l in query_laws(melted, cid) if l in FREE_SPEECH_LAWS), None)
+        (l for l in active_laws if l in FREE_SPEECH_LAWS), None)
+    # 立法进行中: 法律 + 当前阶段(政体专属本地化) + 提交日期
+    laws_ip = query_laws_in_progress(melted, cid)
+    phase_names = _enactment_phase_names_zh(_enactment_phase_suffix(active_laws))
+    law_groups = _load_law_groups()
+    active_by_group = {}
+    for l in active_laws:
+        g = law_groups.get(l)
+        if g:
+            active_by_group.setdefault(g, []).append(l)
+    for item in laws_ip:
+        ph = item.get("phase")
+        if isinstance(ph, int) and 0 <= ph < len(phase_names):
+            item["phase_zh"] = phase_names[ph]
+        else:
+            item["phase_zh"] = f"阶段{ph}"
+        # 被替代的现行法: 同一法律组中当前生效的那条
+        g = law_groups.get(item["law"])
+        cands = active_by_group.get(g) or []
+        if len(cands) == 1:
+            item["replace_law"] = cands[0]
+    snap["laws_in_progress"] = laws_ip
     snap["player_country_id"] = cid
     index, gp_ids, dp_index = _build_indexes(melted)
     names = load_current_country_names(melted, index)
@@ -3183,8 +3433,11 @@ def extract_full_snapshot(melted):
         snap["radicals_pct"] = round((ps.get("population_radicals") or 0) / tot * 100, 2)
         snap["loyalists_pct"] = round((ps.get("population_loyalists") or 0) / tot * 100, 2)
     snap["treaties"] = _extract_treaties(melted, names, index=index, gp_ids=gp_ids, player_id=cid)
-    snap["subjects"] = _extract_subjects(melted, cid, names, index=index)
-    snap["rivals"] = _extract_rivals(melted, cid, names, index=index)
+    # pacts.database 只扫描一次, 附庸/宿敌/其他外交行动共用同一份结果
+    pact_list = _extract_pacts(melted, cid, names, index=index)
+    snap["pacts"] = pact_list
+    snap["subjects"] = _extract_subjects(melted, cid, names, index=index, pacts=pact_list)
+    snap["rivals"] = _extract_rivals(melted, cid, names, index=index, pacts=pact_list)
     snap["political_movements"] = _extract_political_movements(
         melted, cid, state_ids, (country.get("pop_statistics") or {}),
         player_tag=player_tag)
@@ -3295,14 +3548,15 @@ def _v3_num_date(n):
     except Exception:
         return str(n)
 
-# 条款类型 → 中文 (优先加载本地化 concept_*, 缺的硬编码兜底)
+# 条款类型 → 中文 (优先加载本地化 concept_*, 缺的硬编码兜底; 覆盖原版全部条款)
 ARTICLE_ZH_FALLBACK = {
-    "defensive_pact": "共同防御",
+    "alliance": "同盟",
+    "defensive_pact": "共同防御条约",
     "military_assistance": "军事援助",
     "foreign_investment_rights": "外国投资权",
     "trade_privilege": "贸易特权",
     "goods_transfer": "货物移交",
-    "guarantee_independence": "独立保障",
+    "guarantee_independence": "保证独立",
     "military_access": "军事通行权",
     "transit_rights": "过境权",
     "treaty_port": "条约港",
@@ -3312,6 +3566,64 @@ ARTICLE_ZH_FALLBACK = {
     "host_power_bloc_embassy": "东道国集团使馆",
     "no_tolls": "免通行费",
     "free_text": "备注",
+    "take_on_debt": "承担债务",
+    "state_transfer": "领土移交",
+    "join_power_bloc": "加入势力集团",
+    "offer_embassy": "设立大使馆",
+    "non_colonization_agreement": "不殖民协议",
+    "prohibit_trade_with_global_market": "禁止与世界市场贸易",
+    "acquire_monopoly_for_company": "公司垄断",
+    "no_tariffs": "禁止关税",
+    "no_subventions": "禁止补助金",
+    "amend_succession": "修改继承",
+    "recognize_independence": "承认独立",
+    "transfer_subject": "转让附庸",
+    "ship_transfer": "舰船移交",
+    "toll_exemption": "免除通行费",
+    "strait_access": "海峡通行权",
+    "no_strait_closure": "不封闭海峡",
+    "non_piracy_agreement": "禁止海盗协议",
+    "abandon_piracy": "放弃海盗行为",
+    "enforce_embargo": "强制禁运",
+    "daoyu_treaty_articles": "强制条约",
+}
+
+# 条款类型 → 官方自然语言模板本地化键 (diplomacy_l_simp_chinese.yml 的 *_article_short_desc)
+ARTICLE_TEMPLATE_KEYS = {
+    "alliance": "alliance_article_short_desc",
+    "defensive_pact": "defensive_pact_article_short_desc",
+    "military_assistance": "military_assistance_article_short_desc",
+    "foreign_investment_rights": "foreign_investment_rights_article_short_desc",
+    "trade_privilege": "trade_privilege_article_short_desc",
+    "goods_transfer": "goods_transfer_article_short_desc",
+    "guarantee_independence": "guarantee_independence_article_short_desc",
+    "military_access": "military_access_article_short_desc",
+    "transit_rights": "transit_rights_article_short_desc",
+    "treaty_port": "treaty_port_article_short_desc",
+    "money_transfer": "money_transfer_article_short_desc",
+    "law_commitment": "law_commitment_article_short_desc",
+    "support_independence": "support_independence_article_short_desc",
+    "host_power_bloc_embassy": "host_power_bloc_embassy_article_short_desc",
+    "no_tolls": "no_tolls_article_short_desc",
+    "take_on_debt": "take_on_debt_article_short_desc",
+    "state_transfer": "state_transfer_article_short_desc",
+    "join_power_bloc": "join_power_bloc_article_short_desc",
+    "offer_embassy": "offer_embassy_article_short_desc",
+    "non_colonization_agreement": "non_colonization_agreement_article_short_desc",
+    "prohibit_trade_with_global_market": "prohibit_trade_with_global_market_article_short_desc",
+    "acquire_monopoly_for_company": "acquire_monopoly_for_company_article_short_desc",
+    "no_tariffs": "no_tariffs_article_short_desc",
+    "no_subventions": "no_subventions_article_short_desc",
+    "amend_succession": "amend_succession_article_short_desc",
+    "recognize_independence": "recognize_independence_article_short_desc",
+    "transfer_subject": "transfer_subject_article_short_desc",
+    "ship_transfer": "ship_transfer_article_short_desc",
+    "toll_exemption": "toll_exemption_article_short_desc",
+    "strait_access": "strait_access_article_short_desc",
+    "no_strait_closure": "no_strait_closure_article_short_desc",
+    "non_piracy_agreement": "non_piracy_agreement_article_short_desc",
+    "abandon_piracy": "abandon_piracy_article_short_desc",
+    "enforce_embargo": "enforce_embargo_article_short_desc",
 }
 ARTICLE_CONCEPT_MAP = {
     "defensive_pact": "concept_defensive_pact",
@@ -3348,6 +3660,22 @@ ARTICLE_GOODS = {
 
 _CONCEPT_ZH = None
 
+# $concept_xxx$ 占位符兜底: 本地化缺失时保证模板仍可读
+_CONCEPT_FALLBACK = {
+    "concept_money": "金钱", "concept_goods": "商品", "concept_good": "商品",
+    "concept_state": "州", "concept_tariffs": "关税", "concept_subventions": "补助金",
+    "concept_trade_privilege": "贸易特权", "concept_trade_privileges": "贸易特权",
+    "concept_military_access": "军事通行权", "concept_military_assistance": "军事援助",
+    "military_assistance": "军事援助",
+    "concept_world_market": "国际市场", "concept_company_monopoly": "公司垄断",
+    "concept_strait": "海峡", "concept_straits": "海峡", "concept_tolls": "通行费",
+    "concept_loans": "贷款", "concept_power_bloc": "势力集团", "concept_armies": "陆军",
+    "concept_law": "法律", "concept_colonize": "殖民", "concept_strategic_region": "战略区域",
+    "concept_ship": "舰船", "concept_treaty_port": "条约港", "concept_subject": "附庸国",
+    "concept_article": "条款", "concept_treaty": "条约", "concept_alliance": "同盟",
+    "concept_defensive_pact": "共同防御条约", "host_power_bloc_embassy": "东道国集团使馆",
+}
+
 def _goods_zh(key):
     """商品 key → 中文名 (硬编码表优先, 回退游戏本地化, 再回退原 key 保证非空)。"""
     zh = ARTICLE_GOODS.get(key)
@@ -3379,15 +3707,71 @@ def _concept_zh():
     _CONCEPT_ZH = zh
     return zh
 
+
+def _article_concept_zh(key):
+    """$concept_xxx$ → 中文名; 本地化缺失时用兜底表, 再回退原 key。"""
+    zh = _concept_zh().get(key)
+    if zh:
+        return zh
+    return _CONCEPT_FALLBACK.get(key, key)
+
+
+_ARTICLE_TEMPLATE_CACHE = None
+
+
+def _article_templates():
+    """加载本地化 *_article_short_desc → 自然语言模板 (游戏原版+mod, 后者覆盖)。"""
+    global _ARTICLE_TEMPLATE_CACHE
+    if _ARTICLE_TEMPLATE_CACHE is not None:
+        return _ARTICLE_TEMPLATE_CACHE
+    loc = _load_loc_all()
+    out = {}
+    for key in ARTICLE_TEMPLATE_KEYS.values():
+        v = loc.get(key)
+        if v:
+            out[key] = v
+    _ARTICLE_TEMPLATE_CACHE = out
+    return out
+
+
+_ARTICLE_LOC_RE = re.compile(r"\$([A-Za-z_][A-Za-z_0-9]*)\$")
+
+
+def _clean_loc_markup(s):
+    """去掉本地化富文本标记 (#bold_black ... #! / @icon) 并归一空白。"""
+    s = re.sub(r"#bold_black\s*", "", s)
+    s = re.sub(r"#[A-Za-z_][A-Za-z_0-9]*", "", s)
+    s = re.sub(r"#!", "", s)
+    s = re.sub(r"@[A-Za-z_][A-Za-z_0-9]*", "", s)
+    s = re.sub(r"\s+", " ", s)
+    return s.strip(" \t-–—")
+
+
+def _render_article_template(tmpl, fname, sname):
+    """模板占位符 → 国名, $concept_xxx$ → 中文, 去标记。"""
+    s = tmpl
+    for ph, v in (
+            ("[SOURCE_COUNTRY.GetNameNoFormatting]", fname),
+            ("[TARGET_COUNTRY.GetNameNoFormatting]", sname),
+            ("[SOURCE_COUNTRY.GetAdjectiveNoFormatting]", fname),
+            ("[TARGET_COUNTRY.GetAdjectiveNoFormatting]", sname),
+            ("[FIRST_COUNTRY.GetNameNoFormatting]", fname),
+            ("[SECOND_COUNTRY.GetNameNoFormatting]", sname),
+            ("[FIRST_COUNTRY.GetAdjectiveNoFormatting]", fname),
+            ("[SECOND_COUNTRY.GetAdjectiveNoFormatting]", sname)):
+        s = s.replace(ph, v)
+    s = _ARTICLE_LOC_RE.sub(lambda m: _article_concept_zh(m.group(1)), s)
+    return _clean_loc_markup(s)
+
+
 def _article_zh(article_type):
-    """条款类型 → 中文名。
-    daoyu_treaty_articles 等修改器强制条款及无法识别本地化的条款, 一律写"下文略"。"""
+    """条款类型 → 中文名; 未知类型回退原 key, 不再输出"下文略"。"""
     concept = ARTICLE_CONCEPT_MAP.get(article_type)
     if concept:
         zh = _concept_zh().get(concept)
         if zh:
             return zh
-    return ARTICLE_ZH_FALLBACK.get(article_type) or "下文略"
+    return ARTICLE_ZH_FALLBACK.get(article_type) or article_type
 
 def _iter_treaty_articles(data):
     """迭代 treaty_article_manager.database 的所有条款对象 (限范围)。"""
@@ -3432,7 +3816,7 @@ def _article_detail(a):
         elif "quantity" in it:
             qty = it["quantity"]
         elif "law_type" in it:
-            law = it["law_type"].replace("law_", "")
+            law = it["law_type"]
         elif "state" in it:
             state = it["state"]
         elif "text" in it:
@@ -3444,12 +3828,64 @@ def _article_detail(a):
     if text is not None:
         return text, {"kind": "free_text", "text": text}
     if law is not None:
-        return f"施行法律{law}", {"kind": "law", "law": law}
+        law_zh = _load_loc_all().get(law, law.replace("law_", ""))
+        return f"施行法律{law_zh}", {"kind": "law", "law": law_zh, "law_key": law}
     if state is not None:
-        return f"州{state}", {"kind": "state", "state": state}
+        state_zh = _load_loc_all().get(state, state.replace("STATE_", ""))
+        return f"州{state_zh}", {"kind": "state", "state": state_zh, "state_key": state}
     if qty is not None:
         return f"{qty}单位", {"kind": "quantity", "quantity": qty}
     return None, None
+
+
+def _article_natural(article_type, fname, sname, meta):
+    """条款 → 一句自然语言描述 (方向=source→target, 均为中文国名)。
+    优先用游戏官方 *_article_short_desc 模板填国名/商品/数量/州/法律;
+    无法识别时兜底为"{from}对{to}实施{条款名}", 保证永不出现"下文略"。"""
+    fname = fname or "？"
+    sname = sname or "？"
+    if article_type == "free_text":
+        return None
+    if article_type == "daoyu_treaty_articles":
+        # 刀鱼作弊条款: 含义为"强制对方接受该条约"
+        return f"{fname}强制{sname}接受该条约"
+    meta = meta or {}
+    kind = meta.get("kind")
+    if article_type == "money_transfer" and kind == "quantity":
+        # 游戏内实际逻辑: 每周转移固定数额的英镑
+        qty = meta.get("quantity")
+        if qty is not None:
+            return f"{fname}每周向{sname}转移{qty}英镑"
+    tmpl_key = ARTICLE_TEMPLATE_KEYS.get(article_type)
+    tmpl = _article_templates().get(tmpl_key) if tmpl_key else None
+    if tmpl:
+        s = tmpl
+        if kind == "goods":
+            gz = meta.get("goods") or "货物"
+            if article_type == "goods_transfer":
+                qty = meta.get("quantity")
+                s = s.replace("$concept_goods$",
+                              f"{qty}单位的{gz}" if qty is not None else gz)
+            elif article_type in ("no_tariffs", "no_subventions",
+                                  "prohibit_trade_with_global_market"):
+                s = s.replace("$concept_good$", gz)
+            elif article_type == "acquire_monopoly_for_company":
+                s = s.replace("$concept_company_monopoly$", f"{gz}的垄断权")
+            elif article_type == "ship_transfer":
+                s = s.replace("$concept_ship$", gz)
+        elif kind == "state" and article_type == "treaty_port":
+            st = meta.get("state") or "该州"
+            s = s.replace("$concept_treaty_port$", f"位于{st}的条约港")
+        elif kind == "state" and article_type == "state_transfer":
+            s = s.replace("将一个$concept_state$", f"将{meta.get('state') or '一个州'}")
+        elif kind == "law" and article_type == "law_commitment":
+            lw = meta.get("law") or "该法律"
+            s = s.replace("$concept_law$", f"{lw}法律")
+        return _render_article_template(s, fname, sname)
+    if kind == "state" and article_type == "state_transfer":
+        return f"{fname}将{meta.get('state') or '该州'}转让给{sname}"
+    zh = ARTICLE_ZH_FALLBACK.get(article_type) or article_type
+    return f"{fname}对{sname}实施{zh}"
 
 
 def _region_hub_names(data):
@@ -3558,7 +3994,8 @@ def _render_treaty_name(data, treaty_obj, fname, sname, get_region_hubs):
 
 def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
     """从 treaty_manager.database 提取**与玩家有关**的条约及条款内容。
-    返回 [{id, name(中文), first_name, second_name, date, articles:[{zh, from, to, detail}]}]。
+    返回 [{id, name(中文), first_name, second_name, date,
+           articles:[{zh, from, to, detail, meta, natural(自然语言句)}]}]。
     name 由 custom/scripted/dynamic 渲染; 地点类条约 (如"莫斯科公约") 按当时州 hub
     数据现读, 国名/城市名随存档变化不跨存档定格。
     只保留玩家参与(任一方是玩家)的条约; 其余世界条约(中葡/日荷等)不输出。
@@ -3648,23 +4085,22 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
         tid = int(m.group(1))
         articles = []
         for a in tarticles.get(tid, []):
-            azh = _article_zh(a.get("article"))
-            if azh == "下文略":
-                # 修改器强制条款/无法识别条款: 无内容无方向, 仅写"下文略"
-                articles.append({"zh": azh, "from": None, "to": None,
-                                 "detail": None, "meta": None})
-                continue
+            article_type = a.get("article")
+            azh = _article_zh(article_type)
             src = a.get("source_country")
             tgt = a.get("target_country")
             detail, meta = _article_detail(a)
+            f_a = (names.get((index.get(src) or {}).get("definition"), str(src))
+                   if src and src != 4294967295 else None)
+            t_a = (names.get((index.get(tgt) or {}).get("definition"), str(tgt))
+                   if tgt and tgt != 4294967295 else None)
             articles.append({
                 "zh": azh,
-                "from": names.get((index.get(src) or {}).get("definition"),
-                                  str(src)) if src and src != 4294967295 else None,
-                "to": names.get((index.get(tgt) or {}).get("definition"),
-                                str(tgt)) if tgt and tgt != 4294967295 else None,
+                "from": f_a,
+                "to": t_a,
                 "detail": detail,
                 "meta": meta,
+                "natural": _article_natural(article_type, f_a, t_a, meta),
             })
         treaties.append({
             "id": str(tid),
@@ -3677,47 +4113,73 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
     return treaties
 
 
-def _extract_subjects(data, player_id, names, index=None):
+def _pact_country_name(cid, names, index):
+    """pact 中国家 id → 中文名 (经 definition 查本地化, 失败回退 id)。"""
+    entry = index.get(cid) or {}
+    tag = entry.get("definition")
+    return names.get(tag, tag) if tag else str(cid)
+
+
+def _extract_pacts(data, player_id, names, index=None):
+    """从 pacts.database 一次性提取与玩家相关的全部 pact (任一方是玩家)。
+    返回 [{action, first, second, first_name, second_name, start_date}],
+    first=发起方/宗主, second=对象/附庸 (与存档 targets 字段一致)。"""
+    pacts = []
+    if not player_id:
+        return pacts
+    if index is None:
+        index, _, _ = _build_indexes(data)
+    for pact in _iter_pacts(data):
+        tg = pact.get("targets") or {}
+        f, s = tg.get("first"), tg.get("second")
+        if f != player_id and s != player_id:
+            continue
+        if f is None or s is None:
+            continue
+        pacts.append({
+            "action": pact.get("action"),
+            "first": f, "second": s,
+            "first_name": _pact_country_name(f, names, index),
+            "second_name": _pact_country_name(s, names, index),
+            "start_date": pact.get("start_date"),
+        })
+    return pacts
+
+
+def _extract_subjects(data, player_id, names, index=None, pacts=None):
     """从 pacts.database 提取玩家的附庸国 (first=宗主, second=附庸)。
-    返回 [{name, type, country_id}]。"""
+    返回 [{name, type, country_id}]。pacts 为 _extract_pacts 的结果时可复用, 避免重复扫描。"""
     subs = []
     if not player_id:
         return subs
     if index is None:
         index, _, _ = _build_indexes(data)
-    for pact in _iter_pacts(data):
+    for pact in (pacts if pacts is not None else _extract_pacts(data, player_id, names, index)):
         act = pact.get("action")
-        if act not in SUBJECT_ACTIONS:
+        if act not in SUBJECT_ACTIONS or pact.get("first") != player_id:
             continue
-        tg = pact.get("targets") or {}
-        if tg.get("first") != player_id:
-            continue
-        sub_id = tg.get("second")
+        sub_id = pact.get("second")
         if sub_id is None:
             continue
-        entry = index.get(sub_id) or {}
-        tag = entry.get("definition")
-        subs.append({"name": names.get(tag, tag) if tag else str(sub_id),
+        subs.append({"name": pact.get("second_name") or str(sub_id),
                      "type": act, "country_id": sub_id})
     return subs
 
 
-def _extract_rivals(data, player_id, names, index=None):
+def _extract_rivals(data, player_id, names, index=None, pacts=None):
     """从 pacts.database 提取玩家的宿敌 (rivalry pact, 任一方是玩家)。
-    返回 [{name, definition, country_id}]，按 pact 出现顺序去重。"""
+    返回 [{name, definition, country_id}]，按 pact 出现顺序去重。
+    pacts 为 _extract_pacts 的结果时可复用, 避免重复扫描。"""
     rivals = []
     if not player_id:
         return rivals
     if index is None:
         index, _, _ = _build_indexes(data)
     seen = set()
-    for pact in _iter_pacts(data):
+    for pact in (pacts if pacts is not None else _extract_pacts(data, player_id, names, index)):
         if pact.get("action") != "rivalry":
             continue
-        tg = pact.get("targets") or {}
-        f, s = tg.get("first"), tg.get("second")
-        if f != player_id and s != player_id:
-            continue
+        f, s = pact.get("first"), pact.get("second")
         other = s if f == player_id else f
         if other in seen or other is None:
             continue
@@ -3725,17 +4187,36 @@ def _extract_rivals(data, player_id, names, index=None):
         entry = index.get(other) or {}
         tag = entry.get("definition")
         rivals.append({
-            "name": names.get(tag, tag) if tag else str(other),
+            "name": pact.get("second_name" if f == player_id else "first_name")
+                    or str(other),
             "definition": tag,
             "country_id": other,
         })
     return rivals
 
 
+def _ig_approval_band(approval):
+    """利益集团对政府的支持度档位 (游戏官方中文名)。
+    阈值同 common/defines/00_defines.txt: <=-10 愤怒, <=-5 不满, <5 中立,
+    >=5 满意, >=10 忠诚。存档 approval_state 在中立时不写, 故一律按数值推算。"""
+    if not isinstance(approval, (int, float)):
+        return None
+    if approval <= -10:
+        return "愤怒"
+    if approval <= -5:
+        return "不满"
+    if approval < 5:
+        return "中立"
+    if approval < 10:
+        return "满意"
+    return "忠诚"
+
+
 def _extract_interest_groups(data, player_id, chars=None):
     """从 interest_groups.database 提取玩家全部利益集团。
     返回按 clout 降序的 [{name, definition, clout_pct, in_government, approval_state,
-    leader_name, leader_ideology}]。chars 可由调用方复用 _player_characters 结果,
+    approval_band, leader_name, leader_ideology, leader_culture, leader_religion,
+    leader_home_region}]。chars 可由调用方复用 _player_characters 结果,
     避免与统治者解析重复扫描 character_manager。
     in_government=True 的即当前执政(组阁)利益集团。"""
     groups = []
@@ -3771,15 +4252,20 @@ def _extract_interest_groups(data, player_id, chars=None):
             clout = obj.get("clout")
             leader = chars.get(obj.get("leader")) if obj.get("leader") is not None else None
             lideo = (leader or {}).get("ideology")
+            approval = obj.get("approval")
             groups.append({
                 "name": obj.get("name") or obj.get("definition"),
                 "definition": obj.get("definition"),
                 "clout_pct": round(clout * 100, 1) if isinstance(clout, (int, float)) else None,
                 "in_government": bool(obj.get("in_government")),
                 "approval_state": obj.get("approval_state"),
+                "approval_band": _ig_approval_band(approval),
                 "leader_name": (leader or {}).get("name"),
                 "leader_ideology": (_clean_loc_name(loc.get(lideo, lideo), loc)
                                     if lideo else None),
+                "leader_culture": (leader or {}).get("culture"),
+                "leader_religion": (leader or {}).get("religion"),
+                "leader_home_region": (leader or {}).get("home_region"),
             })
         j = end
     groups.sort(key=lambda g: -(g.get("clout_pct") or 0))
