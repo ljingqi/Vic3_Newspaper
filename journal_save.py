@@ -2413,39 +2413,34 @@ def _pops_by_state(data, state_ids):
 def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price_map=None,
                         cid=None, player_tag=None, max_tries=300,
                         preferred_state=None, ruler_visited=False,
-                        pops_index=None, buildings_index=None):
+                        pops_index=None, buildings_index=None,
+                        forced_family=None, rnd=None):
     """随机选一个州 → 随机选该州一个建筑 → 取建筑内 SoL 最低与最高两个 POP(人口>10)
     分别作为「民生访谈」与「邻里富户」数据块。
     preferred_state: 优先在该州取材 (统治者走访联动); ruler_visited=True 且确实用到
     该州时, 在民生访谈块上打 ruler_visited 标记, 供渲染时让受访者提及统治者到访。
     若该州失业率(失业POP劳动力/该州总人口)>5%, 再附加「失业民生」块:
     该州人口最多的失业 POP + 失业率。建筑内合格 POP 不足 2 个时重新随机。
+    forced_family: 指定家庭采访 POP(统治者走访联动时使用), 不再随机选州/建筑。
     返回 {"family_interview", "top_sol_peer", "unemployed_interview"} (缺失为 None)。"""
     state_ids = set(state_ids or [])
     result = {"family_interview": None, "top_sol_peer": None, "unemployed_interview": None}
     if not state_ids:
         return result
+    rnd = rnd or random
     # 一次性索引 (单文件扫描), 之后所有随机重试只从内存取样
     if pops_index is None:
         pops_index = _pops_by_state(data, state_ids)
     if buildings_index is None:
         buildings_index = _buildings_by_state(data, state_ids)
     state_order = sorted(state_ids)
-    # 走访联动: 前几次尝试固定用统治者走访的州, 取材失败再退回随机州
-    try_states = []
-    if preferred_state is not None and preferred_state in state_ids:
-        try_states = [preferred_state] * min(5, max_tries)
     sid = None
     lowest = highest = None
-    for _ in range(max_tries):
-        if try_states:
-            sid = try_states.pop(0)
-        else:
-            sid = random.choice(state_order)
-        buildings = buildings_index.get(sid) or []
-        if not buildings:
-            continue
-        bid = random.choice(buildings)
+    if forced_family is not None:
+        sid = forced_family.get("location")
+        bid = forced_family.get("workplace")
+        if sid not in state_ids or bid is None:
+            return result
         cands = []
         for obj in pops_index.get(sid) or []:
             if obj.get("workplace") != bid:
@@ -2457,12 +2452,42 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
             if sol is None or not isinstance(sol, (int, float)):
                 continue
             cands.append((sol, sz, obj))
-        if len(cands) < 2:
-            continue
-        # SoL 升序; 同 SoL 时取人口较少者作最穷、人口较多者作最富
+        if not cands:
+            return result
         cands.sort(key=lambda x: (x[0], x[1]))
-        lowest, highest = cands[0][2], cands[-1][2]
-        break
+        lowest = forced_family
+        highest = cands[-1][2]
+    else:
+        # 走访联动: 前几次尝试固定用统治者走访的州, 取材失败再退回随机州
+        try_states = []
+        if preferred_state is not None and preferred_state in state_ids:
+            try_states = [preferred_state] * min(5, max_tries)
+        for _ in range(max_tries):
+            if try_states:
+                sid = try_states.pop(0)
+            else:
+                sid = rnd.choice(state_order)
+            buildings = buildings_index.get(sid) or []
+            if not buildings:
+                continue
+            bid = rnd.choice(buildings)
+            cands = []
+            for obj in pops_index.get(sid) or []:
+                if obj.get("workplace") != bid:
+                    continue
+                sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
+                if sz < 10:
+                    continue
+                sol = obj.get("previous_quality_of_life")
+                if sol is None or not isinstance(sol, (int, float)):
+                    continue
+                cands.append((sol, sz, obj))
+            if len(cands) < 2:
+                continue
+            # SoL 升序; 同 SoL 时取人口较少者作最穷、人口较多者作最富
+            cands.sort(key=lambda x: (x[0], x[1]))
+            lowest, highest = cands[0][2], cands[-1][2]
+            break
     if lowest is None or highest is None:
         return result
     # 州级上下文
@@ -2612,8 +2637,8 @@ def _build_indexes(data):
 
 def _dp_casualties(dp_obj):
     """从 diplomatic_play 对象提取伤亡: {cid: 总伤亡}。
-    累加所有 casualties_from_* 值(含 attrition/battles, 按文化与战线),
-    不含 wounded_from_* (伤员不算死亡)。存档值为浮点, 原样保留。"""
+    只累加死亡(不含 wounded)，优先使用 *_by_front 汇总值，避免同一伤亡在
+    *_by_culture 与 *_by_front 中重复计算；存档值为浮点，原样保留。"""
     cas = {}
     for c in dp_obj.get("casualties") or []:
         if not isinstance(c, dict):
@@ -2621,34 +2646,64 @@ def _dp_casualties(dp_obj):
         cid = c.get("country")
         if cid is None:
             continue
-        total = 0.0
-        for k, v in c.items():
-            if k in ("country", "side") or not k.startswith("casualties"):
-                continue
-            if isinstance(v, dict):
-                total += sum(x for x in v.values() if isinstance(x, (int, float)))
-            elif isinstance(v, (int, float)):
-                total += v
+        total = _sum_casualty_fields(c, (
+            "casualties_from_battles_by_front",
+            "casualties_from_attrition_by_front",
+        ))
+        if total == 0.0:
+            total = _sum_casualty_fields(c, (
+                "casualties_from_battles_by_culture",
+                "casualties_from_attrition_by_culture",
+            ))
         if total:
-            cas[cid] = round(cas.get(cid, 0) + total, 3)
+            cas[cid] = round(cas.get(cid, 0) + total, 6)
     return cas
 
-def _dp_costs(dp_obj):
-    """从 diplomatic_play 的 country_records 提取总花费:
-    每国 materiel_cost_of_war.goods.<id>.value 之和 + wage_cost_of_war。"""
+
+def _sum_casualty_fields(entry, keys):
+    """累加某国 casualties 对象中指定字段的数值之和。"""
     total = 0.0
+    for key in keys:
+        value = entry.get(key)
+        if isinstance(value, dict):
+            total += sum(x for x in value.values() if isinstance(x, (int, float)))
+        elif isinstance(value, (int, float)):
+            total += value
+    return total
+
+
+def _country_record_cost(record):
+    """计算一个国家 country_record 的战争花费。"""
+    if not isinstance(record, dict):
+        return 0.0
+    cost = 0.0
+    goods = ((record.get("materiel_cost_of_war") or {}).get("goods")) or {}
+    if isinstance(goods, dict):
+        for g in goods.values():
+            if isinstance(g, dict) and isinstance(g.get("value"), (int, float)):
+                cost += g["value"]
+    wage = record.get("wage_cost_of_war")
+    if isinstance(wage, (int, float)):
+        cost += wage
+    return cost
+
+
+def _dp_costs_by_country(dp_obj):
+    """从 diplomatic_play 的 country_records 提取各国战争花费: {cid: cost}。"""
+    costs = {}
     for r in dp_obj.get("country_records") or []:
         if not isinstance(r, dict):
             continue
-        goods = ((r.get("materiel_cost_of_war") or {}).get("goods")) or {}
-        if isinstance(goods, dict):
-            for g in goods.values():
-                if isinstance(g, dict) and isinstance(g.get("value"), (int, float)):
-                    total += g["value"]
-        wage = r.get("wage_cost_of_war")
-        if isinstance(wage, (int, float)):
-            total += wage
-    return round(total, 2)
+        cid = r.get("country")
+        if cid is None:
+            continue
+        costs[cid] = round(costs.get(cid, 0.0) + _country_record_cost(r), 2)
+    return costs
+
+
+def _dp_costs(dp_obj):
+    """总战争花费：各国花费之和。"""
+    return round(sum(_dp_costs_by_country(dp_obj).values()), 2)
 
 def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=None):
     """解析 war_manager.database 中的战争, 只保留玩家或列强参与的。
@@ -2728,7 +2783,18 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
                 })
         # 伤亡/花费: 关联的 diplomatic_play (dp id 4294967295 = 无关联)
         cas_by_cid = _dp_casualties(dp) if dp else {}
-        total_cost = _dp_costs(dp) if dp else None
+        cost_by_cid = _dp_costs_by_country(dp) if dp else {}
+        total_cost = round(sum(cost_by_cid.values()), 2) if cost_by_cid else None
+        casualties_by_side = {}
+        costs_by_side = {}
+        for cid, val in cas_by_cid.items():
+            side = side_by_cid.get(cid)
+            if side:
+                casualties_by_side[side] = round(casualties_by_side.get(side, 0.0) + val, 6)
+        for cid, val in cost_by_cid.items():
+            side = side_by_cid.get(cid)
+            if side:
+                costs_by_side[side] = round(costs_by_side.get(side, 0.0) + val, 2)
         player_involved = player_id is not None and any(p.get("id") == player_id for p in parts)
         has_great_power = any(p.get("rank") == "great_power" for p in parts)
         # 只保留玩家参与 或 有列强参与的战争
@@ -2743,7 +2809,9 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
             "player_involved": player_involved,
             "casualties": cas_by_cid,
             "casualties_total": round(sum(cas_by_cid.values()), 3) if cas_by_cid else None,
+            "casualties_by_side": casualties_by_side,
             "total_cost": total_cost,
+            "costs_by_side": costs_by_side,
             "participants": parts,
             "dp_initiator": dp_initiator,
             "dp_target": dp_target,
@@ -3164,8 +3232,80 @@ def _pick_envoy_country(snap, rnd):
     return ""
 
 
+def _pick_visit_pop(snap, capital_id, pops_index=None):
+    """为「统治者走访居民家中」挑选首都州内的实际 POP。
+
+    优先 top_culture + 国教、职业为 farmers/peasants，且同一工作建筑还有合格
+    对照 POP 的人群；没有时退回同文化同宗教、就业且非奴隶的人群。"""
+    states = snap.get("states") or []
+    cap_state = next((s for s in states if s.get("id") == capital_id), None)
+    if not cap_state:
+        return None
+    top_culture = cap_state.get("top_culture")
+    state_religion = snap.get("religion")
+    pops = pops_index.get(capital_id) if pops_index else []
+    if not pops:
+        return None
+
+    def _culture_name(obj):
+        cid = obj.get("culture")
+        return culture_id_to_name(cid) if cid is not None else None
+
+    def _size(obj):
+        return (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
+
+    def _has_peer_in_building(obj):
+        bid = obj.get("workplace")
+        if bid is None:
+            return False
+        for other in pops:
+            if other is obj or other.get("workplace") != bid:
+                continue
+            if _size(other) < 10 or not isinstance(other.get("previous_quality_of_life"), (int, float)):
+                continue
+            return True
+        return False
+
+    def _is_poorest_in_building(obj):
+        bid = obj.get("workplace")
+        if bid is None:
+            return False
+        sols = [
+            o.get("previous_quality_of_life")
+            for o in pops
+            if o.get("workplace") == bid
+            and _size(o) >= 10
+            and isinstance(o.get("previous_quality_of_life"), (int, float))
+        ]
+        if not sols:
+            return False
+        return obj.get("previous_quality_of_life") == min(sols)
+
+    valid = [
+        o for o in pops
+        if o.get("workplace") is not None
+        and o.get("type") != "slaves"
+        and _size(o) >= 10
+        and _culture_name(o) == top_culture
+        and o.get("religion") == state_religion
+    ]
+    if not valid:
+        return None
+    type_rank = {"farmers": 0, "peasants": 1}
+    with_peer = [o for o in valid if _has_peer_in_building(o)]
+    building_min = [o for o in with_peer if _is_poorest_in_building(o)]
+    candidates = building_min or with_peer or valid
+    candidates.sort(key=lambda o: (
+        o.get("previous_quality_of_life")
+        if isinstance(o.get("previous_quality_of_life"), (int, float)) else 1e18,
+        type_rank.get(o.get("type"), 2),
+        -_size(o),
+    ))
+    return candidates[0]
+
+
 def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
-                             building_type_map=None):
+                             building_type_map=None, visit_pop_obj=None):
     """按概率拼装一条「统治者活动」事实 (程序侧完成, 直接作为数据传给模型)。
 
     活动池: 视察某地建筑 / 召集内阁会议 / 走访某州某文化某宗教的 POP 家庭 /
@@ -3209,23 +3349,24 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
             if capital:
                 return f"{ruler}在{capital}召集内阁会议，与各部大臣共商国是", kind, None
         elif kind == "visit_pop":
-            # 优先挑有建筑的非空州, 提高家庭采访联动成功率; 再优先首都州
-            cands = [s for s in states if not s.get("empty")
-                     and (buildings_index or {}).get(s.get("id"))]
-            if not cands:
-                cands = [s for s in states if not s.get("empty")]
-            cap_st = next((s for s in cands
-                           if capital and s.get("name") and capital in (s.get("name") or "")), None)
-            st = cap_st or (rnd.choice(cands) if cands else None) or {}
-            culture = st.get("top_culture") or ""
-            rel = snap.get("religion")
-            rel_zh = _religion_zh(rel)
-            stname = st.get("name") or ""
-            if stname and culture and rel_zh:
-                return (f"{ruler}走访了{stname}的{culture}人家，"
-                        f"在信奉{rel_zh}的居民家中体察民情", kind, st.get("id"))
+            if not visit_pop_obj:
+                continue
+            sid = visit_pop_obj.get("location")
+            st = next((s for s in states if s.get("id") == sid), {})
+            stname = st.get("name") or capital or "某地"
+            culture = culture_id_to_name(visit_pop_obj.get("culture")) or ""
+            rel_zh = _religion_zh(visit_pop_obj.get("religion"))
+            try:
+                from journal import POP_TYPE_NAMES
+            except Exception:
+                POP_TYPE_NAMES = {}
+            pop_type = visit_pop_obj.get("type")
+            profession = POP_TYPE_NAMES.get(pop_type, pop_type or "")
+            if stname and culture and profession and rel_zh:
+                return (f"{ruler}走访了{stname}的{culture}人{profession}家庭，"
+                        f"在信奉{rel_zh}的居民家中体察民情", kind, sid)
             if stname and culture:
-                return f"{ruler}走访了{stname}的{culture}人家，体察民情", kind, st.get("id")
+                return f"{ruler}走访了{stname}的{culture}人家，体察民情", kind, sid
         elif kind == "receive_envoys":
             foreign = _pick_envoy_country(snap, rnd)
             if foreign:
@@ -3402,23 +3543,26 @@ def extract_full_snapshot(melted):
     snap["powers"] = _extract_powers(melted, names, index=index, gp_ids=gp_ids,
                                      player_id=cid, player_tag=player_tag)
     # 统治者: 用与利益集团首领相同的方式解析姓名/意识形态, 再据政体键读游戏头衔;
-    # 程序侧拼装统治者活动 (走访类先定州, 供家庭采访联动)
+    # 程序侧拼装统治者活动；走访类先从首都州选真实 POP，供家庭采访复用同一 POP。
     snap["ruler_info"] = _ruler_info(melted, cid, (country or {}).get("ruler"),
                                      snap.get("govt"), chars=chars)
+    capital_id = (country or {}).get("capital")
+    visit_pop_obj = _pick_visit_pop(snap, capital_id, pops_index=pops_index)
     ruler_act, act_kind, visit_state = _assemble_ruler_activity(
         melted, snap, cid, buildings_index=buildings_index,
-        building_type_map=building_map)
+        building_type_map=building_map, visit_pop_obj=visit_pop_obj)
     snap["ruler_activity"] = ruler_act
-    # 家庭采访样本: 随机州 → 随机建筑 → SoL 最低/最高两篇 + 条件失业篇
-    # 走访联动: 只有完全合并(incorporation>=1)的州才与家庭采访同州取材;
-    # 未合并/合并中的州另随机取材, 不把采访硬凑到走访州
-    link_visit = (act_kind == "visit_pop" and visit_state is not None
-                  and (_state_incorporation(melted, visit_state) or 0.0) >= 1.0)
+    # 家庭采访样本: 走访活动必须与统治者访问的家庭完全一致;
+    # 其它活动按年份确定性随机，避免同年重生成结果漂移。
+    forced_family = visit_pop_obj if (act_kind == "visit_pop" and visit_pop_obj is not None) else None
+    interview_rnd = random.Random(snap.get("year") or 0)
     interview = _pick_interview_set(melted, state_ids, ig_slots, building_map, price_map,
                                     cid=cid, player_tag=player_tag,
-                                    preferred_state=visit_state if link_visit else None,
-                                    ruler_visited=link_visit,
-                                    pops_index=pops_index, buildings_index=buildings_index)
+                                    preferred_state=(forced_family.get("location")
+                                                     if forced_family is not None else None),
+                                    ruler_visited=forced_family is not None,
+                                    pops_index=pops_index, buildings_index=buildings_index,
+                                    forced_family=forced_family, rnd=interview_rnd)
     snap["family_interview"] = interview.get("family_interview")
     snap["top_sol_peer"] = interview.get("top_sol_peer")
     snap["unemployed_interview"] = interview.get("unemployed_interview")

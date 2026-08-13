@@ -878,10 +878,6 @@ SECTION_DEFS = [
      "含名称（发起意识形态已并入名称表述）、活跃状况（如引发部分群众不满、街头抗议、"
      "街头暴力冲突）、支持者规模与支持度、"
      "本年度法律变化(新施行/废除的法律)。"
-     "若利益集团首领或统治者的数据含个人背景（文化/宗教/家乡），且满足"
-     "「文化非主流文化、宗教非国教、家乡非首都州」任一条件，"
-     "须在报道中以「{家乡}的{宗教}{文化}人{姓名}……目前是{集团}的领袖」一类句式介绍"
-     "（数据未给出的部分不得编造；全部条件均不满足时不必写背景）。"
      "每期**必须**至少有一条以「（头衔）（统治者姓名）……」为主干的统治者活动新闻，"
      "若数据给出「本期统治者活动」一行，必须以该行事实为基础（人物、头衔、地点、事件不得改写），"
      "在其上扩写细节；该行缺失时头衔按政体与国名常识选用，"
@@ -1362,17 +1358,48 @@ def render_war(data, history=None):
         line = f"- {parties}：{status}" if parties else f"- 交战方未知：{status}"
         if start:
             line += f"（始于{start}）"
-        extra = []
-        cas = w.get('casualties_total')
-        if cas is not None:
-            # 存档伤亡为「千」单位 (1单位 = 1000人), 换算成实际人数后按整数传递
-            people = int(round(cas * 1000))
-            extra.append(f"双方死伤{people}人")
-        cost = w.get('total_cost')
-        if cost:
-            extra.append(f"耗资{cost:.0f}英镑")
-        if extra:
-            line += "（" + "、".join(extra) + "）"
+        tail = []
+        side_parts = []
+        for side_key, side_label in (("initiator", "发起方"), ("target", "应战方")):
+            cas = (w.get("casualties_by_side") or {}).get(side_key)
+            cost = (w.get("costs_by_side") or {}).get(side_key)
+            if cas is None and cost is None:
+                continue
+            bits = []
+            if cas is not None:
+                # 存档伤亡为小数，按百万人口口径还原为实际人数
+                people = int(round(cas * 1000000))
+                bits.append(f"死伤约{people}人")
+            if cost is not None:
+                bits.append(f"耗资约{cost:.0f}英镑")
+            if bits:
+                side_parts.append(side_label + "，".join(bits))
+        if side_parts:
+            tail.append("；".join(side_parts))
+        else:
+            cas = w.get('casualties_total')
+            cost = w.get('total_cost')
+            bits = []
+            if cas is not None:
+                people = int(round(cas * 1000000))
+                bits.append(f"双方死伤约{people}人")
+            if cost:
+                bits.append(f"耗资约{cost:.0f}英镑")
+            if bits:
+                tail.append("，".join(bits))
+        support = []
+        for p in (w.get("participants") or []):
+            if not isinstance(p, dict):
+                continue
+            ws = p.get("war_support")
+            if isinstance(ws, (int, float)) and ws <= 0:
+                nm = strip_loc_formatting(p.get("name", "")).strip()
+                if nm:
+                    support.append(f"{nm}国民当前十分厌战")
+        if support:
+            tail.append("；".join(support))
+        if tail:
+            line += "。" + "；".join(tail)
         L.append(line)
     return "\n".join(L)
 
@@ -1653,7 +1680,7 @@ def render_politics(data, history=None):
             elif tier == "抗议":
                 line = f"  - {nm}引发了街头抗议"
             elif tier == "不满":
-                line = f"  - {nm}引发了部分群众不满"
+                line = f"  - {nm}引发部分群众不满"
             else:
                 line = f"  - {nm}"
             if bits:
@@ -1717,13 +1744,13 @@ def render_society(data):
     # 国教(国家官方宗教)与主流文化(国族): 存档直读自国家对象, 供模型把握社会基调
     religion = data.get("religion")
     if religion:
-        L.append(f"- 国教（国家官方宗教）：{RELIGION_NAMES.get(religion, religion)}")
+        L.append(f"- 国家官方宗教：{RELIGION_NAMES.get(religion, religion)}")
     prim = data.get("primary_cultures") or []
     prim_names = [p if isinstance(p, str) else (p.get("name") if isinstance(p, dict) else "")
                   for p in prim]
     prim_names = [n for n in prim_names if n]
     if prim_names:
-        L.append("- 主流文化（国族/主体文化）：" + "、".join(f"{n}人" for n in prim_names))
+        L.append("- 主体文化：" + "、".join(f"{n}人" for n in prim_names))
     cultures = [c for c in (data.get("pop_cultures") or data.get("cultures") or [])
                 if isinstance(c, dict)]
     weight = {"majority": 3, "large": 2, "notable": 1, "minor": 0}
@@ -1901,7 +1928,7 @@ def _render_pop_igs(obj):
     return L
 
 
-def render_family(data):
+def render_family(data, style=None):
     """民生访谈: 记者跟踪采访一个随机选取的平民家庭 (存档直读)。"""
     fi = data.get("family_interview")
     if not fi:
@@ -1914,7 +1941,13 @@ def render_family(data):
     hub = fi.get("hub_name")
     div = _division_label(data.get("govt_key"))
     loc = f"{region}{div}{hub}" if div and hub else (f"{hub}（{region}）" if hub else region)
-    L.append(f"- 采访对象：{loc}的一户{culture}人{rel_zh}{pop_zh}家庭")
+    workplace = fi.get("workplace")
+    if workplace:
+        L.append(f"- 采访对象：在{loc}的{workplace}工作的一户{culture}人{rel_zh}{pop_zh}家庭")
+    elif fi.get("unemployed"):
+        L.append(f"- 采访对象：{loc}的一户失业的{culture}人{rel_zh}{pop_zh}家庭")
+    else:
+        L.append(f"- 采访对象：{loc}的一户{culture}人{rel_zh}{pop_zh}家庭")
     if fi.get("ruler_visited"):
         who = _ruler_name_title(data)
         if who:
@@ -1924,9 +1957,9 @@ def render_family(data):
     homeland = fi.get("is_homeland")
     if homeland is not None:
         if homeland:
-            L.append(f"- 本土归属：{culture}人世代居住于{region}")
+            L.append("- 本土归属：该人群世代居住于此")
         else:
-            L.append(f"- 本土归属：{region}并非{culture}人的本土，系外来/迁徙定居")
+            L.append("- 本土归属：该人群并非本地世居，系外来/迁徙定居")
     # 行政地位: 合并州 = 本土, 未合并 = 殖民地/边疆 (存档 incorporation 进度 0~1)
     incorp = fi.get("incorporation")
     if incorp is not None:
@@ -1968,8 +2001,6 @@ def render_family(data):
             L.append("- 主要消费品市价（本州所在市场，对比正常价）：" + "、".join(trends))
     if fi.get("unemployed"):
         L.append("- 工作状况：失业")
-    elif fi.get("workplace"):
-        L.append(f"- 工作场所：{fi.get('workplace')}")
     engel = fi.get("engel_coefficient")
     if engel is not None:
         band = engel_band(engel)
@@ -2018,7 +2049,7 @@ def render_family(data):
     return "\n".join(L)
 
 
-def render_peer(data):
+def render_peer(data, style=None):
     """邻里富户: 在民生访谈目标同建筑(失业则同州)中 SoL 最高的 POP (存档直读)。
     与 render_family 同风格渲染, 供模型写作贫富对照访谈。"""
     peer = data.get("top_sol_peer")
@@ -2032,27 +2063,35 @@ def render_peer(data):
     hub = peer.get("hub_name")
     div = _division_label(data.get("govt_key"))
     loc = f"{region}{div}{hub}" if div and hub else (f"{hub}（{region}）" if hub else region)
+    workplace = peer.get("workplace")
     sol = peer.get("sol")
     if isinstance(sol, (int, float)):
         band = sol_band(sol)
         sol_txt = f"【生活水平约{sol}" + (f"（{band}）" if band else "") + "】"
-        L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}{sol_txt}")
+        if workplace:
+            L.append(f"- 追踪对象：在{loc}的{workplace}工作的、生活水平最高的一群{culture}人{rel_zh}{pop_zh}{sol_txt}")
+        else:
+            L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}{sol_txt}")
     else:
-        L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
+        if workplace:
+            L.append(f"- 追踪对象：在{loc}的{workplace}工作的、生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
+        else:
+            L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
     # 与民生访谈的关联: 同建筑或同州对照
     fi = data.get("family_interview")
     if fi:
         fi_zh = POP_TYPE_NAMES.get(fi.get("pop_type"), fi.get("pop_type") or "平民")
+        family_title = _section_title(style, "family", "民生访谈")
         if peer.get("workplace_id") is not None and fi.get("workplace_id") == peer.get("workplace_id"):
-            L.append(f"- 对照关系：与《民生访谈》的{fi_zh}家庭同在一处谋生")
+            L.append(f"- 对照关系：与《{family_title}》的{fi_zh}家庭同在一处谋生")
         else:
-            L.append(f"- 对照关系：与《民生访谈》的{fi_zh}家庭同处{region}一地")
+            L.append(f"- 对照关系：与《{family_title}》的{fi_zh}家庭同处{region}一地")
     homeland = peer.get("is_homeland")
     if homeland is not None:
         if homeland:
-            L.append(f"- 本土归属：{culture}人世代居住于{region}")
+            L.append("- 本土归属：该人群世代居住于此")
         else:
-            L.append(f"- 本土归属：{region}并非{culture}人的本土，系外来/迁徙定居")
+            L.append("- 本土归属：该人群并非本地世居，系外来/迁徙定居")
     incorp = peer.get("incorporation")
     if incorp is not None:
         if isinstance(incorp, (int, float)):
@@ -2091,8 +2130,6 @@ def render_peer(data):
             L.append("- 主要消费品市价（本州所在市场，对比正常价）：" + "、".join(trends))
     if peer.get("unemployed"):
         L.append("- 工作状况：失业")
-    elif peer.get("workplace"):
-        L.append(f"- 工作场所：{peer.get('workplace')}")
     engel = peer.get("engel_coefficient")
     if engel is not None:
         band = engel_band(engel)
@@ -2141,7 +2178,7 @@ def render_peer(data):
     return "\n".join(L)
 
 
-def render_unemployed(data):
+def render_unemployed(data, style=None):
     """失业民生: 随机州失业率>5% 时发送, 采访该州失业POP中人口最多的一群。
     与 render_family 同风格, 另附该州失业率。"""
     uni = data.get("unemployed_interview")
@@ -2162,9 +2199,9 @@ def render_unemployed(data):
     homeland = uni.get("is_homeland")
     if homeland is not None:
         if homeland:
-            L.append(f"- 本土归属：{culture}人世代居住于{region}")
+            L.append("- 本土归属：该人群世代居住于此")
         else:
-            L.append(f"- 本土归属：{region}并非{culture}人的本土，系外来/迁徙定居")
+            L.append("- 本土归属：该人群并非本地世居，系外来/迁徙定居")
     incorp = uni.get("incorporation")
     if incorp is not None:
         if isinstance(incorp, (int, float)):
@@ -2203,8 +2240,6 @@ def render_unemployed(data):
             L.append("- 主要消费品市价（本州所在市场，对比正常价）：" + "、".join(trends))
     if uni.get("unemployed"):
         L.append("- 工作状况：失业")
-    elif uni.get("workplace"):
-        L.append(f"- 工作场所：{uni.get('workplace')}")
     engel = uni.get("engel_coefficient")
     if engel is not None:
         band = engel_band(engel)
@@ -2368,7 +2403,14 @@ def render_ads(data, history=None):
             "（如民主、中央集权、理性主义、学术界）可作文学沙龙、社科研讨会、"
             "新政晓谕、学堂启事等非商品形式；至少一条广告须直接体现所选科技。")
 
-def render_section_facts(key, data, history=None):
+
+def _section_title(style, key, fallback):
+    """按报纸风格取板块标题；缺失时返回 fallback。"""
+    st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
+    return st.get("section_titles", {}).get(key, fallback)
+
+
+def render_section_facts(key, data, history=None, style=None):
     if key == "headline":
         return render_overview(data, history)
     if key == "war":
@@ -2382,11 +2424,11 @@ def render_section_facts(key, data, history=None):
     if key == "society":
         return render_society(data)
     if key == "family":
-        return render_family(data)
+        return render_family(data, style=style)
     if key == "peer":
-        return render_peer(data)
+        return render_peer(data, style=style)
     if key == "unemployed":
-        return render_unemployed(data)
+        return render_unemployed(data, style=style)
     if key == "comment":
         # overview 已含新闻自由风味行，历史表不再重复输出
         return render_overview(data, history) + "\n\n" + render_history_table(data, history, include_flavor=False)
@@ -2428,6 +2470,9 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     country = data.get("player", "未知")
     capital = data.get("capital", "未知")
     req = spec[2]
+    if key == "peer":
+        family_title = _section_title(style, "family", "民生访谈")
+        req = req.replace("民生访谈", family_title)
     # 采访板块: 受访人群不参与任何政治运动时, 只要求体现政治倾向,
     # 不要求「参与比例最高的两个政治运动」, 避免模型无数据可写时编造「数据缺失」。
     if key in ("family", "peer", "unemployed"):
@@ -2451,7 +2496,7 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     parts.append(f"本期报纸：【国名】={country}，【都城】={capital}。抬头如下，行文须与之呼应：\n{masthead}\n\n"
                  f"请撰写「{title}」板块。要求：{req}")
     sys_msg = "\n\n".join(parts)
-    facts = render_section_facts(key, data, history)
+    facts = render_section_facts(key, data, history, style=style)
     user_msg = f"以下是本期报纸关于「{title}」板块的相关数据（涉及国名、都城请用上述变量，不得改动）：\n{facts}\n\n请撰写该板块正文。"
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
