@@ -958,20 +958,53 @@ def _get_primary_cultures(data, state_ids):
 # Pop 统计: 民族/宗教/职业占比
 # ---------------------------------------------------------------------------
 
-def _aggregate_pops(data, state_ids):
+def _aggregate_pops(data, state_ids, pops=None):
     """遍历 pops.database, 统计给定州内的民族/宗教/职业占比。
     pop 对象: {type, workforce, dependents, location, culture, religion, ...}
     返回 {cultures, religions, professions, total} 各为 [{"name","count","pct"}]。
-    pct 为占总人口的百分比。"""
+    pct 为占总人口的百分比。
+    pops 可选: 已解析的 {pid: pop对象} (SaveContext.player_pops), 传入时直接
+    复用, 不再扫描 pops.database。"""
     state_ids = set(state_ids or [])
     if not state_ids:
         return {"cultures": [], "religions": [], "professions": []}
+
+    def _top3(d):
+        out = []
+        for k, v in sorted(d.items(), key=lambda x: -x[1])[:3]:
+            out.append({"name": str(k), "count": round(v),
+                        "pct": round(v / total * 100, 1) if total else 0})
+        return out
+
+    if pops is not None:
+        cult = {}
+        reli = {}
+        prof = {}
+        for obj in pops.values():
+            if not isinstance(obj, dict):
+                continue
+            wf = obj.get("workforce") or 0
+            dep = obj.get("dependents") or 0
+            ptotal = wf + dep
+            t = obj.get("type")
+            if t:
+                prof[t] = prof.get(t, 0) + ptotal
+            c = obj.get("culture")
+            if isinstance(c, int):
+                cult[c] = cult.get(c, 0) + ptotal
+            r = obj.get("religion")
+            if r:
+                reli[r] = reli.get(r, 0) + ptotal
+        total = sum(cult.values()) or sum(reli.values()) or sum(prof.values()) or 1
+        return {"cultures": _top3(cult), "religions": _top3(reli),
+                "professions": _top3(prof), "total": round(total)}
+
     pop_db = data.find(b'"pops"')
     if pop_db < 0:
         return {"cultures": [], "religions": [], "professions": []}
     db = data.find(b'"database"', pop_db)
     ob = data.find(b'{', db)
-    # 逐个 pop 对象
+    # 逐个 pop 对象 (头 600 字节快速筛州, 命中才完整解析)
     cult = {}
     reli = {}
     prof = {}
@@ -981,8 +1014,6 @@ def _aggregate_pops(data, state_ids):
         if i < 0:
             break
         ob2 = data.find(b'{', i)
-        # 快速检查 location 是否在目标州内 (用正则找 "location":N 和 "type"/"culture"/"religion")
-        seg_end = data.find(b'}', ob2)
         head = data[ob2:min(ob2 + 600, len(data))]
         m_loc = re.search(rb'"location":(\d+)', head)
         if not m_loc or int(m_loc.group(1)) not in state_ids:
@@ -1004,14 +1035,8 @@ def _aggregate_pops(data, state_ids):
             reli[m_reli.group(1).decode()] = reli.get(m_reli.group(1).decode(), 0) + total
         j = data.find(b'}', ob2) + 1
     total = sum(cult.values()) or sum(reli.values()) or sum(prof.values()) or 1
-    def top3(d):
-        out = []
-        for k, v in sorted(d.items(), key=lambda x: -x[1])[:3]:
-            out.append({"name": str(k), "count": round(v),
-                        "pct": round(v / total * 100, 1) if total else 0})
-        return out
-    return {"cultures": top3(cult), "religions": top3(reli),
-            "professions": top3(prof), "total": round(total)}
+    return {"cultures": _top3(cult), "religions": _top3(reli),
+            "professions": _top3(prof), "total": round(total)}
 
 # ---------------------------------------------------------------------------
 # 家庭采访: 随机选一个玩家州的一个 POP, 提取其生活水平/收支/消费结构
@@ -1488,17 +1513,18 @@ def _state_region_key(data, state_id):
     obj = _state_object(data, state_id)
     return obj.get("region") if obj else None
 
-def _capital_name(data, country):
-    """首都 state → 中文名: 优先城市 hub 名(本地化/玩家改名), 失败回退州域名。"""
+def _capital_name(data, country, ctx=None):
+    """首都 state → 中文名: 优先城市 hub 名(本地化/玩家改名), 失败回退州域名。
+    ctx 可选: SaveContext, 传入时州对象走一次解析缓存, 避免重复扫描 states 库。"""
     cap_id = (country or {}).get("capital")
     if not cap_id:
         return ""
-    sobj = _state_object(data, cap_id)
+    sobj = ctx.state_object(cap_id) if ctx else _state_object(data, cap_id)
     if sobj:
         hubs = _hub_names(sobj)
         if hubs and hubs[0]:
             return hubs[0]
-    rk = _state_region_key(data, cap_id)
+    rk = ctx.state_region_key(cap_id) if ctx else _state_region_key(data, cap_id)
     if rk:
         loc = _load_loc_all()
         return loc.get(rk, "") or ""
@@ -1939,25 +1965,34 @@ def _ruler_info(data, country_id, ruler_id, gov_key, chars=None):
     }
 
 def _iter_pops_in_states(data, state_ids):
-    """单次扫描 pops.database，产出位于指定州集合内的全部 POP 对象。"""
+    """单次扫描 pops.database，产出位于指定州集合内的全部 POP 对象。
+    先用对象头 600 字节快速筛州 (与 _pops_by_state 相同), 命中才做完整解析,
+    避免对存档里全部 POP 逐个 json.loads 后再丢弃 (政治运动提取的旧热点)。"""
     state_ids = set(state_ids or [])
     if not state_ids:
         return
     pop_db = data.find(b'"pops"')
     if pop_db < 0:
         return
-    mgr_brace = data.find(b'{', pop_db)
-    mgr_end = _object_end(data, mgr_brace)
     db = data.find(b'"database"', pop_db)
     if db < 0:
         return
-    _IDOBJ = re.compile(rb'"(\d+)":\{')
-    j = data.find(b'{', db)
+    ob = data.find(b'{', db)
+    j = ob
     while True:
-        m = _IDOBJ.search(data, j, mgr_end - 1)
-        if not m:
+        i = data.find(b'":{', j)
+        if i < 0:
             break
-        ob2 = m.start() + len(m.group(0)) - 1
+        ob2 = data.find(b'{', i)
+        head = data[ob2:min(ob2 + 600, len(data))]
+        m_loc = re.search(rb'"location":(\d+)', head)
+        if not m_loc:
+            j = data.find(b'}', ob2) + 1
+            continue
+        sid = int(m_loc.group(1))
+        if sid not in state_ids:
+            j = data.find(b'}', ob2) + 1
+            continue
         raw, end = extract_json_object(data, ob2)
         if not raw:
             break
@@ -1966,11 +2001,12 @@ def _iter_pops_in_states(data, state_ids):
         except Exception:
             j = end
             continue
-        if isinstance(obj, dict) and obj.get("location") in state_ids:
+        if isinstance(obj, dict) and obj.get("location") == sid:
             yield obj
         j = end
 
-def _extract_political_movements(data, country_id, state_ids, pop_stats, player_tag=None):
+def _extract_political_movements(data, country_id, state_ids, pop_stats, player_tag=None,
+                                 pops=None):
     """提取玩家政治运动列表（按支持度降序）。
 
     存档字段口径（经实测校准，与游戏面板一致）：
@@ -2017,7 +2053,9 @@ def _extract_political_movements(data, country_id, state_ids, pop_stats, player_
     if not objs:
         return moves
     sums = {mid: [0.0, 0.0, 0.0] for mid in objs}  # [Σ比例, Σ军人比例, Σ财富×比例]
-    for obj in _iter_pops_in_states(data, state_ids):
+    pop_iter = (pops.values() if pops is not None
+                else _iter_pops_in_states(data, state_ids))
+    for obj in pop_iter:
         wl = obj.get("wealth") or 0
         ismil = obj.get("type") in ("officers", "soldiers")
         pms = obj.get("political_movement_support") or {}
@@ -2333,51 +2371,68 @@ def _pops_in_state(data, state_id):
             yield obj
         j = end
 
-def _extract_player_states(data, state_ids):
+def _extract_player_states(data, state_ids, ctx=None):
     """提取玩家每个州的 [州id, 州域名(中文), 主要居民文化(中文)]。
     单次扫描 pops 按州聚合各族人口, 取人口最多的文化; 州内完全无人时
     回退州域本土文化(add_homeland)。返回按州 id 升序的
-    [{id, name, top_culture, empty}]。"""
+    [{id, name, top_culture, empty}]。
+    ctx 可选: SaveContext, 传入时复用其 POP 解析与州对象缓存。"""
     state_ids = set(state_ids or [])
     if not state_ids:
         return []
     cult_by_state = {sid: {} for sid in state_ids}
-    pop_db = data.find(b'"pops"')
-    if pop_db >= 0:
-        db = data.find(b'"database"', pop_db)
-        ob = data.find(b'{', db)
-        j = ob
-        while True:
-            i = data.find(b'":{', j)
-            if i < 0:
-                break
-            ob2 = data.find(b'{', i)
-            head = data[ob2:min(ob2 + 600, len(data))]
-            m_loc = re.search(rb'"location":(\d+)', head)
-            if not m_loc:
-                j = data.find(b'}', ob2) + 1
-                continue
-            sid = int(m_loc.group(1))
-            counts = cult_by_state.get(sid)
+    if ctx is not None:
+        for obj in ctx.player_pops(state_ids).values():
+            counts = cult_by_state.get(obj.get("location"))
             if counts is None:
-                j = data.find(b'}', ob2) + 1
                 continue
-            m_cult = re.search(rb'"culture":(\d+)', head)
-            if m_cult:
-                m_wf = re.search(rb'"workforce":([\d.]+)', head)
-                m_dep = re.search(rb'"dependents":([\d.]+)', head)
-                wf = float(m_wf.group(1)) if m_wf else 0
-                dep = float(m_dep.group(1)) if m_dep else 0
-                cid = int(m_cult.group(1))
-                counts[cid] = counts.get(cid, 0) + wf + dep
-            j = data.find(b'}', ob2) + 1
+            c = obj.get("culture")
+            if isinstance(c, int):
+                wf = obj.get("workforce") or 0
+                dep = obj.get("dependents") or 0
+                counts[c] = counts.get(c, 0) + wf + dep
+    else:
+        pop_db = data.find(b'"pops"')
+        if pop_db >= 0:
+            db = data.find(b'"database"', pop_db)
+            ob = data.find(b'{', db)
+            j = ob
+            while True:
+                i = data.find(b'":{', j)
+                if i < 0:
+                    break
+                ob2 = data.find(b'{', i)
+                head = data[ob2:min(ob2 + 600, len(data))]
+                m_loc = re.search(rb'"location":(\d+)', head)
+                if not m_loc:
+                    j = data.find(b'}', ob2) + 1
+                    continue
+                sid = int(m_loc.group(1))
+                counts = cult_by_state.get(sid)
+                if counts is None:
+                    j = data.find(b'}', ob2) + 1
+                    continue
+                m_cult = re.search(rb'"culture":(\d+)', head)
+                if m_cult:
+                    m_wf = re.search(rb'"workforce":([\d.]+)', head)
+                    m_dep = re.search(rb'"dependents":([\d.]+)', head)
+                    wf = float(m_wf.group(1)) if m_wf else 0
+                    dep = float(m_dep.group(1)) if m_dep else 0
+                    cid = int(m_cult.group(1))
+                    counts[cid] = counts.get(cid, 0) + wf + dep
+                j = data.find(b'}', ob2) + 1
     loc = _load_loc_all()
     zh_map = (build_culture_map() or {}).get("_zh") or {}
     hm = build_homeland_map()
+    state_zh = (lambda sid: ctx.state_zh(sid)) if ctx else (
+        lambda sid: _state_zh(data, sid))
     result = []
     for sid in sorted(state_ids):
-        sobj = _state_object(data, sid)
-        rk = (sobj or {}).get("region") if sobj else _state_region_key(data, sid)
+        sobj = ctx.state_object(sid) if ctx else _state_object(data, sid)
+        if ctx is not None:
+            rk = ctx.state_region_key(sid)
+        else:
+            rk = (sobj or {}).get("region") if sobj else _state_region_key(data, sid)
         name = loc.get(rk) if rk else None
         counts = cult_by_state.get(sid) or {}
         top = None
@@ -2403,7 +2458,7 @@ def _extract_player_states(data, state_ids):
                             if isinstance(r.get("num"), (int, float)))
                 dest = {}
                 for r in buckets:
-                    tname = _state_zh(data, r.get("target_state"))
+                    tname = state_zh(r.get("target_state"))
                     key = tname or f"州{r.get('target_state')}"
                     dest[key] = dest.get(key, 0) + (r.get("num") or 0)
                 top_dest = sorted(dest.items(), key=lambda kv: -kv[1])[:3]
@@ -2419,7 +2474,7 @@ def _extract_player_states(data, state_ids):
                 if isinstance(ew, (int, float)):
                     entry["emigration"] = {
                         "weekly": round(float(ew), 4),
-                        "to_states": [{"state": s, "name": _state_zh(data, s)}
+                        "to_states": [{"state": s, "name": state_zh(s)}
                                       for s in (em.get("emigration_states") or [])
                                       if s is not None],
                     }
@@ -2746,13 +2801,20 @@ def _ownership_sentence(dist, total):
     return f"该建筑物所有权构成：{parts}"
 
 
-def _pops_by_state(data, state_ids):
+def _pops_by_state(data, state_ids, pops_index=None):
     """单次扫描 pops → {state_id: [POP对象]} (仅玩家州)。
-    供家庭采访随机重试时直接取样, 避免每次尝试都整文件重扫 pops。"""
-    state_ids = set(state_ids or [])
-    out = {s: [] for s in state_ids}
-    if not state_ids:
+    供家庭采访随机重试时直接取样, 避免每次尝试都整文件重扫 pops。
+    pops_index 可选: 已按州分组的 {state_id: [POP对象]} (SaveContext.pops_by_state),
+    传入时直接复用。"""
+    out = {s: [] for s in (state_ids or [])}
+    if not out:
         return out
+    if pops_index is not None:
+        for sid, lst in pops_index.items():
+            if sid in out:
+                out[sid] = lst
+        return out
+    state_ids = set(out)
     pop_db = data.find(b'"pops"')
     if pop_db < 0:
         return out
@@ -3391,7 +3453,20 @@ def _migration_records_zh(data, sobj):
     return out
 
 
-def _character_index(data, ids):
+def _character_index(data, ids, ctx=None):
+    """批量读取角色 (带可选 SaveContext 缓存)。
+    ctx 传入时按 id 集合记忆化结果, 重复扫描 (如陆战/海战将领) 只解析一次。"""
+    if ctx is not None:
+        idset = tuple(sorted({int(x) for x in ids if x is not None}))
+        if idset in ctx.char_cache:
+            return ctx.char_cache[idset]
+        out = _character_index_scan(data, ids)
+        ctx.char_cache[idset] = out
+        return out
+    return _character_index_scan(data, ids)
+
+
+def _character_index_scan(data, ids):
     """批量读取角色: 单次扫描 character_manager.database, 返回 {id: 信息}。
     只扫 database 子对象, 不扫同 manager 里的 deaths / previous_deaths;
     无姓名字段的对象(死亡记录/占位符)跳过, 已读到的角色不被后续重复条目覆盖。"""
@@ -3466,7 +3541,7 @@ def _country_zh_map(data):
     return build_country_id_names(data, index), gp_ids
 
 
-def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
+def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None, ctx=None):
     """解析 battle_manager.database 的战役对象。
 
     战役含: 战争/前线/发生地(州域本地化名)/起止日期/胜负/攻守双方(国家、将领、
@@ -3524,7 +3599,8 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
             if isinstance(o, dict) and o.get("state") is not None:
                 occ.append({
                     "state": o["state"],
-                    "name": _state_zh(data, o["state"]),
+                    "name": (ctx.state_zh(o["state"]) if ctx
+                             else _state_zh(data, o["state"])),
                     "fraction": round(float(o.get("fraction") or 0), 3),
                 })
         nv = obj.get("name") or {}
@@ -3548,7 +3624,7 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
                         player_involved, has_gp, pids))
         j = nxt
 
-    chars = _character_index(data, commander_ids)
+    chars = _character_index(data, commander_ids, ctx=ctx)
 
     def _side(d, prefix):
         if not d:
@@ -3618,7 +3694,7 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
     return battles[:12]
 
 
-def parse_naval_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
+def parse_naval_battles(data, player_id=None, wars=None, zh=None, gp_ids=None, ctx=None):
     """解析 naval_battle_manager.database 的海战对象。
 
     海战与陆战结构不同: attacker/defender 位于对象顶层(而非 battle_data),
@@ -3685,7 +3761,7 @@ def parse_naval_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
                         player_involved, has_gp, pids))
         j = nxt
 
-    chars = _character_index(data, commander_ids)
+    chars = _character_index(data, commander_ids, ctx=ctx)
 
     def _ship_count(rec_side, key):
         # 主力舰(priority)与屏卫舰(screening)合计
@@ -4292,26 +4368,119 @@ def _player_pops_with_id(data, state_ids):
     return out
 
 
-def build_magazine_data(melted, snap, folder, year):
+class SaveContext:
+    """进程内共享的存档读取上下文 (阶段1)。
+
+    把 extract_full_snapshot 与 build_magazine_data 都要用到的整文件扫描
+    记忆化, 解析一次、多处复用:
+      - 国家索引/列强/dp 只建一次 (旧流程两个函数各建一次);
+      - 玩家州 POP 只扫描解析一次, 供占比统计/按州索引/政治运动/杂志样本共用;
+      - states.database 只解析一次, 供州对象/州域名/首都名等反复查询。
+    调用方 (watch/continue) 创建一次后传给两个生成函数, 即可消除跨函数重复遍历。
+    """
+
+    def __init__(self, data):
+        self.data = data
+        self._index = None
+        self._pops = {}            # state_ids_tuple -> {pid: obj}
+        self._state_obj_cache = {} # sid -> obj (按州惰性缓存)
+        self._state_zh_cache = {}
+        self._buildings = {}       # state_ids_tuple -> (by_state, btype_map, objs)
+        self.char_cache = {}       # ids_tuple -> {cid: info}
+        self._formations = None
+
+    def index(self):
+        """(国家index, 列强gp_ids, diplomatic_plays dp_index) 只建一次。"""
+        if self._index is None:
+            self._index = _build_indexes(self.data)
+        return self._index
+
+    def player_pops(self, state_ids):
+        """玩家州 {pid: pop对象} 只扫描解析一次。"""
+        key = tuple(sorted(state_ids or []))
+        if key not in self._pops:
+            self._pops[key] = _player_pops_with_id(self.data, list(key))
+        return self._pops[key]
+
+    def pops_by_state(self, state_ids):
+        """由 player_pops 派生 {state_id: [pop对象]}。"""
+        out = {s: [] for s in (state_ids or [])}
+        for _pid, obj in self.player_pops(state_ids).items():
+            loc = obj.get("location")
+            if loc in out:
+                out[loc].append(obj)
+        return out
+
+    def aggregate_pops(self, state_ids):
+        """由 player_pops 派生民族/宗教/职业占比。"""
+        return _aggregate_pops(self.data, state_ids,
+                               pops=self.player_pops(state_ids))
+
+    def state_object(self, sid):
+        """州对象按 id 惰性缓存: 每个州只在首次访问时做一次带边界查找,
+        避免整库一次 json.loads (约 5.5s) 以及旧代码的重复线性扫描。"""
+        if sid not in self._state_obj_cache:
+            self._state_obj_cache[sid] = _state_object(self.data, sid)
+        return self._state_obj_cache[sid]
+
+    def state_region_key(self, sid):
+        obj = self.state_object(sid)
+        return obj.get("region") if obj else None
+
+    def state_zh(self, sid):
+        """州 id → 中文名 (按州缓存)。"""
+        if sid not in self._state_zh_cache:
+            rk = self.state_region_key(sid)
+            self._state_zh_cache[sid] = (_load_loc_all().get(rk) or rk
+                                         if rk else None)
+        return self._state_zh_cache[sid]
+
+    def player_states(self, state_ids):
+        """玩家州摘要列表 (复用本上下文的 POP 与州对象缓存)。"""
+        return _extract_player_states(self.data, state_ids, ctx=self)
+
+    def capital_name(self, country):
+        """首都中文名 (复用州对象缓存)。"""
+        return _capital_name(self.data, country, ctx=self)
+
+    def buildings_index(self, state_ids):
+        """(by_state, btype_map, objs) 建筑索引只建一次。"""
+        key = tuple(sorted(state_ids or []))
+        if key not in self._buildings:
+            self._buildings[key] = _buildings_index(self.data, list(key))
+        return self._buildings[key]
+
+    def formations(self):
+        """军团/编成索引只建一次。"""
+        if self._formations is None:
+            self._formations = parse_formations(self.data)
+        return self._formations
+
+
+def build_magazine_data(melted, snap, folder, year, ctx=None):
     """汇总杂志数据 (全部来自真实存档, 采样由 year 播种保证同年稳定)。
     返回 dict: battles / migrations / promotions / pop_migrations / conversions /
-    soldiers / families / elites / civilians / war_states / cabinet / ruler。"""
+    soldiers / families / elites / civilians / war_states / cabinet / ruler。
+    ctx 可选: SaveContext, 传入时复用快照提取已建好的索引/POP/州对象 (阶段1),
+    不再重复整文件扫描。"""
+    if ctx is None:
+        ctx = SaveContext(melted)
     rnd = random.Random(year or 0)
     state_ids = [s.get("id") for s in (snap.get("states") or [])
                  if s.get("id") is not None]
     data = {}
 
     # 国家名/列强/外交博弈索引: 战役、战争目的共用一份
-    index0, gp_ids0, dp_index0 = _build_indexes(melted)
+    index0, gp_ids0, dp_index0 = ctx.index()
     zh = build_country_id_names(melted, index0)
 
     # 战役 (仅玩家参战, ≤12 场; 玩家未参战的列强战役不进杂志)
     # 陆战与海战各自独立解析, 合并时两池各以 50% 概率被抽取
     data["battles"] = _mix_land_naval_battles(
         parse_battles(melted, player_id=snap.get("country_id"),
-                      wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0),
+                      wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0, ctx=ctx),
         parse_naval_battles(melted, player_id=snap.get("country_id"),
-                            wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0),
+                            wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0, ctx=ctx),
         snap.get("year"))
     # 报告年度: 存档在年初(1月)时报道上一历年, 否则报道本年度至今。
     # 战役州只取报告年度内的战役, 避免把前几年的战场/遗留荒废度误报为当前战乱。
@@ -4373,7 +4542,7 @@ def build_magazine_data(melted, snap, folder, year):
 
     # 军团 / 营 / 舰船
     cid = snap.get("country_id")
-    formations = parse_formations(melted)
+    formations = ctx.formations()
     data["formations"] = [f for f in formations if f.get("country") == cid]
     data["units"] = parse_combat_units(melted, cid, formations=formations)
     naval_cids = set()
@@ -4389,14 +4558,14 @@ def build_magazine_data(melted, snap, folder, year):
     # 玩家州迁移记录 (migration_buckets)
     mig = []
     for sid in state_ids:
-        sobj = _state_object(melted, sid)
+        sobj = ctx.state_object(sid)
         if not sobj:
             continue
         mig.extend(_migration_records_zh(melted, sobj))
     data["migrations"] = mig
 
     # POP 单次扫描: 指纹导出 + 跨年比对 + 分类样本
-    pops = _player_pops_with_id(melted, state_ids)
+    pops = ctx.player_pops(state_ids)
     export_pop_fingerprint(pops, folder, year)
 
     # 新家园接受度: 按 (目标州, 文化id) 汇总同文化POP的接受状态,
@@ -4419,16 +4588,16 @@ def build_magazine_data(melted, snap, folder, year):
     prev_fp = load_pop_fingerprint(folder, year - 1) if year else None
     promotions, pop_migrations = diff_pop_fingerprints(prev_fp, cur_fp)
     for p in promotions:
-        p["state_name"] = _state_zh(melted, p.get("state"))
-        p["old_state_name"] = _state_zh(melted, p.get("old_state"))
+        p["state_name"] = ctx.state_zh(p.get("state"))
+        p["old_state_name"] = ctx.state_zh(p.get("old_state"))
         p["culture_zh"] = (culture_id_to_name(p.get("culture"))
                            if p.get("culture") is not None else None)
         p["religion_zh"] = _religion_zh(p.get("religion"))
         p["type_zh"] = p.get("new_type")
         p["old_type_zh"] = p.get("old_type")
     for p in pop_migrations:
-        p["state_name"] = _state_zh(melted, p.get("state"))
-        p["old_state_name"] = _state_zh(melted, p.get("old_state"))
+        p["state_name"] = ctx.state_zh(p.get("state"))
+        p["old_state_name"] = ctx.state_zh(p.get("old_state"))
         p["culture_zh"] = (culture_id_to_name(p.get("culture"))
                            if p.get("culture") is not None else None)
         p["religion_zh"] = _religion_zh(p.get("religion"))
@@ -4463,7 +4632,7 @@ def build_magazine_data(melted, snap, folder, year):
         d = {
             "pop_id": pid,
             "state": obj.get("location"),
-            "state_name": _state_zh(melted, obj.get("location")),
+            "state_name": ctx.state_zh(obj.get("location")),
             "type": obj.get("type"),
             "culture": (culture_id_to_name(obj.get("culture"))
                         if obj.get("culture") is not None else None),
@@ -4490,7 +4659,7 @@ def build_magazine_data(melted, snap, folder, year):
         if cand:
             fam.append(_info(*_pick(cand, 1)[0], extra={
                 "soldier_state": obj.get("location"),
-                "soldier_state_name": _state_zh(melted, obj.get("location")),
+                "soldier_state_name": ctx.state_zh(obj.get("location")),
             }))
     data["families"] = fam
 
@@ -5145,9 +5314,13 @@ def build_journal_data(snap):
     data["last_year_wars"] = snap.get("last_year_wars")
     return data
 
-def extract_full_snapshot(melted, cid=None):
+def extract_full_snapshot(melted, cid=None, ctx=None):
     """从熔化数据提取完整快照 (精确数值 + 本年度法律变化 + pop占比 + 战争 + 政体中文)。
-    cid 为 None 时取玩家国; 指定 cid 时可提取任意国家 (供 test 等批量生成复用)。"""
+    cid 为 None 时取玩家国; 指定 cid 时可提取任意国家 (供 test 等批量生成复用)。
+    ctx 可选: SaveContext, 传入时复用已建索引/已解析 POP 与州对象 (阶段1),
+    否则内部新建一个, 保证无上下文调用 (test 脚本等) 行为不变。"""
+    if ctx is None:
+        ctx = SaveContext(melted)
     if cid is None:
         country, meta, tag, cid = find_player_country(melted)
     else:
@@ -5161,9 +5334,9 @@ def extract_full_snapshot(melted, cid=None):
     snap["country_id"] = cid
     player_tag = tag or (country or {}).get("definition")
     snap["govt_zh"] = gov_to_name(snap.get("govt"))
-    snap["capital"] = _capital_name(melted, country)
+    snap["capital"] = ctx.capital_name(country)
     # 首都州(区域)键与中文名: 供领袖/统治者「家乡非首都州」判定
-    cap_rk = _state_region_key(melted, (country or {}).get("capital"))
+    cap_rk = ctx.state_region_key((country or {}).get("capital"))
     snap["capital_region_key"] = cap_rk
     snap["capital_region"] = _load_loc_all().get(cap_rk) if cap_rk else None
     # 法律: 只保留本年度内发生变化的法律 (新施行 + 废除), 不再输出全部现行法
@@ -5200,16 +5373,16 @@ def extract_full_snapshot(melted, cid=None):
             item["replace_law"] = cands[0]
     snap["laws_in_progress"] = laws_ip
     snap["player_country_id"] = cid
-    index, gp_ids, dp_index = _build_indexes(melted)
+    index, gp_ids, dp_index = ctx.index()
     names = load_current_country_names(melted, index)
     if cid is not None and tag:
         # 非玩家国: 用国家名覆盖 meta.name(玩家名), 供杂志/报纸以该国名义写作
         snap["player"] = (build_country_id_names(melted, index).get(cid)
                           or names.get(tag, tag))
     state_ids = (country or {}).get("states") or []
-    pops = _aggregate_pops(melted, state_ids)
+    pops = ctx.aggregate_pops(state_ids)
     prim_cultures = _get_primary_cultures(melted, state_ids)
-    snap["states"] = _extract_player_states(melted, state_ids)
+    snap["states"] = ctx.player_states(state_ids)
     mapped = []
     for i, c in enumerate(pops["cultures"]):
         cname = culture_id_to_name(c["name"])
@@ -5233,8 +5406,8 @@ def extract_full_snapshot(melted, cid=None):
     snap["last_year_wars"] = _last_year_wars(snap.get("wars") or [], snap.get("year"))
     # 单文件扫描一次建索引: 角色 / 建筑 / POP, 供首领、统治者与家庭采访复用
     chars = _player_characters(melted, cid)
-    buildings_index, building_map, building_objs = _buildings_index(melted, state_ids)
-    pops_index = _pops_by_state(melted, state_ids)
+    buildings_index, building_map, building_objs = ctx.buildings_index(state_ids)
+    pops_index = ctx.pops_by_state(state_ids)
     ig_slots = _country_ig_slots(melted, cid)
     price_map = _market_price_map(melted, country)
     snap["interest_groups"] = _extract_interest_groups(melted, cid, chars=chars)
@@ -5286,7 +5459,7 @@ def extract_full_snapshot(melted, cid=None):
     snap["rivals"] = _extract_rivals(melted, cid, names, index=index, pacts=pact_list)
     snap["political_movements"] = _extract_political_movements(
         melted, cid, state_ids, (country.get("pop_statistics") or {}),
-        player_tag=player_tag)
+        player_tag=player_tag, pops=ctx.player_pops(state_ids))
     # 列强交战状态: 依据进行中战争的参与者
     gp_war_ids = {p.get("id") for w in snap["wars"] if not w.get("ended")
                   for p in w.get("participants", []) if p.get("rank") == "great_power"}
@@ -6122,6 +6295,100 @@ def _extract_interest_groups(data, player_id, chars=None):
     groups.sort(key=lambda g: -(g.get("clout_pct") or 0))
     return groups
 
+# ---------------------------------------------------------------------------
+# 快照缓存 (阶段2: 落盘缓存, 重复生成报纸/杂志时跳过熔化+提取)
+# ---------------------------------------------------------------------------
+
+SNAPSHOT_CACHE_VERSION = 2
+
+
+def _current_save_stamp():
+    """当前最新存档的 (文件名, mtime), 用于校验快照缓存; 无存档返回 (None, None)。"""
+    v3 = find_latest_v3()
+    if not v3:
+        return None, None
+    try:
+        return os.path.basename(v3), os.path.getmtime(v3)
+    except OSError:
+        return None, None
+
+
+def _snapshot_cache_path(journal_dir, folder, year):
+    """快照缓存路径: <journal_dir>/<folder>/data/snapshot_<year>.json。"""
+    return os.path.join(journal_dir, folder, "data", f"snapshot_{year}.json")
+
+
+def _save_snapshot_cache(snap, journal_dir, folder, year):
+    """把完整快照落盘, 附带 _meta 存档校验信息 (存档名+mtime+玩家+会话文件夹)。
+    只缓存 extract_full_snapshot 的纯提取结果, 不含 _merge_prev_year_wars
+    补回的跨年战争, 使缓存与上一年 raw JSON 解耦, 读取后每次重新合并结果一致。"""
+    if not folder or not year:
+        return
+    save_name, save_mtime = _current_save_stamp()
+    snap2 = dict(snap)
+    snap2["_meta"] = {
+        "version": SNAPSHOT_CACHE_VERSION,
+        "year": year,
+        "player": snap.get("player"),
+        "save_name": save_name,
+        "save_mtime": save_mtime,
+        "session_folder": folder,
+    }
+    path = _snapshot_cache_path(journal_dir, folder, year)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fp:
+            json.dump(snap2, fp, ensure_ascii=False)
+    except Exception as e:
+        print(f"写入快照缓存失败: {e}")
+
+
+def _load_snapshot_cache(journal_dir, year):
+    """按年份在一级会话文件夹中查找快照缓存。
+    校验: 缓存必须来自当前最新存档 (save_name + mtime 一致) 且年份匹配,
+    否则视为失效返回 (None, None), 由调用方重新熔化提取。
+    只扫描 <journal_dir>/<folder>/data/snapshot_<year>.json 一级深度,
+    不会误取 test*/ 等子目录下的测试缓存。"""
+    if not year:
+        return None, None
+    save_name, save_mtime = _current_save_stamp()
+    if not save_name:
+        return None, None
+    try:
+        entries = sorted(os.listdir(journal_dir))
+    except OSError:
+        return None, None
+    matches = []
+    for folder in entries:
+        path = _snapshot_cache_path(journal_dir, folder, year)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as fp:
+                snap = json.load(fp)
+        except Exception:
+            continue
+        meta = snap.get("_meta") or {}
+        if not isinstance(meta, dict):
+            continue
+        mt = meta.get("save_mtime")
+        mt_ok = isinstance(mt, (int, float)) and abs(mt - save_mtime) < 1e-6
+        if (meta.get("version") == SNAPSHOT_CACHE_VERSION
+                and meta.get("year") == year
+                and meta.get("save_name") == save_name
+                and mt_ok):
+            matches.append((snap, meta.get("session_folder")))
+    if not matches:
+        return None, None
+    # 多个有效缓存(极少见)时优先取最新会话: 文件夹名为 玩家名 或 玩家名N, N 大者最新
+    def _session_key(item):
+        folder = str(item[1] or "")
+        m = re.match(r"^(.*?)(\d+)$", folder)
+        return (m.group(1), int(m.group(2))) if m else (folder, 0)
+    matches.sort(key=_session_key, reverse=True)
+    return matches[0][0], matches[0][1]
+
+
 def ensure_fresh_melt():
     """强制用最新存档重新熔化, 返回 (melted_bytes, err)。"""
     v3 = find_latest_v3()
@@ -6136,27 +6403,53 @@ def ensure_fresh_melt():
     except Exception as e:
         return None, f"读取失败: {e}"
 
-def make_newspaper(year=None, force=True, melted=None, snap=None):
+def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None):
     """用存档数据生成报纸 (复用 journal.py)。
-    melted/snap 由调用方已熔化/解析时可直接传入, 避免同一年份重复熔化解析。"""
+    melted/snap 由调用方已熔化/解析时可直接传入, 避免同一年份重复熔化解析。
+    未传入 snap 时优先读取当年快照缓存 (snapshot_<year>.json); 缓存命中则
+    跳过熔化与完整提取, 只读 JSON (~30KB), 大幅加快重复生成。
+    ctx 可选: SaveContext, 由 watch/continue 创建一次并传给报纸与杂志,
+    使两个生成函数共享索引/POP/州对象解析 (阶段1)。"""
     import journal
+    cfg = journal.load_config()
+    snap_from_cache = False
+    cache_folder = None
     if snap is None:
         if melted is None:
-            data = ensure_fresh_melt()
-            if data[1]:
-                print(data[1])
-                return 1
-            melted, _ = data
-        snap = extract_full_snapshot(melted)
+            cached = _load_snapshot_cache(cfg["journal_dir"], year)
+            if cached[0] is not None:
+                snap, cache_folder = cached
+                snap_from_cache = True
+                print(f"使用快照缓存: "
+                      f"{_snapshot_cache_path(cfg['journal_dir'], cache_folder, year)}")
+            else:
+                data = ensure_fresh_melt()
+                if data[1]:
+                    print(data[1])
+                    return 1
+                melted, _ = data
+                if ctx is None:
+                    ctx = SaveContext(melted)
+                snap = extract_full_snapshot(melted, ctx=ctx)
+        else:
+            if ctx is None:
+                ctx = SaveContext(melted)
+            snap = extract_full_snapshot(melted, ctx=ctx)
     if year and snap.get("year") != year:
         print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
-    cfg = journal.load_config()
     # 首次确定文件夹: 检查根目录同名文件夹, 有则加数字(大南、大南2...); 同局沿用
     if not journal.SESSION["folder"]:
         with journal._FOLDER_LOCK:
             if not journal.SESSION["folder"]:
-                journal.SESSION["folder"] = journal.determine_folder(
-                    snap.get("player") or "未知名国家", cfg["journal_dir"])
+                if snap_from_cache and cache_folder:
+                    journal.SESSION["folder"] = cache_folder
+                else:
+                    journal.SESSION["folder"] = journal.determine_folder(
+                        snap.get("player") or "未知名国家", cfg["journal_dir"])
+    # 快照落盘缓存: 只缓存纯提取结果, 跨年战争由 _merge_prev_year_wars 每次重算
+    if not snap_from_cache:
+        _save_snapshot_cache(snap, cfg["journal_dir"], journal.SESSION["folder"],
+                             snap.get("year"))
     # 存档层落盘: 补回上一年存档中的「去年战争」(V3 war_manager 只保留进行中战争)
     _merge_prev_year_wars(snap, cfg["journal_dir"], journal.SESSION["folder"])
     jdata = build_journal_data(snap)
@@ -6165,33 +6458,67 @@ def make_newspaper(year=None, force=True, melted=None, snap=None):
     return 0
 
 
-def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None):
+def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None, ctx=None):
     """用存档数据生成杂志 (magazine.py), 复用 make_newspaper 的熔化/快照/
     会话文件夹逻辑, 避免同一年份重复熔化解析。
-    cfg 可传入覆盖(如 test 目录), 缺省重新读取 config.json。"""
+    cfg 可传入覆盖(如 test 目录), 缺省重新读取 config.json。
+    未传入 snap 时优先读取当年快照缓存; 命中后只需读 melt 缓存即可构建杂志数据
+    (跳过约 41s 的完整提取, 保留约 10s 的杂志数据构建)。
+    ctx 可选: SaveContext, 与 make_newspaper 共享索引/POP/州对象解析 (阶段1)。"""
     import journal
+    cfg = cfg or journal.load_config()
+    snap_from_cache = False
+    cache_folder = None
     if snap is None:
         if melted is None:
-            data = ensure_fresh_melt()
-            if data[1]:
-                print(data[1])
-                return 1
-            melted, _ = data
-        snap = extract_full_snapshot(melted)
+            cached = _load_snapshot_cache(cfg["journal_dir"], year)
+            if cached[0] is not None:
+                snap, cache_folder = cached
+                snap_from_cache = True
+                print(f"使用快照缓存: "
+                      f"{_snapshot_cache_path(cfg['journal_dir'], cache_folder, year)}")
+            else:
+                data = ensure_fresh_melt()
+                if data[1]:
+                    print(data[1])
+                    return 1
+                melted, _ = data
+                if ctx is None:
+                    ctx = SaveContext(melted)
+                snap = extract_full_snapshot(melted, ctx=ctx)
+        else:
+            if ctx is None:
+                ctx = SaveContext(melted)
+            snap = extract_full_snapshot(melted, ctx=ctx)
     if year and snap.get("year") != year:
         print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
-    cfg = cfg or journal.load_config()
     if not journal.SESSION["folder"]:
         with journal._FOLDER_LOCK:
             if not journal.SESSION["folder"]:
-                journal.SESSION["folder"] = journal.determine_folder(
-                    snap.get("player") or "未知名国家", cfg["journal_dir"])
+                if snap_from_cache and cache_folder:
+                    journal.SESSION["folder"] = cache_folder
+                else:
+                    journal.SESSION["folder"] = journal.determine_folder(
+                        snap.get("player") or "未知名国家", cfg["journal_dir"])
+    if not snap_from_cache:
+        _save_snapshot_cache(snap, cfg["journal_dir"], journal.SESSION["folder"],
+                             snap.get("year"))
+    # 杂志数据需要 melted 字节: 缓存命中时读 melt 缓存即可 (约 0.5s), 缺缓存再熔化
+    if snap_from_cache and melted is None:
+        melted, err = load_melted()
+        if err:
+            melted, err = ensure_fresh_melt()
+            if err:
+                print(err)
+                return 1
+        if ctx is None:
+            ctx = SaveContext(melted)
     _merge_prev_year_wars(snap, cfg["journal_dir"], journal.SESSION["folder"])
     jdata = build_journal_data(snap)
     jdata["output_dir"] = journal.SESSION["folder"]
     session_dir = os.path.join(cfg["journal_dir"], journal.SESSION["folder"])
     jdata["magazine"] = build_magazine_data(
-        melted, snap, session_dir, snap.get("year"))
+        melted, snap, session_dir, snap.get("year"), ctx=ctx)
     import magazine
     magazine.generate_magazine(jdata, cfg, force=force)
     print("杂志生成完成")
@@ -6199,12 +6526,14 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None):
 
 
 def _generate_async(year, snap, melted=None):
-    """后台线程: 生成某年报纸与杂志(同一快照, 不重复熔化解析), 不阻塞监控。"""
+    """后台线程: 生成某年报纸与杂志(同一快照 + 同一 SaveContext,
+    不重复熔化解析, 也不重复扫描索引/POP/州对象), 不阻塞监控。"""
     import journal
     cfg = journal.load_config()
+    ctx = SaveContext(melted) if melted is not None else None
     try:
         if cfg.get("newspaper_enabled", True):
-            make_newspaper(year=year, force=True, snap=snap)
+            make_newspaper(year=year, force=True, snap=snap, ctx=ctx)
         else:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年报纸已在配置中禁用 "
                   f"(newspaper_enabled=false), 跳过")
@@ -6212,7 +6541,7 @@ def _generate_async(year, snap, melted=None):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年报纸生成失败: {e}")
     try:
         if cfg.get("magazine_enabled", True):
-            make_magazine(year=year, force=True, melted=melted, snap=snap)
+            make_magazine(year=year, force=True, melted=melted, snap=snap, ctx=ctx)
         else:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年杂志已在配置中禁用 "
                   f"(magazine_enabled=false), 跳过")
@@ -6270,7 +6599,8 @@ def cmd_watch(continue_mode=False):
         if err:
             print(err)
             return 1
-        snap = extract_full_snapshot(melted)
+        ctx = SaveContext(melted)
+        snap = extract_full_snapshot(melted, ctx=ctx)
         player = snap.get("player") or "未知名国家"
         folder = journal.find_latest_session_folder(player, cfg["journal_dir"])
         if folder:
@@ -6287,10 +6617,10 @@ def cmd_watch(continue_mode=False):
                                    f"杂志_{year}.md")
             if not os.path.exists(md_path) and cfg.get("newspaper_enabled", True):
                 print(f"续传模式: {year} 年报纸缺失, 先用当前存档补生成")
-                make_newspaper(year=year, force=True, melted=melted, snap=snap)
+                make_newspaper(year=year, force=True, melted=melted, snap=snap, ctx=ctx)
             if cfg.get("magazine_enabled", True) and not os.path.exists(mg_path):
                 print(f"续传模式: {year} 年杂志缺失, 先用当前存档补生成")
-                make_magazine(year=year, force=True, melted=melted, snap=snap)
+                make_magazine(year=year, force=True, melted=melted, snap=snap, ctx=ctx)
             if os.path.exists(md_path) and os.path.exists(mg_path):
                 print(f"续传模式: {year} 年报纸与杂志均存在, 进入监控等待下一年。")
     last_mtime = None
