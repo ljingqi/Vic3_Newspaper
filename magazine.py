@@ -293,6 +293,8 @@ BATTLE_TYPE_ZH = {
     "land": "陆战",
     "naval": "海战",
     "naval_invasion_landing": "登陆战",
+    "raid_supply": "袭扰补给",
+    "invasion": "登陆作战",
 }
 
 BATTLE_STATUS_ZH = {
@@ -401,6 +403,18 @@ def _fmt_battle(b):
         bc = _battalion_change(sd.get("battalions_start"), sd.get("battalions_end"))
         if bc:
             bits.append(bc)
+        ships = sd.get("ships_start")
+        if ships is not None:
+            s = int(round(ships))
+            se = sd.get("ships_end")
+            if se is None or int(round(se)) == s:
+                bits.append(f"参战{s}艘")
+            else:
+                e = int(round(se))
+                if e <= 0:
+                    bits.append(f"参战{s}艘，战后全数沉没")
+                else:
+                    bits.append(f"参战{s}艘，战后仅余{e}艘")
         mp = _manpower_phrase(sd.get("manpower_start"),
                               sd.get("battalions_start") or sd.get("initial_size"))
         if mp:
@@ -548,7 +562,7 @@ def _facts_soldier(m, data, peacetime=False):
                     dict.fromkeys(str(x) for x in others)) + "。")
     ships = m.get("ships") or []
     if (not peacetime and battles
-            and battles[0].get("type") in ("naval", "naval_invasion_landing") and ships):
+            and battles[0].get("naval") and ships):
         cid_name = {}
         for b in battles:
             for side in ("attacker", "defender"):

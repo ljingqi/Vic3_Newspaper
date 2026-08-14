@@ -3114,15 +3114,21 @@ def _dp_costs(dp_obj):
     """总战争花费：各国花费之和。"""
     return round(sum(_dp_costs_by_country(dp_obj).values()), 2)
 
-def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=None):
+def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=None,
+               save_date=None):
     """解析 war_manager.database 中的战争, 只保留玩家或列强参与的。
     伤亡/花费从关联的 diplomatic_play 对象读取(war.diplomatic_play → dp)。
     返回 [{start_date, peace_date, participants:[{id,definition,name,side,rank}],
            casualties, casualties_total, total_cost, ended, player_involved,
-           dp_initiator, dp_target}]"""
+           dp_initiator, dp_target}]
+
+    ended 判定: peace_date 存在且不晚于存档日期(save_date)才算已结束;
+    和平日期晚于存档日期时, 该日期只是 AI 向玩家提出的和约计划,
+    玩家未接受前不构成和平, 直接视为不存在和平(peace_date 置空)。"""
     if index is None or gp_ids is None or dp_index is None:
         index, gp_ids, dp_index = _build_indexes(data)
     id_names = build_country_id_names(data, index)
+    save_tuple = _v3_date_tuple(save_date) if save_date else None
     wars = []
     wm = data.find(b'"war_manager"')
     if wm < 0:
@@ -3217,11 +3223,22 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
         if not (player_involved or has_great_power):
             j = end
             continue
+        # 和平日期判定: 晚于存档日期的和约只是计划, 视作不存在和平
+        peace = wobj.get("peace_date")
+        ended = False
+        if peace and peace != "1.1.1":
+            p_tuple = _v3_date_tuple(peace)
+            if save_tuple and p_tuple:
+                ended = p_tuple <= save_tuple
+            else:
+                ended = True
+            if not ended:
+                peace = None
         wars.append({
             "id": wid,
             "start_date": wobj.get("start_date"),
-            "peace_date": wobj.get("peace_date"),
-            "ended": bool(wobj.get("peace_date")) and wobj.get("peace_date") != "1.1.1",
+            "peace_date": peace,
+            "ended": ended,
             "player_involved": player_involved,
             "casualties": cas_by_cid,
             "casualties_total": round(sum(cas_by_cid.values()), 3) if cas_by_cid else None,
@@ -3599,6 +3616,171 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
         battles = [b for b in battles if b.get("player_involved")]
     battles.sort(key=lambda b: str(b.get("start_date") or ""), reverse=True)
     return battles[:12]
+
+
+def parse_naval_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
+    """解析 naval_battle_manager.database 的海战对象。
+
+    海战与陆战结构不同: attacker/defender 位于对象顶层(而非 battle_data),
+    起止日期在 battle_record 内; 这里映射成与 parse_battles 相同的 entry 结构,
+    并额外标记 naval=True 供下游区分。"""
+    nb = data.find(b'"naval_battle_manager"')
+    if nb < 0:
+        return []
+    ob = data.find(b'{', nb)
+    end = _object_end(data, ob)
+    db = data.find(b'"database"', nb)
+    if db < 0 or db > end:
+        return []
+    dob = data.find(b'{', db)
+    if zh is None or gp_ids is None:
+        zh, gp_ids = _country_zh_map(data)
+    war_by_id = {str(w.get("id")): w for w in (wars or [])}
+    loc = _load_loc_all()
+    pat = re.compile(rb'"(\d+)":\{')
+    battles = []
+    commander_ids = []
+    pending = []
+    j = dob
+    while True:
+        m = pat.search(data, j, end - 1)
+        if not m:
+            break
+        bid = m.group(1).decode()
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, nxt = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = nxt
+            continue
+        if not isinstance(obj, dict) or "type" not in obj:
+            j = nxt
+            continue
+        atk = obj.get("attacker") or {}
+        dfd = obj.get("defender") or {}
+        pids = [x for x in (atk.get("country"), dfd.get("country"))
+                if x is not None]
+        player_involved = player_id is not None and player_id in pids
+        has_gp = bool(gp_ids) and any(c in gp_ids for c in pids)
+        nv = obj.get("name") or {}
+        var = {}
+        for v in (nv.get("variables") or []):
+            if isinstance(v, dict):
+                var[v.get("key")] = v.get("value")
+        place_key = var.get("STATE_REGION_NAME")
+        place = loc.get(place_key) if place_key else None
+        if not place:
+            ck = var.get("CITY_NAME")
+            if ck:
+                place = _clean_loc_name(loc.get(ck, ck), loc)
+        war = war_by_id.get(str(obj.get("war")))
+        for d in (atk, dfd):
+            if d.get("commander") is not None:
+                commander_ids.append(d.get("commander"))
+        rec = obj.get("battle_record") or {}
+        pending.append((bid, obj, atk, dfd, place, war, rec,
+                        player_involved, has_gp, pids))
+        j = nxt
+
+    chars = _character_index(data, commander_ids)
+
+    def _ship_count(rec_side, key):
+        # 主力舰(priority)与屏卫舰(screening)合计
+        total = 0
+        for k in (key, key.replace("priority", "screening")):
+            v = (rec_side or {}).get(k) or {}
+            if isinstance(v, dict):
+                n = v.get("ships")
+                if isinstance(n, (int, float)):
+                    total += n
+        return total if total else None
+
+    def _side(d, rec_side, condition):
+        if not d:
+            return None
+        ch = chars.get(d.get("commander"))
+        cid = d.get("country")
+        init_size = (d.get("initial_battle_size") or {}).get("script_value_data_result")
+        return {
+            "country_id": cid,
+            "country": zh.get(cid) if cid is not None else None,
+            "commander": (ch or {}).get("name"),
+            "commander_home": (ch or {}).get("home_region"),
+            "formation": d.get("formation"),
+            "condition": condition,
+            "order_type": None,
+            "initial_size": init_size,
+            "battalions_start": None,
+            "battalions_end": None,
+            "manpower_start": None,
+            "manpower_end": None,
+            "ce_start": None,
+            "ce_end": None,
+            "morale_start": None,
+            "morale_end": None,
+            "ships_start": _ship_count(rec_side, "start_priority_stats"),
+            "ships_end": _ship_count(rec_side, "end_priority_stats"),
+        }
+
+    for bid, obj, atk, dfd, place, war, rec, pi, hgp, _pids in pending:
+        ra = (rec.get("attacker") or {}) if isinstance(rec, dict) else {}
+        rd = (rec.get("defender") or {}) if isinstance(rec, dict) else {}
+        entry = {
+            "id": bid,
+            "type": obj.get("type"),
+            "war": obj.get("war"),
+            "front": obj.get("front"),
+            "place": place,
+            "start_date": rec.get("start_date") if isinstance(rec, dict) else None,
+            "end_date": rec.get("end_date") if isinstance(rec, dict) else None,
+            "status": obj.get("status"),
+            "attacker": _side(atk, ra, obj.get("battle_condition")),
+            "defender": _side(dfd, rd, obj.get("battle_condition")),
+            "occupation": [],
+            "captured_provinces": obj.get("num_captured_provinces"),
+            "player_involved": bool(pi),
+            "has_gp": bool(hgp),
+            "naval": True,
+        }
+        if war:
+            entry["war_participants"] = [p.get("name")
+                                         for p in (war.get("participants") or [])]
+            entry["war_start"] = war.get("start_date")
+        battles.append(entry)
+
+    # 与陆战一致: 只保留玩家参战的海战
+    if player_id is not None:
+        battles = [b for b in battles if b.get("player_involved")]
+    battles.sort(key=lambda b: str(b.get("start_date") or ""), reverse=True)
+    return battles[:12]
+
+
+def _mix_land_naval_battles(land, naval, year):
+    """合并陆战/海战: 两池各以 50% 概率被抽取(按年份固定随机种子),
+    各自保持日期倒序, 最终整体仍按开始日期倒序, 上限 12 场。"""
+    rnd = random.Random(year or 0)
+    land = list(land or [])
+    naval = list(naval or [])
+    out = []
+    li = ni = 0
+    while li < len(land) and ni < len(naval) and len(out) < 12:
+        if rnd.random() < 0.5:
+            out.append(land[li])
+            li += 1
+        else:
+            out.append(naval[ni])
+            ni += 1
+    while li < len(land) and len(out) < 12:
+        out.append(land[li])
+        li += 1
+    while ni < len(naval) and len(out) < 12:
+        out.append(naval[ni])
+        ni += 1
+    out.sort(key=lambda b: str(b.get("start_date") or ""), reverse=True)
+    return out
 
 
 # ===========================================================================
@@ -4124,8 +4306,13 @@ def build_magazine_data(melted, snap, folder, year):
     zh = build_country_id_names(melted, index0)
 
     # 战役 (仅玩家参战, ≤12 场; 玩家未参战的列强战役不进杂志)
-    data["battles"] = parse_battles(melted, player_id=snap.get("country_id"),
-                                    wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0)
+    # 陆战与海战各自独立解析, 合并时两池各以 50% 概率被抽取
+    data["battles"] = _mix_land_naval_battles(
+        parse_battles(melted, player_id=snap.get("country_id"),
+                      wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0),
+        parse_naval_battles(melted, player_id=snap.get("country_id"),
+                            wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0),
+        snap.get("year"))
     # 报告年度: 存档在年初(1月)时报道上一历年, 否则报道本年度至今。
     # 战役州只取报告年度内的战役, 避免把前几年的战场/遗留荒废度误报为当前战乱。
     save_date = str(snap.get("date") or "")
@@ -4191,7 +4378,7 @@ def build_magazine_data(melted, snap, folder, year):
     data["units"] = parse_combat_units(melted, cid, formations=formations)
     naval_cids = set()
     for b in data["battles"]:
-        if b.get("type") in ("naval", "naval_invasion_landing"):
+        if b.get("naval"):
             for side in ("attacker", "defender"):
                 scid = (b.get(side) or {}).get("country_id")
                 if scid is not None:
@@ -5038,7 +5225,8 @@ def extract_full_snapshot(melted, cid=None):
     snap["pop_cultures"] = mapped
     snap["pop_religions"] = pops["religions"]
     snap["professions"] = pops["professions"]
-    snap["wars"] = parse_wars(melted, names, cid, index=index, gp_ids=gp_ids, dp_index=dp_index)
+    snap["wars"] = parse_wars(melted, names, cid, index=index, gp_ids=gp_ids,
+                              dp_index=dp_index, save_date=snap.get("date"))
     # 前一年玩家国家发生的战争及结果
     snap["prev_year_wars"] = _prev_year_player_wars(snap.get("wars") or [], snap.get("year"))
     # 去年发生的战争(玩家/列强参战, 仅主要参加者), 供战事专电
