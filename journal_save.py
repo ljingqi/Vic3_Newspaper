@@ -32,6 +32,7 @@ import sys
 import threading
 import time
 import zipfile
+from collections import Counter
 from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -3108,8 +3109,10 @@ def _migration_records_zh(data, sobj):
         cid = r.get("culture_id")
         rec["culture_zh"] = culture_id_to_name(cid) if cid is not None else None
         rec["religion_zh"] = _religion_zh(r.get("religion"))
-        rec["pop_list"] = [{"pop_id": k, "amount": v}
-                           for k, v in (r.get("pops") or {}).items()]
+        num = r.get("num")
+        rec["num_people"] = (int(round(num * 10000))
+                             if isinstance(num, (int, float)) else None)
+        rec.pop("pops", None)
         out.append(rec)
     return out
 
@@ -3195,7 +3198,9 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
 
     战役含: 战争/前线/发生地(州域本地化名)/起止日期/胜负/攻守双方(国家、将领、
     编成、营数、兵力、CE、士气)/占领州。存档无逐营→POP 映射, 营仅为数量字段。
-    过滤: 优先玩家参战战役; 玩家无战役时保留列强参战战役。返回按日期倒序 ≤12 场。
+    兵力字段为满编比例(0~1), 此处换算为实际人数: 比例×营数×1000。
+    过滤: 只保留玩家参战战役 (杂志只写与玩家有关的战事, 列强互殴不入杂志)。
+    返回按日期倒序 ≤12 场。
     """
     bm = data.find(b'"battle_manager"')
     if bm < 0:
@@ -3256,6 +3261,10 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
                 var[v.get("key")] = v.get("value")
         place_key = var.get("STATE_REGION_NAME")
         place = loc.get(place_key) if place_key else None
+        if not place:
+            ck = var.get("CITY_NAME")
+            if ck:
+                place = _clean_loc_name(loc.get(ck, ck), loc)
         if not place and occ:
             place = occ[0].get("name")
         war = war_by_id.get(str(obj.get("war")))
@@ -3273,6 +3282,18 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
             return None
         ch = chars.get(d.get("commander"))
         cid = d.get("country")
+        b_start = obj.get(prefix + "_start_battalions")
+        b_end = obj.get(prefix + "_ending_battalions")
+        init_size = (d.get("initial_battle_size") or {}).get("script_value_data_result")
+
+        def _men(fraction, battalions):
+            """存档兵力为满编比例(0~1): 实际人数 = 比例 × 参战营数 × 1000。"""
+            if not isinstance(fraction, (int, float)) or not isinstance(battalions, (int, float)):
+                return None
+            if battalions <= 0:
+                return None
+            return int(round(fraction * battalions * 1000))
+
         return {
             "country_id": cid,
             "country": zh.get(cid) if cid is not None else None,
@@ -3281,10 +3302,13 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
             "formation": d.get("formation"),
             "condition": d.get("battle_condition"),
             "order_type": d.get("order_type"),
-            "initial_size": (d.get("initial_battle_size") or {}).get("script_value_data_result"),
-            "battalions_start": obj.get(prefix + "_start_battalions"),
-            "battalions_end": obj.get(prefix + "_ending_battalions"),
-            "manpower_start": obj.get(prefix + "_starting_manpower"),
+            "initial_size": init_size,
+            "battalions_start": b_start,
+            "battalions_end": b_end,
+            "manpower_start": _men(obj.get(prefix + "_starting_manpower"),
+                                   b_start if isinstance(b_start, (int, float)) else init_size),
+            "manpower_end": _men(obj.get(prefix + "_ending_manpower"),
+                                 b_end if isinstance(b_end, (int, float)) else b_start),
             "ce_start": obj.get(prefix + "_start_ce"),
             "ce_end": obj.get(prefix + "_end_ce"),
             "morale_start": obj.get(prefix + "_starting_morale"),
@@ -3314,9 +3338,9 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None):
             entry["war_start"] = war.get("start_date")
         battles.append(entry)
 
+    # 杂志只写玩家参战的战事; 玩家未参战的列强战役一律不进杂志
     if player_id is not None:
-        pb = [b for b in battles if b.get("player_involved")]
-        battles = pb if pb else [b for b in battles if b.get("has_gp")]
+        battles = [b for b in battles if b.get("player_involved")]
     battles.sort(key=lambda b: str(b.get("start_date") or ""), reverse=True)
     return battles[:12]
 
@@ -3832,13 +3856,34 @@ def build_magazine_data(melted, snap, folder, year):
     index0, gp_ids0, dp_index0 = _build_indexes(melted)
     zh = build_country_id_names(melted, index0)
 
-    # 战役 (玩家或列强参战, ≤12 场)
+    # 战役 (仅玩家参战, ≤12 场; 玩家未参战的列强战役不进杂志)
     data["battles"] = parse_battles(melted, player_id=snap.get("country_id"),
                                     wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0)
     battle_state_ids = set()
     for b in data["battles"]:
         for o in b.get("occupation") or []:
             battle_state_ids.add(o.get("state"))
+
+    # 玩家相关战争: 去年/前年玩家参战 + 当前仍在进行的玩家战争。
+    # player_at_war 供杂志第一篇文章切换「战地报道 / 和平年驻地训练」结构。
+    player_wars = []
+    seen_war_ids = set()
+    for w in (snap.get("last_year_wars") or []) + \
+             (snap.get("prev_year_wars") or []) + \
+             (snap.get("wars") or []):
+        if not w.get("player_involved"):
+            continue
+        wid = w.get("id")
+        if wid is not None and wid in seen_war_ids:
+            continue
+        if wid is not None:
+            seen_war_ids.add(wid)
+        player_wars.append(w)
+    data["player_wars"] = player_wars
+    # 只有「进行中」的玩家战争才算战争年; 已结束的战争(含跨年合并回填的
+    # 旧战事)不再触发战地报道结构, 避免模型对着陈年战事编造战斗细节。
+    data["player_at_war"] = bool(data["battles"]) or any(
+        not w.get("ended") for w in player_wars)
 
     # 战争目的 (主战+次生, 自然语言, 不含地区 ID)
     data["war_goals"] = parse_war_goals(
@@ -3872,6 +3917,23 @@ def build_magazine_data(melted, snap, folder, year):
     # POP 单次扫描: 指纹导出 + 跨年比对 + 分类样本
     pops = _player_pops_with_id(melted, state_ids)
     export_pop_fingerprint(pops, folder, year)
+
+    # 新家园接受度: 按 (目标州, 文化id) 汇总同文化POP的接受状态,
+    # 供移民板块以区间文字描述「在新家园的接受度」; 目标州无同文化样本时保持未知。
+    acc_by_state_culture = {}
+    for _pid, obj in pops.items():
+        st = obj.get("location")
+        cul = obj.get("culture")
+        acc = (obj.get("acceptance_data") or {}).get("acceptance_status")
+        if st is None or cul is None or not acc:
+            continue
+        acc_by_state_culture.setdefault((st, cul), []).append(acc)
+    target_acc = {}
+    for key, accs in acc_by_state_culture.items():
+        target_acc[key] = Counter(accs).most_common(1)[0][0]
+    for r in data["migrations"]:
+        key = (r.get("target_state"), r.get("culture_id"))
+        r["target_acceptance_status"] = target_acc.get(key)
     cur_fp = build_pop_fingerprint(pops)
     prev_fp = load_pop_fingerprint(folder, year - 1) if year else None
     promotions, pop_migrations = diff_pop_fingerprints(prev_fp, cur_fp)
@@ -3916,6 +3978,7 @@ def build_magazine_data(melted, snap, folder, year):
         return [lst[i] for i in sorted(rnd.sample(range(len(lst)), min(n, len(lst))))]
 
     def _info(pid, obj, extra=None):
+        acc = obj.get("acceptance_data") or {}
         d = {
             "pop_id": pid,
             "state": obj.get("location"),
@@ -3928,6 +3991,8 @@ def build_magazine_data(melted, snap, folder, year):
             "sol": obj.get("previous_quality_of_life"),
             "wealth": obj.get("wealth"),
             "in_battle_state": obj.get("location") in battle_state_ids,
+            "acceptance_status": acc.get("acceptance_status"),
+            "acceptance_value": acc.get("acceptance_value"),
         }
         if extra:
             d.update(extra)
@@ -5622,12 +5687,22 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None):
 
 def _generate_async(year, snap, melted=None):
     """后台线程: 生成某年报纸与杂志(同一快照, 不重复熔化解析), 不阻塞监控。"""
+    import journal
+    cfg = journal.load_config()
     try:
-        make_newspaper(year=year, force=True, snap=snap)
+        if cfg.get("newspaper_enabled", True):
+            make_newspaper(year=year, force=True, snap=snap)
+        else:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年报纸已在配置中禁用 "
+                  f"(newspaper_enabled=false), 跳过")
     except Exception as e:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年报纸生成失败: {e}")
     try:
-        make_magazine(year=year, force=True, melted=melted, snap=snap)
+        if cfg.get("magazine_enabled", True):
+            make_magazine(year=year, force=True, melted=melted, snap=snap)
+        else:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年杂志已在配置中禁用 "
+                  f"(magazine_enabled=false), 跳过")
     except Exception as e:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年杂志生成失败: {e}")
 
@@ -5697,7 +5772,7 @@ def cmd_watch(continue_mode=False):
                                    f"报纸_{year}.md")
             mg_path = os.path.join(cfg["journal_dir"], journal.SESSION["folder"],
                                    f"杂志_{year}.md")
-            if not os.path.exists(md_path):
+            if not os.path.exists(md_path) and cfg.get("newspaper_enabled", True):
                 print(f"续传模式: {year} 年报纸缺失, 先用当前存档补生成")
                 make_newspaper(year=year, force=True, melted=melted, snap=snap)
             if cfg.get("magazine_enabled", True) and not os.path.exists(mg_path):

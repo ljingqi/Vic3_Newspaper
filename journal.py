@@ -69,6 +69,10 @@ DEFAULT_CONFIG = {
     # 报纸风格: 1=大公报(20世纪初) 2=人民日报(20世纪) 3=新华网(新华社风格) 4=泰晤士报(中文)
     # 各风格的完整提示词与栏目名见 NEWSPAPER_STYLES
     "newspaper_style": 1,
+    # 自动生成开关: watch/continue 自动管线按开关跳过对应产物;
+    # 手动命令 (newspaper <年> / magazine <年>) 不受限, 显式意图优先
+    "newspaper_enabled": False,
+    "magazine_enabled": True,
 }
 
 def detect_default_log_path():
@@ -1734,6 +1738,8 @@ def render_politics(data, history=None):
         rep_s = f"以替代「{law_zh(rep)}」" if rep else ""
         L.append(f"- 立法进行中：当前「{law_nm}」法案处于「{phase}」阶段，"
                  f"该法案于{sub}提交{rep_s}")
+    if not (data.get("laws_in_progress") or []):
+        L.append("- 立法进行中：今年无正在制定的法律")
     return "\n".join(L)
 
 def render_society(data):
@@ -2607,13 +2613,19 @@ def call_deepseek(messages, cfg, retries=3):
             choice = data["choices"][0]
             content = (choice.get("message") or {}).get("content") or ""
             finish = choice.get("finish_reason")
+            if finish == "length":
+                # 输出被 max_tokens 截断: 无论内容是否为空都翻倍预算重试,
+                # 避免把断在句中的半截文章静默写进文件。
+                if max_tokens >= 16000:
+                    log("输出仍被 max_tokens 截断(已达 16000 上限), 返回截断文本")
+                    if content.strip():
+                        return content
+                else:
+                    max_tokens = min(max_tokens * 2, 16000)
+                    log(f"输出因 max_tokens 不足被截断, 提高预算至 {max_tokens} 重试")
+                    continue
             if content.strip():
                 return content
-            if finish == "length":
-                # 推理模型可能把预算全花在 reasoning 上, 翻倍输出预算重试
-                max_tokens = min(max_tokens * 2, 16000)
-                log(f"输出因 max_tokens 不足被截断(推理模型占满预算), 提高预算至 {max_tokens} 重试")
-                continue
             if finish == "stop":
                 return content  # 极罕见: 模型明确返回空
             last_err = Exception(f"模型返回空内容 (finish_reason={finish})")

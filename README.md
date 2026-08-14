@@ -117,7 +117,8 @@ python journal_save.py watch                 :: 持续监控自动存档(建议�
 
 `journal_save.py watch` 会监控最新存档，检测到新年度即调用 DeepSeek 生成当期报纸并写入
 `<项目目录>\output\<国名>\报纸_<年份>.md`；同一快照还会生成当期杂志
-`杂志_<年份>.md`（`config.json` 的 `magazine_enabled: false` 可关闭）。
+`杂志_<年份>.md`。`config.json` 的 `newspaper_enabled` / `magazine_enabled` 可分别关闭
+自动管线中的报纸 / 杂志生成（手动 `newspaper <年份>` / `magazine <年份>` 命令不受开关限制）。
 熔化与解析只做一次，两份输出共享同一快照与本地化缓存。
 > 首次运行会以玩家国名在 `output\` 内新建文件夹；同一国家再次开新档则生成 `国名2`。
 > （`journal.py` 现主要作为渲染库被 `journal_save.py` 复用，其 `watch`/`once` 为旧的

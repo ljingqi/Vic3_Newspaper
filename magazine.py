@@ -116,8 +116,11 @@ ARTICLES = [
                 "title": "战地报道",
                 "req": (
                     "报道真实战役: 发生地(州)、起止日期、攻守双方国家与将领、双方营数与兵力、"
-                    "胜负。数据缺失时退而报道仍在进行或刚结束的战争。军队名未给出时, "
-                    "可据将领姓名与家乡州合情拟名, 但不得虚构国家名或改动给定数字。"
+                    "胜负——以上一律以数据为准, 攻守双方不得互换或颠倒。只有数据给出战役细节时"
+                    "才写战斗过程; 数据缺失时, 若存在进行中的战争, 只依据战争记录写态势; "
+                    "否则本板块改写真切简短的旧战事回顾或和平景象, 绝不虚构战役地点、将领、"
+                    "日期、兵力等数字。军队名未给出时, 可据将领姓名与家乡州合情拟名, "
+                    "但不得虚构国家名或改动给定数字。"
                 ),
                 "facts": "front",
             },
@@ -212,7 +215,7 @@ ARTICLES = [
                 "key": "transformed",
                 "title": "蜕变者",
                 "req": (
-                    "从跨年指纹中取一个真实发生职业转变的POP(数据给出旧职业→新职业、人数、所在州), "
+                    "从跨年指纹中取一个真实发生职业转变的POP(数据给出旧职业、新职业、人数、所在州), "
                     "写其个人与家庭层面的转变故事。"
                 ),
                 "facts": "transformed",
@@ -242,10 +245,119 @@ ARTICLES = [
 SECTION_FACTS = {s["key"]: s["facts"] for a in ARTICLES for s in a["sections"]}
 
 
+# 接受度状态 → 军队与当地居民的关系基调 (和平年驻地板块动态使用)
+ACCEPTANCE_GARRISON_TONES = {
+    "full_acceptance": (
+        "军民鱼水情",
+        "当地社会完全接纳驻军，军民互信互助、亲如一家，可写军民同乐、互助共建的融洽场景。",
+    ),
+    "open_prejudice": (
+        "军民隔阂",
+        "当地人对驻军或外来者公开歧视，军民关系疏离克制，可写彼此保持距离、礼节性往来的场景。",
+    ),
+    "second_rate_citizen": (
+        "二等公民待遇",
+        "当地把驻军或外来者当二等公民看待，军民之间存在明显身份落差，可写隐忍与隔膜并存的日常。",
+    ),
+    "cultural_erasure": (
+        "文化压制",
+        "驻军代表的文化在当地占压倒地位，本地文化正被抹除同化，可写军队推行教化与本地人失语的场景。",
+    ),
+    "violent_hostility": (
+        "殖民者做派",
+        "当地社会与驻军暴力敌对，军队以占领者姿态行事，可写戒严、冲突与仇恨交织的场面。",
+    ),
+}
+
+
+def _dominant_acceptance(pops):
+    """样本POP → 出现次数最多的接受度状态; 无样本返回 None。"""
+    cnt = {}
+    for p in pops or []:
+        s = p.get("acceptance_status")
+        if s:
+            cnt[s] = cnt.get(s, 0) + 1
+    if not cnt:
+        return None
+    return max(cnt.items(), key=lambda kv: kv[1])[0]
+
+
+def _acceptance_zh(status):
+    """接受度状态 key → 中文区间文字; 未知返回 None。"""
+    if not status:
+        return None
+    return journal.ACCEPTANCE_NAMES.get(status, status)
+
+
+def _war_article_variant(data):
+    """文章一《战地与后方》按是否爆发战争切换结构:
+    战争年 → 战地报道/士兵与营/后方家书/战火余烬;
+    和平年 → 驻地与训练/士兵与营/后方家书/(营区与驻地民生, 仅玩家州有荒废时保留)。"""
+    m = data.get("magazine") or {}
+    at_war = data.get("player_at_war")
+    if at_war is None:
+        at_war = m.get("player_at_war")
+    if at_war:
+        return dict(ARTICLES[0])
+    a = dict(ARTICLES[0])
+    a["title"] = "军营与家园"
+    local_pops = (m.get("soldiers") or []) + (m.get("civilians") or [])
+    dom_acc = _dominant_acceptance(local_pops)
+    tone_name, tone_req = ACCEPTANCE_GARRISON_TONES.get(
+        dom_acc, ("军民日常相处", "写军队与当地居民的日常相处。"))
+    secs = []
+    for s in ARTICLES[0]["sections"]:
+        s2 = dict(s)
+        if s["key"] == "front":
+            s2["key"] = "garrison"
+            s2["title"] = "驻地与训练"
+            s2["facts"] = "garrison"
+            s2["req"] = (
+                "报道我国军队的驻地生活: 数据给出军团/营的番号、兵员与驻地, 士兵POP的"
+                "职业/文化/宗教/所在州/人数。写军队在驻地操演训练、整饬营务，与当地人"
+                "相处。驻地军民关系基调: " + tone_name + "。" + tone_req
+            )
+            secs.append(s2)
+        elif s["key"] == "soldier":
+            s2["req"] = (
+                "以我方某营的步兵POP为主角(数据给出职业/文化/宗教/所在州/人数), "
+                "结合当地平民POP, 写出驻军士兵的群像、营中日常与军民相处。驻地军民关系基调: "
+                + tone_name + "。" + tone_req +
+                "当前我国无战事、亦无敌军资料, 请据驻军生活展开。"
+            )
+            secs.append(s2)
+        elif s["key"] == "homefront":
+            s2["req"] = (
+                "写士兵家乡(数据给出州名)的家人: 用给定的后方家庭POP(职业/文化/生活水平) "
+                "塑造人物, 以家书或邻居口述体呈现和平时期军属家庭的日常与牵挂。"
+            )
+            secs.append(s2)
+        elif s["key"] == "aftermath":
+            if m.get("war_states"):
+                s2["title"] = "营区与驻地民生"
+                s2["req"] = (
+                    "报道驻军所在地的民生状况: 给定州的荒废度/污染档位、主要文化, "
+                    "写驻军与当地民众共同生活的面貌与地方恢复建设。驻地军民关系基调: "
+                    + tone_name + "。" + tone_req
+                )
+                secs.append(s2)
+        else:
+            secs.append(s2)
+    a["sections"] = secs
+    return a
+
+
 NONFICTION_RULE = (
     "「非虚构文学」铁律: 给定的国家名、人名、地名、日期、数字、职业、文化、宗教必须原样使用, "
     "不得改动或替换; 人物的心理、对话、场景、信函等细节允许作家合情演绎; "
     "数据缺失的内容应简写或略去, 不得编造具体数字或国家/人名来填空。"
+)
+
+WORLD_FRAME_RULE = (
+    "「平行世界规则」: 本刊报道的世界由程序提供的存档数据构成, 与任何真实历史(OTL)无关。"
+    "所有国家、战争、边界、统治者、人物、日期、数字一律以本提示词给出的数据为准; "
+    "数据未提供的即视为不存在或未知, 不得调用真实历史事件/人物/战役(如巴拉圭战争、"
+    "真实将领)或常识补写, 不得虚构国家名、战役名、将领名与具体数字。宁可写得含蓄, 也不可编造。"
 )
 
 BATTLE_TYPE_ZH = {
@@ -268,127 +380,248 @@ def _fmt_date(d):
     return str(d) if d else "未知"
 
 
-def _fmt_num(v):
-    if v is None:
-        return "未知"
-    if isinstance(v, float):
-        return str(round(v, 3))
-    return str(v)
+def _fmt_int(v):
+    """整数加千分位; 非法输入返回 None。"""
+    if not isinstance(v, (int, float)):
+        return None
+    return format(int(round(v)), ",")
+
+
+def _morale_band(v):
+    """士气数值 → 档位名 (提示词用自然语言, 不传裸数字)。"""
+    if not isinstance(v, (int, float)):
+        return None
+    if v >= 0.9:
+        return "高昂"
+    if v >= 0.7:
+        return "稳定"
+    if v >= 0.4:
+        return "动摇"
+    if v >= 0.1:
+        return "濒临崩溃"
+    return "崩溃"
+
+
+def _morale_change(start, end):
+    """起止士气 → 自然语言, 如「由稳定跌至崩溃」「维持高昂」。"""
+    s, e = _morale_band(start), _morale_band(end)
+    if s is None and e is None:
+        return None
+    if s is None:
+        return f"士气为{e}"
+    if e is None:
+        return f"士气自{s}起"
+    if s == e:
+        return f"士气维持{s}"
+    if (end or 0) > (start or 0):
+        return f"士气由{s}回升至{e}"
+    return f"士气由{s}跌至{e}"
+
+
+def _battalion_change(start, end):
+    """营数起止 → 自然语言, 如「参战19营, 战后全军覆没」「保持19营完整」。"""
+    if start is None:
+        return None
+    s = int(round(start))
+    if end is None or int(round(end)) == s:
+        return f"参战{s}营"
+    e = int(round(end))
+    if e == 0:
+        return f"参战{s}营，战后全军覆没"
+    if e < s:
+        return f"参战{s}营，战后仅余{e}营"
+    return f"参战{s}营，战后增至{e}营"
+
+
+def _manpower_phrase(men, battalions):
+    """兵力(人) → 自然语言; 满编比例过小时不输出离谱的精确人数。
+    例: 1营1人 → 「兵力近乎空虚」; 19营3433人 → 「兵力严重不足(约3,433人)」。"""
+    if men is None:
+        return None
+    if isinstance(battalions, (int, float)) and battalions > 0:
+        frac = men / (battalions * 1000.0)
+        if frac < 0.05:
+            return "兵力近乎空虚"
+        if frac < 0.2:
+            return f"兵力严重不足（约{_fmt_int(men)}人）"
+    return f"兵力约{_fmt_int(men)}人"
+
+
+def _unit_manpower(mp):
+    """营/舰船兵员 → 括号说明; 空编不输出人数。"""
+    if mp is None:
+        return ""
+    if mp <= 0:
+        return "（空编）"
+    return f"（兵员{_fmt_int(mp)}人）"
 
 
 def _fmt_battle(b):
     atk, dfd = b.get("attacker") or {}, b.get("defender") or {}
     btype = BATTLE_TYPE_ZH.get(b.get("type"), b.get("type") or "未知")
     status = BATTLE_STATUS_ZH.get(b.get("status"), b.get("status") or "未知")
+    place = b.get("place") or "地点未知"
     lines = [
-        f"- 战役: {b.get('place') or '地点未知'} | 类型: {btype} | "
-        f"起: {_fmt_date(b.get('start_date'))} | 止: {_fmt_date(b.get('end_date'))} | "
-        f"结果: {status}",
-        f"- 攻方: {atk.get('country') or '未知'} | 将领: {atk.get('commander') or '未知'} | "
-        f"营数: {atk.get('battalions_start')}→{atk.get('battalions_end')} | "
-        f"兵力: {atk.get('manpower_start')}",
-        f"- 守方: {dfd.get('country') or '未知'} | 将领: {dfd.get('commander') or '未知'} | "
-        f"营数: {dfd.get('battalions_start')}→{dfd.get('battalions_end')} | "
-        f"兵力: {dfd.get('manpower_start')}",
+        f"{btype}发生于{place}，自{_fmt_date(b.get('start_date'))}至"
+        f"{_fmt_date(b.get('end_date'))}，以{status}告终。",
     ]
+    for label, sd in (("攻方", atk), ("守方", dfd)):
+        if not sd:
+            continue
+        bits = [f"{label}为{sd.get('country') or '未知'}，由{sd.get('commander') or '未知'}统帅"]
+        bc = _battalion_change(sd.get("battalions_start"), sd.get("battalions_end"))
+        if bc:
+            bits.append(bc)
+        mp = _manpower_phrase(sd.get("manpower_start"),
+                              sd.get("battalions_start") or sd.get("initial_size"))
+        if mp:
+            bits.append(mp)
+        lines.append("，".join(bits) + "。")
     if b.get("war_participants"):
-        lines.append(f"- 相关战争参战方: {'、'.join(str(x) for x in b['war_participants'][:8])}")
+        lines.append("该役所属战争参战方包括：" + "、".join(
+            str(x) for x in b["war_participants"][:8]) + "。")
     occ = b.get("occupation") or []
     if occ:
-        lines.append("- 占领/波及州: " + "、".join(
-            f"{o.get('name') or o.get('state')}({round((o.get('fraction') or 0) * 100)}%)"
-            for o in occ[:4]))
+        lines.append("波及州包括：" + "、".join(
+            f"{o.get('name') or o.get('state')}（约{round((o.get('fraction') or 0) * 100)}%被占）"
+            for o in occ[:4]) + "。")
     return "\n".join(lines)
 
 
 def _fmt_pop(p):
+    """POP 样本 → 自然语言: 身份/州/人数/生活水平档位 (不输出财富)。"""
     if not p:
         return None
-    parts = [
-        f"职业: {journal.POP_TYPE_NAMES.get(p.get('type'), p.get('type') or '未知')}",
-        f"所在州: {p.get('state_name') or p.get('state') or '未知'}",
-    ]
-    if p.get("culture"):
-        parts.append(f"文化: {p['culture']}")
-    if p.get("religion"):
-        parts.append(f"宗教: {p['religion']}")
+    t = journal.POP_TYPE_NAMES.get(p.get("type"), p.get("type") or "未知职业")
+    state = p.get("state_name") or p.get("state") or "未知州"
+    if p.get("culture") and p.get("religion"):
+        who = f"{p['religion']}{p['culture']}的{t}"
+    elif p.get("culture"):
+        who = f"{p['culture']}的{t}"
+    elif p.get("religion"):
+        who = f"{p['religion']}信徒中的{t}"
+    else:
+        who = t
+    bits = [f"{who}居住于{state}"]
     if p.get("workforce") is not None:
-        parts.append(f"劳动力(人): {p['workforce']}")
-    if p.get("sol") is not None:
-        parts.append(f"生活水平: {p['sol']}")
-    if p.get("wealth") is not None:
-        parts.append(f"财富: {p['wealth']}")
-    return " | ".join(parts)
+        bits.append(f"劳动力约{_fmt_int(p['workforce'])}人")
+    band = journal.sol_band(p.get("sol"))
+    if band:
+        bits.append(f"生活水平{band}")
+    acc = _acceptance_zh(p.get("acceptance_status"))
+    if acc:
+        bits.append(f"当地接受度为{acc}")
+    return "，".join(bits) + "。"
 
 
-def _facts_front(m):
+def _facts_front(m, data):
     battles = m.get("battles") or []
-    if not battles:
-        return "本年无战役记录(可能战事较少或存档未保留)。"
+    wars = m.get("_player_wars") or []
     goals = m.get("war_goals") or []
+    if not battles and not wars:
+        return "本年我国无战事记录。"
     by_war = {}
     for g in goals:
         by_war.setdefault(g.get("war"), []).append(g)
     lines = []
-    for b in battles[:3]:
-        lines.append(_fmt_battle(b))
-        wg = by_war.get(b.get("war")) or []
-        if wg:
-            lines.append("战争目的:")
-            for g in wg[:5]:
-                who = g.get("holder_zh") or "未知方"
-                lines.append(f"- {who}（{g.get('demand_type_zh') or '目的'}）：{g.get('nl')}")
+    shown_goal_wars = set()
+    if battles:
+        for b in battles[:3]:
+            lines.append(_fmt_battle(b))
+            wg = by_war.get(b.get("war")) or []
+            if wg and b.get("war") not in shown_goal_wars:
+                shown_goal_wars.add(b.get("war"))
+                lines.append("战争目的：")
+                for g in wg[:5]:
+                    who = g.get("holder_zh") or "未知方"
+                    lines.append(f"- {who}（{g.get('demand_type_zh') or '目的'}）：{g.get('nl')}")
+    if not battles and wars:
+        lines.append("存档未保留我方战役细节，依战争记录报道：")
+        for w in wars[:2]:
+            ps = [p.get("name") for p in (w.get("participants") or []) if p.get("name")]
+            status = "已结束" if w.get("ended") else "仍在进行"
+            line = f"- 我国参与的战争：{'、'.join(str(x) for x in ps[:8])}，{status}"
+            if w.get("start_date"):
+                line += f"，自{w['start_date']}起"
+            lines.append(line + "。")
+            try:
+                wid = int(w.get("id"))
+            except (TypeError, ValueError):
+                wid = None
+            wg = by_war.get(wid) if wid is not None else None
+            wg = wg or []
+            if wg and wid not in shown_goal_wars:
+                shown_goal_wars.add(wid)
+                lines.append("战争目的：")
+                for g in wg[:5]:
+                    who = g.get("holder_zh") or "未知方"
+                    lines.append(f"- {who}（{g.get('demand_type_zh') or '目的'}）：{g.get('nl')}")
     return "\n".join(lines)
 
 
-def _facts_soldier(m, data):
+def _facts_soldier(m, data, peacetime=False):
     soldiers = m.get("soldiers") or []
     civilians = m.get("civilians") or []
     lines = []
+    if peacetime:
+        lines.append("当前我国无战事记录，亦无敌军资料。")
+        local_pops = (m.get("soldiers") or []) + (m.get("civilians") or [])
+        dom = _dominant_acceptance(local_pops)
+        tone_name, _tone_req = ACCEPTANCE_GARRISON_TONES.get(dom, (None, None))
+        if dom and tone_name:
+            lines.append(f"驻地军民关系基调：{tone_name}（当地接受度为{_acceptance_zh(dom)}）。")
     formations = m.get("formations") or []
     units = m.get("units") or []
     if formations or units:
-        lines.append("我方军团与营:")
-        by_fm = {}
-        for u in units:
-            by_fm.setdefault(u.get("formation_name") or "未命名军团", []).append(u)
+        lines.append("我方军团与营：")
         for f in formations[:3]:
-            fname = f.get("name") or f"第{f.get('ordinal_number')}{'军' if f.get('type') == 'army' else '舰队'}"
+            fname = (f.get("name")
+                     or f"第{f.get('ordinal_number')}{'军' if f.get('type') == 'army' else '舰队'}")
             uu = [u for u in units if str(u.get("formation")) == str(f.get("id"))]
             if uu:
-                unames = "、".join(f"{u.get('name')}(兵员{u.get('manpower')})" for u in uu[:4])
-                lines.append(f"- {fname}: {unames}" + ("等" if len(uu) > 4 else ""))
+                unames = "、".join(
+                    f"{u.get('name')}{_unit_manpower(u.get('manpower'))}"
+                    for u in uu[:4])
+                lines.append(f"- {fname}：{unames}" + ("等" if len(uu) > 4 else ""))
             else:
                 lines.append(f"- {fname}")
-    lines.append("我方士兵/军官POP(兵源样本):")
+    lines.append("我方士兵/军官POP（兵源样本）：")
     for p in soldiers[:3]:
         lines.append("- " + _fmt_pop(p))
     battles = m.get("battles") or []
-    if battles:
+    if not peacetime and battles:
         b = battles[0]
         atk, dfd = b.get("attacker") or {}, b.get("defender") or {}
         player = data.get("player")
         mine = atk if atk.get("country") == player else (dfd if dfd.get("country") == player else None)
-        if mine is None:
-            # 存档只保留到列强战役, 本场可能不直接含我方: 如实标注攻守双方
-            lines.append(
-                f"相关战事(存档仅保留列强战役, 我方未直接参战此役): 攻方 "
-                f"{(atk or {}).get('country') or '未知'} (将领 {(atk or {}).get('commander') or '未知'}) | "
-                f"守方 {(dfd or {}).get('country') or '未知'} (将领 {(dfd or {}).get('commander') or '未知'}) | "
-                f"战场: {b.get('place') or '未知'} | "
-                f"战期: {_fmt_date(b.get('start_date'))}~{_fmt_date(b.get('end_date'))}")
-        else:
+        if mine is not None:
             enemy = dfd if mine is atk else atk
             lines.append(
-                f"我方军队: {(mine or {}).get('country') or player or '未知'} "
-                f"(将领 {(mine or {}).get('commander') or '未知'}, "
-                f"家乡 {(mine or {}).get('commander_home') or '未知'}) | "
-                f"敌军: {(enemy or {}).get('country') or '未知'} "
-                f"(将领 {(enemy or {}).get('commander') or '未知'}) | "
-                f"战场: {b.get('place') or '未知'} | "
-                f"战期: {_fmt_date(b.get('start_date'))}~{_fmt_date(b.get('end_date'))}")
+                f"相关战事：我方（{mine.get('country') or player or '未知'}，"
+                f"将领{mine.get('commander') or '未知'}）与敌军"
+                f"（{enemy.get('country') or '未知'}，将领{enemy.get('commander') or '未知'}）"
+                f"在{b.get('place') or '未知地点'}交战，"
+                f"战期自{_fmt_date(b.get('start_date'))}至{_fmt_date(b.get('end_date'))}。")
+    elif not peacetime and not battles:
+        wars = m.get("_player_wars") or []
+        if wars:
+            w = wars[0]
+            player = data.get("player")
+            pid = data.get("player_country_id")
+            others = []
+            for p in (w.get("participants") or []):
+                nm = p.get("name")
+                if not nm or nm == player:
+                    continue
+                if pid is not None and p.get("id") == pid:
+                    continue
+                others.append(nm)
+            if others:
+                lines.append("我方战争对象：" + "、".join(
+                    dict.fromkeys(str(x) for x in others)) + "。")
     ships = m.get("ships") or []
-    if battles and battles[0].get("type") in ("naval", "naval_invasion_landing") and ships:
+    if (not peacetime and battles
+            and battles[0].get("type") in ("naval", "naval_invasion_landing") and ships):
         cid_name = {}
         for b in battles:
             for side in ("attacker", "defender"):
@@ -398,7 +631,7 @@ def _facts_soldier(m, data):
         by_c = {}
         for s in ships:
             by_c.setdefault(s.get("country"), []).append(s)
-        lines.append("双方舰船:")
+        lines.append("双方舰船：")
         for cid2, ss in by_c.items():
             cname = cid_name.get(cid2, str(cid2))
             names = []
@@ -408,26 +641,34 @@ def _facts_soldier(m, data):
                 elif s.get("type_zh"):
                     names.append(f"一艘{s['type_zh']}")
             if names:
-                lines.append(f"- {cname}: " + "、".join(names)
+                lines.append("- " + cname + "：" + "、".join(names)
                              + ("等" if len(ss) > 5 else ""))
-    lines.append("当地平民POP(战场州居民):")
+    lines.append("当地平民POP（" + ("驻军所在州" if peacetime else "战场/驻军所在州") + "居民）：")
     for p in civilians[:2]:
         lines.append("- " + _fmt_pop(p))
     return "\n".join(lines)
 
 
+def _facts_garrison(m, data):
+    """和平年「驻地与训练」: 军团/营、士兵POP与驻地平民, 不含战役。"""
+    return _facts_soldier(m, data, peacetime=True)
+
+
 def _facts_homefront(m):
     fam = m.get("families") or []
     soldiers = m.get("soldiers") or []
-    lines = ["后方家庭POP(士兵同州的平民):"]
+    lines = ["后方家庭POP（士兵同州的平民）："]
     if fam:
         for p in fam[:3]:
             lines.append("- " + _fmt_pop(p))
     else:
-        lines.append("(暂无与士兵同州的平民样本)")
+        lines.append("（暂无与士兵同州的平民样本）")
     if soldiers:
-        lines.append("士兵所在州: " + "、".join(
-            str(s.get("state_name") or s.get("state")) for s in soldiers[:3]))
+        st = list(dict.fromkeys(
+            str(s.get("state_name") or s.get("state"))
+            for s in soldiers[:3] if s.get("state_name") or s.get("state")))
+        if st:
+            lines.append("士兵所在州：" + "、".join(st) + "。")
     return "\n".join(lines)
 
 
@@ -435,33 +676,48 @@ def _facts_aftermath(m):
     ws = m.get("war_states") or []
     lines = []
     if ws:
-        lines.append("受战争影响的州(荒废度/污染):")
+        lines.append("受战争影响或驻军所在地的州（荒废度/污染为档位）：")
         for s in ws[:4]:
-            lines.append(
-                f"- {s.get('name')}: 荒废度 {s.get('devastation') or 0} | "
-                f"污染 {s.get('pollution') or 0} | 主要文化 {s.get('top_culture') or '未知'}")
+            bits = [f"{s.get('name') or '未知州'}"]
+            dev = s.get("devastation")
+            pol = s.get("pollution")
+            if isinstance(dev, (int, float)) and dev > 0:
+                bits.append(f"荒废度{journal._devastation_band(dev)}")
+            if isinstance(pol, (int, float)) and pol > 0:
+                bits.append(f"污染{journal._pollution_band(pol)}")
+            if s.get("top_culture"):
+                bits.append(f"主要文化为{s['top_culture']}")
+            lines.append("- " + "，".join(bits) + "。")
     else:
-        lines.append("(无荒废度>0的玩家州)")
-    wars = m.get("_last_year_wars") or []
+        lines.append("（无荒废度>0的玩家州）")
+    wars = m.get("_player_wars") or []
     if wars:
         for w in wars[:2]:
-            parts = list(dict.fromkeys(p.get("name") for p in (w.get("participants") or [])))
-            lines.append(
-                f"- 战争死伤(存档单位): 死亡 {w.get('casualties_total') or '未知'} | "
-                f"负伤 {w.get('wounded_total') or '未知'} | "
-                f"参战: {'、'.join(str(x) for x in parts[:6])}")
+            parts = list(dict.fromkeys(
+                p.get("name") for p in (w.get("participants") or []) if p.get("name")))
+            bits = []
+            cas = w.get("casualties_total")
+            wnd = w.get("wounded_total")
+            if isinstance(cas, (int, float)):
+                bits.append(f"阵亡及失踪约{_fmt_int(cas * 1000000)}人")
+            if isinstance(wnd, (int, float)):
+                bits.append(f"负伤约{_fmt_int(wnd * 1000000)}人")
+            if bits:
+                lines.append(f"- 参战方{'、'.join(str(x) for x in parts[:6])}的战争累计"
+                             + "，".join(bits) + "。")
     battles = m.get("battles") or []
     if battles:
         for b in battles[:2]:
             atk, dfd = b.get("attacker") or {}, b.get("defender") or {}
-            morale = []
-            for label, sd in (("攻方", atk), ("守方", dfd)):
-                if sd.get("morale_start") is not None or sd.get("morale_end") is not None:
-                    morale.append(
-                        f"{label}士气 {_fmt_num(sd.get('morale_start'))}→{_fmt_num(sd.get('morale_end'))}")
-            if morale:
-                lines.append(
-                    f"- 战役士气变化({b.get('place') or '地点未知'}): {' | '.join(morale)}")
+            mc = _morale_change(atk.get("morale_start"), atk.get("morale_end"))
+            md = _morale_change(dfd.get("morale_start"), dfd.get("morale_end"))
+            if mc or md:
+                bits = []
+                if mc:
+                    bits.append("攻方" + mc)
+                if md:
+                    bits.append("守方" + md)
+                lines.append(f"- {b.get('place') or '地点未知'}一役，" + "，".join(bits) + "。")
     return "\n".join(lines)
 
 
@@ -470,45 +726,69 @@ def _facts_minister(m):
     ruler = m.get("ruler") or {}
     lines = []
     if ruler and ruler.get("name"):
-        lines.append(f"统治者: {ruler.get('name')} ({ruler.get('title') or '未知'}, "
-                     f"{ruler.get('ideology') or '意识形态未知'})")
-    lines.append("执政利益集团(内阁大臣来源):")
+        lines.append(f"统治者{ruler['name']}，头衔{ruler.get('title') or '未知'}，"
+                     f"意识形态{ruler.get('ideology') or '意识形态未知'}。")
+    lines.append("执政利益集团（内阁大臣来源）：")
     for g in cab[:4]:
         ig_zh = journal.IG_NAMES.get(g.get("name"),
                                      journal.IG_NAMES.get(g.get("definition"),
                                                           g.get("name")))
-        lines.append(
-            f"- {g.get('leader_name') or '姓名未知'} | 集团: {ig_zh} | "
-            f"意识形态: {g.get('leader_ideology') or '未知'} | "
-            f"政治力量占比: {g.get('clout_pct')}% | "
-            f"家乡: {g.get('leader_home_region') or '未知'}")
+        bits = []
+        if g.get("leader_name"):
+            bits.append(f"大臣{g['leader_name']}")
+        else:
+            bits.append("姓名未知")
+        bits.append(f"来自{ig_zh}")
+        if g.get("leader_ideology"):
+            bits.append(f"意识形态为{g['leader_ideology']}")
+        if isinstance(g.get("clout_pct"), (int, float)):
+            bits.append(f"政治力量占比约{g['clout_pct']:.1f}%")
+        if g.get("leader_home_region"):
+            bits.append(f"家乡在{g['leader_home_region']}")
+        lines.append("- " + "，".join(bits) + "。")
     return "\n".join(lines) or "暂无执政集团数据。"
 
 
 def _facts_decrees(m, data):
     lines = []
     if data.get("laws_enacted"):
-        lines.append("本年新施行法律: " + "、".join(str(x) for x in data["laws_enacted"]))
+        lines.append("本年新施行法律：" + "、".join(
+            journal.law_zh(str(x)) for x in data["laws_enacted"]))
+    else:
+        lines.append("本年无新施行法律。")
     if data.get("laws_repealed"):
-        lines.append("本年废除法律: " + "、".join(str(x) for x in data["laws_repealed"]))
+        lines.append("本年废除法律：" + "、".join(
+            journal.law_zh(str(x)) for x in data["laws_repealed"]))
+    else:
+        lines.append("本年无废除法律。")
     if data.get("laws_in_progress"):
-        lines.append("立法进行中: " + "、".join(
-            f"{x.get('law')}({x.get('phase_zh') or '进行中'})"
+        lines.append("立法进行中：" + "、".join(
+            f"{journal.law_zh(str(x.get('law')))}（{x.get('phase_zh') or '进行中'}）"
             for x in data["laws_in_progress"][:4]))
+    else:
+        lines.append("今年无正在制定的法律。")
     ruler = m.get("ruler") or {}
     if ruler.get("activity"):
-        lines.append(f"统治者活动: {ruler['activity']}")
+        lines.append(f"统治者活动：{ruler['activity']}")
     igs = data.get("interest_groups") or []
     if igs:
-        lines.append("利益集团力量格局: " + "、".join(
-            f"{g.get('name')}({g.get('clout_pct')}%)" for g in igs[:6]))
+        ig_bits = []
+        for g in igs[:6]:
+            nm = journal.IG_NAMES.get(g.get("name"),
+                                      journal.IG_NAMES.get(g.get("definition"),
+                                                           g.get("name")))
+            if isinstance(g.get("clout_pct"), (int, float)):
+                ig_bits.append(f"{nm}占政治力量约{g['clout_pct']:.1f}%")
+            else:
+                ig_bits.append(nm)
+        lines.append("利益集团力量格局：" + "、".join(ig_bits) + "。")
     return "\n".join(lines) or "本年无法律变化记录。"
 
 
 def _facts_household(m, data):
     elites = m.get("elites") or []
     cap = data.get("capital") or "未知"
-    lines = [f"首都/上层社会样本(大臣之家素材, 首都 {cap}):"]
+    lines = [f"首都/上层社会样本（大臣之家素材，首都 {cap}）："]
     for p in elites[:3]:
         lines.append("- " + _fmt_pop(p))
     return "\n".join(lines)
@@ -516,65 +796,132 @@ def _facts_household(m, data):
 
 def _facts_regime(m, data):
     lines = [
-        f"政体: {data.get('govt_zh') or data.get('govt') or '未知'}",
-        f"激进派占比: {data.get('radicals_pct')}% | 效忠派占比: {data.get('loyalists_pct')}%",
+        f"政体为{data.get('govt_zh') or data.get('govt') or '未知'}。",
     ]
+    rp = data.get("radicals_pct")
+    lp = data.get("loyalists_pct")
+    if rp is not None or lp is not None:
+        lines.append(f"激进派约占人口{rp}%，效忠派约占人口{lp}%。")
     movs = data.get("political_movements") or []
     if movs:
-        lines.append("主要政治运动:")
+        lines.append("主要政治运动：")
         for mv in movs[:3]:
-            lines.append(
-                f"- {mv.get('name')} | 意识形态: {mv.get('ideology')} | "
-                f"支持人数: {mv.get('supporters')} | 活跃度: {mv.get('activism')}")
+            nm = mv.get("name") or mv.get("type") or "未知运动"
+            if mv.get("ideology"):
+                nm = f"由{mv['ideology']}发起的{nm}"
+            bits = []
+            if isinstance(mv.get("support_pct"), (int, float)):
+                bits.append(f"支持度约{mv['support_pct']:.1f}%")
+            if mv.get("supporters"):
+                bits.append(f"支持者约{mv['supporters'] / 10000:.1f}万人")
+            tier = mv.get("activism") or "消极"
+            if tier == "武斗":
+                line = f"- {nm}引发了街头暴力冲突"
+            elif tier == "抗议":
+                line = f"- {nm}引发了街头抗议"
+            elif tier == "不满":
+                line = f"- {nm}引发部分群众不满"
+            else:
+                line = f"- {nm}"
+            if bits:
+                line += ("：" if tier == "消极" else "，") + "，".join(bits)
+            lines.append(line)
     return "\n".join(lines)
 
 
 def _facts_migrants(m):
     migs = m.get("migrations") or []
     if not migs:
-        return "本年无玩家州迁出记录(可据人口与文化构成写平静的一年)。"
-    lines = []
+        return "本年无玩家州迁出记录（可据人口与文化构成写平静的一年）。"
+    lines = ["玩家州迁出记录（人数已按存档口径换算）："]
     for r in migs[:3]:
-        pops = r.get("pop_list") or []
-        lines.append(
-            f"- 迁出: {r.get('origin_state') or '未知'} → 迁入: {r.get('target_name') or r.get('target_state') or '未知'} | "
-            f"文化: {r.get('culture_zh') or '未知'} | 宗教: {r.get('religion_zh') or '未知'} | "
-            f"迁出量(存档内部单位, 数值小=少量/涓流, 勿当作人数): {r.get('num')} | "
-            f"涉及POP数: {len(pops)}")
+        origin = r.get("origin_state") or "未知州"
+        target = r.get("target_name") or r.get("target_state") or "未知州"
+        cul = r.get("culture_zh")
+        rel = r.get("religion_zh")
+        if rel and cul:
+            who = f"的{rel}{cul}人"
+        elif cul:
+            who = f"的{cul}人"
+        elif rel:
+            who = f"的{rel}信徒"
+        else:
+            who = ""
+        n = r.get("num_people")
+        n_txt = f"约{_fmt_int(n)}人" if n is not None else "人数未知"
+        acc = _acceptance_zh(r.get("target_acceptance_status"))
+        if acc:
+            acc_txt = f"，在新家园接受度为{acc}"
+        else:
+            acc_txt = "，在新家园接受度未知"
+        lines.append(f"- 从{origin}迁入{target}{who}，共{n_txt}{acc_txt}。")
     return "\n".join(lines)
 
 
 def _facts_transformed(m):
     pros = m.get("promotions") or []
     if not pros:
-        return "本年无跨年可比的职业转变样本(首次生成年无上年指纹, 或无人转变)。"
+        return "本年无跨年可比的职业转变样本（首次生成年无上年指纹，或无人转变）。"
     lines = []
     for p in pros[:3]:
-        lines.append(
-            f"- {p.get('old_type')} → {p.get('new_type')} | 所在州: {p.get('state_name') or p.get('state')} | "
-            f"劳动力(人): {p.get('workforce')} | 文化: {p.get('culture_zh') or p.get('culture') or '未知'} | "
-            f"宗教: {p.get('religion_zh') or p.get('religion') or '未知'}")
+        old = journal.POP_TYPE_NAMES.get(p.get("old_type"), p.get("old_type") or "未知职业")
+        new = journal.POP_TYPE_NAMES.get(p.get("new_type"), p.get("new_type") or "未知职业")
+        state = p.get("state_name") or p.get("state") or "未知州"
+        who = ""
+        if p.get("culture_zh") and p.get("religion_zh"):
+            who = f"{p['religion_zh']}{p['culture_zh']}人群中的"
+        elif p.get("culture_zh"):
+            who = f"{p['culture_zh']}人群中的"
+        wf = p.get("workforce")
+        wf_txt = f"{_fmt_int(wf)}名劳动力" if wf is not None else "部分劳动力"
+        lines.append(f"- {state}的{who}{wf_txt}由{old}转为{new}。")
     return "\n".join(lines)
+
+
+# 文化名「人化」修正: 游戏本地化把部分文化翻成国名/地名(如 brazilian→"巴西"),
+# 在「正同化为X」等语境下补「人」字更通顺。按需扩展。
+CULTURE_DEMONYM_OVERRIDES = {
+    "巴西": "巴西人",
+    "英格兰": "英格兰人",
+    "法兰西": "法兰西人",
+    "俄罗斯": "俄罗斯人",
+    "荷兰": "荷兰人",
+    "北德意志": "北德意志人",
+}
+
+
+def _culture_demonym(name):
+    """文化名 → 通顺的「人」称呼; 无修正时原样返回。"""
+    if not name:
+        return name
+    return CULTURE_DEMONYM_OVERRIDES.get(name, name)
 
 
 def _facts_assimilation(m, data):
     convs = m.get("conversions") or []
     lines = []
     if convs:
-        lines.append("正在改信/同化的真实POP:")
+        lines.append("正在改信/同化的真实POP：")
         for c in convs[:3]:
             extra = []
             if c.get("converting_to_religion"):
-                extra.append(f"改信→{c['converting_to_religion']}")
+                extra.append(f"正改信{c['converting_to_religion']}")
             if c.get("assimilating_to_culture"):
-                extra.append(f"同化→{c['assimilating_to_culture']}")
-            lines.append("- " + _fmt_pop(c) + (" | " + "、".join(extra) if extra else ""))
+                extra.append(
+                    f"正同化为{_culture_demonym(c['assimilating_to_culture'])}")
+            base = _fmt_pop(c)
+            if extra:
+                base = base.rstrip("。") + "，" + "、".join(extra) + "。"
+            lines.append("- " + base)
     else:
-        lines.append("(暂无改信/同化样本)")
-    cult_laws = [str(x) for x in (data.get("laws") or []) if any(
-        k in str(x) for k in ("文化", "宗教", "国教", "公民", "言论", "奴隶", "排斥"))]
+        lines.append("（暂无改信/同化样本）")
+    cult_laws = []
+    for x in (data.get("laws") or []):
+        zh = journal.law_zh(str(x))
+        if any(k in zh for k in ("文化", "宗教", "国教", "公民", "言论", "奴隶", "排斥")):
+            cult_laws.append(zh)
     if cult_laws:
-        lines.append("相关法律变动: " + "、".join(cult_laws))
+        lines.append("相关法律变动：" + "、".join(cult_laws) + "。")
     return "\n".join(lines)
 
 
@@ -582,25 +929,28 @@ def _facts_newhome(m, data):
     lines = []
     pc = data.get("pop_cultures") or []
     if pc:
-        lines.append("人口文化构成(按占比): " + "、".join(
-            f"{c.get('name')}({c.get('pct')}%)" for c in pc[:5]))
+        lines.append("人口文化构成（按占比）：" + "、".join(
+            f"{c.get('name')}约{c.get('pct')}%" for c in pc[:5]))
     prof = data.get("professions") or []
     if prof:
-        lines.append("职业构成: " + "、".join(
-            f"{journal.POP_TYPE_NAMES.get(p.get('name'), p.get('name'))}({p.get('pct')}%)"
+        lines.append("职业构成：" + "、".join(
+            f"{journal.POP_TYPE_NAMES.get(p.get('name'), p.get('name'))}约{p.get('pct')}%"
             for p in prof[:5]))
     migs = m.get("migrations") or []
     if migs:
-        lines.append("本期移民样本 " + str(len(migs)) + " 条(见移民群像板块)。")
+        lines.append(f"本期移民样本共{len(migs)}条（见移民群像板块）。")
     return "\n".join(lines)
 
 
 def render_facts(article_key, section_key, data):
     m = data.get("magazine") or {}
-    m["_last_year_wars"] = data.get("last_year_wars") or data.get("prev_year_wars") or []
+    m["_player_wars"] = m.get("player_wars") or data.get("player_wars") or []
+    m["_player_at_war"] = m.get("player_at_war") if m.get("player_at_war") is not None else data.get("player_at_war")
     fn = {
-        "front": lambda: _facts_front(m),
-        "soldier": lambda: _facts_soldier(m, data),
+        "front": lambda: _facts_front(m, data),
+        "garrison": lambda: _facts_garrison(m, data),
+        "soldier": lambda: _facts_soldier(
+            m, data, peacetime=not bool(m.get("_player_at_war"))),
         "homefront": lambda: _facts_homefront(m),
         "aftermath": lambda: _facts_aftermath(m),
         "minister": lambda: _facts_minister(m),
@@ -620,8 +970,82 @@ def render_facts(article_key, section_key, data):
 # ---------------------------------------------------------------------------
 
 def _voice(data):
+    """政体 → 杂志基调; 和平年自动剥离基调中涉及战争/战事的句子,
+    避免模型在无战事时仍按战争语境写作。"""
     cat = _govt_category(data)
-    return GOVT_PROMPTS.get(cat, GOVT_PROMPTS["other"])
+    prompt = GOVT_PROMPTS.get(cat, GOVT_PROMPTS["other"])
+    m = data.get("magazine") or {}
+    at_war = data.get("player_at_war")
+    if at_war is None:
+        at_war = m.get("player_at_war")
+    if not at_war and ("战争" in prompt or "战事" in prompt):
+        sents = []
+        for sent in prompt.split("。"):
+            if "战争" not in sent and "战事" not in sent:
+                sents.append(sent)
+                continue
+            segs = [s for s in sent.split("，")
+                    if "战争" not in s and "战事" not in s]
+            if segs:
+                sents.append("，".join(segs))
+        prompt = "。".join(sents)
+    return prompt
+
+
+def _intro_framework(data):
+    """导言用「本期数据框架」: 把杂志数据里的大势事实压缩成几行,
+    让导言有据可依, 不靠 OTL 常识猜测本年大事。"""
+    m = data.get("magazine") or {}
+    at_war = data.get("player_at_war")
+    if at_war is None:
+        at_war = m.get("player_at_war")
+    battles = m.get("battles") or []
+    wars = m.get("player_wars") or data.get("player_wars") or []
+    lines = []
+    if battles:
+        b = battles[0]
+        atk = (b.get("attacker") or {}).get("country") or "未知"
+        dfd = (b.get("defender") or {}).get("country") or "未知"
+        lines.append(
+            f"档案保留战役{len(battles)}场（最近一场：{b.get('place') or '未知地点'}，"
+            f"{_fmt_date(b.get('start_date'))}起，{atk}对{dfd}，"
+            f"{BATTLE_STATUS_ZH.get(b.get('status'), b.get('status') or '结果未知')}）。")
+    ongoing = [w for w in wars if not w.get("ended")]
+    if ongoing:
+        names = list(dict.fromkeys(
+            str(p.get("name")) for w in ongoing
+            for p in (w.get("participants") or []) if p.get("name")))
+        if names:
+            lines.append("我国参与进行中的战争，参战方：" + "、".join(names[:8]) + "。")
+    elif not battles:
+        lines.append("本年度我国无战事记录。")
+    if data.get("laws_enacted"):
+        lines.append("本年新施行法律：" + "、".join(
+            journal.law_zh(str(x)) for x in data["laws_enacted"][:4]) + "。")
+    elif data.get("laws_in_progress"):
+        lines.append("本年立法进行中：" + "、".join(
+            journal.law_zh(str(x.get("law")))
+            for x in data["laws_in_progress"][:3]) + "。")
+    ruler = m.get("ruler") or {}
+    if ruler.get("name") and ruler.get("activity"):
+        lines.append(f"统治者{ruler['name']}的活动：{ruler['activity']}。")
+    migs = m.get("migrations") or []
+    if migs:
+        lines.append(f"本年度玩家州有{len(migs)}条人口迁移记录（见《迁徙与蜕变》）。")
+    convs = m.get("conversions") or []
+    if convs:
+        lines.append(f"档案有{len(convs)}个正在改信/同化的POP样本（见《迁徙与蜕变》）。")
+    return "\n".join(lines) or "（无额外数据）"
+
+
+def _lead_digest(text, limit=260):
+    """首板块全文太长时, 后续板块只回贴程序截取的摘要, 避免提示词膨胀,
+    也防止模型照抄首板块篇幅把后续板块写得过长。"""
+    t = re.sub(r"[#*_>`~\-]", " ", text or "")
+    t = re.sub(r"\s+", " ", t).strip()
+    if len(t) <= limit:
+        return t
+    return t[:limit] + "……"
 
 
 def build_intro_messages(data):
@@ -629,25 +1053,39 @@ def build_intro_messages(data):
     capital = data.get("capital", "未知")
     govt_zh = data.get("govt_zh") or data.get("govt") or "未知"
     year = data.get("year", "?")
+    at_war = data.get("player_at_war")
+    if at_war is None:
+        at_war = (data.get("magazine") or {}).get("player_at_war")
+    if at_war:
+        art1 = "①《战地与后方》（前线士兵与后方家庭）"
+    else:
+        art1 = "①《军营与家园》（驻地训练与军民生活）"
     sys_msg = (
         f"你是《{country}》杂志的总编辑。本刊定位为19世纪的非虚构文学月刊, "
         "聚焦具体人物的命运, 以小人物与大人物映照时代大局。\n\n"
         f"本期关键变量(抬头必须原样保留):\n"
         f"【国名】{country}\n【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
         f"本刊基调:\n{_voice(data)}\n\n"
-        f"三篇特稿: ①《战地与后方》(前线士兵与后方家庭) ②《庙堂与门庭》(内阁大臣与他的家庭) "
+        f"三篇特稿: {art1} ②《庙堂与门庭》(内阁大臣与他的家庭) "
         "③《迁徙与蜕变》(移民、升职者与改信者)。\n\n"
-        f"{NONFICTION_RULE}\n"
+        f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}\n"
         "请先拟定刊名(据都城/国名+政体惯例, 如《巴黎纪事月刊》), 撰写杂志导言: "
         "概括本年度大势, 预告三篇特稿, 并点明本刊的政体立场。"
+        "导言正文控制在约400–600字。"
         "输出格式:\n"
         "# 《刊名》\n"
         "国名：X｜都城：Y｜政体：Z｜年份：W\n\n"
         "导言正文..."
     )
+    if not at_war:
+        sys_msg += (
+            "\n本期我国无战事记录，各板块均按和平年代写作，不涉及任何战争或敌军。"
+        )
     user_msg = (
         f"本期杂志: 【国名】{country}, 【都城】{capital}, 【政体】{govt_zh}, 【年份】{year}。"
-        "请据上述变量拟定刊名并撰写导言。"
+        "\n\n本期数据框架（程序提供，一切事实以此为准，不得另行发挥或套用真实历史）：\n"
+        f"{_intro_framework(data)}\n\n"
+        "请据上述变量与数据框架拟定刊名并撰写导言。"
     )
     return [{"role": "system", "content": sys_msg},
             {"role": "user", "content": user_msg}]
@@ -669,7 +1107,8 @@ def build_lead_messages(article, data, intro):
     sys_msg = (
         f"你是本刊特稿《{article['title']}》的主笔。本刊基调:\n{_voice(data)}\n\n"
         f"这是文章的开篇板块《{sec['title']}》, 需立起全篇的人物与场景。要求: {sec['req']}\n\n"
-        f"{NONFICTION_RULE}"
+        f"篇幅要求：开篇板块正文控制在800–1200字，须立起人物与场景，但不宜冗长。\n\n"
+        f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}"
     )
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
@@ -686,11 +1125,13 @@ def build_section_messages(article, section, data, intro, lead_text):
     sys_msg = (
         f"你是本刊特稿《{article['title']}》的主笔。本刊基调:\n{_voice(data)}\n\n"
         f"请撰写板块《{section['title']}》。要求: {section['req']}\n\n"
-        f"{NONFICTION_RULE}"
+        f"篇幅要求：板块正文控制在1200–1800字。\n\n"
+        f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}"
     )
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
-        f"本文开篇板块《{article['sections'][0]['title']}》已写成:\n{lead_text}\n\n"
+        f"本文开篇板块《{article['sections'][0]['title']}》内容摘要（程序截取，全文较长）:\n"
+        f"{_lead_digest(lead_text)}\n\n"
         f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据(国名请用【国名】={country}):\n"
         f"{facts}\n\n请直接输出板块正文(Markdown)。"
     )
@@ -705,8 +1146,39 @@ def build_section_messages(article, section, data, intro, lead_text):
 _MAG_HEAD_RE = re.compile(r"^#{1,6}\s+")
 
 
+def _strip_markdown_tables(text):
+    """把模型仍可能输出的 Markdown 表格行转成自然语言句子(逗号连接)。
+    只作兜底: 事实层已全部自然语言化, 此处防御模型自行出表。"""
+    lines = (text or "").split("\n")
+    out = []
+    i = 0
+    while i < len(lines):
+        ln = lines[i].strip()
+        if (ln.startswith("|")
+                and i + 1 < len(lines)
+                and re.match(r"^\s*\|[\s:\-|]+\|\s*$", lines[i + 1])):
+            headers = [c.strip() for c in ln.strip("|").split("|")]
+            i += 2
+            rows = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                pairs = []
+                for h, v in zip(headers, cells):
+                    if not h or not v or v in ("-", "—", "N/A"):
+                        continue
+                    pairs.append(f"{h}为{v}")
+                rows.append("，".join(pairs) if pairs else "、".join(cells))
+                i += 1
+            if rows:
+                out.append("，".join(rows) + "。")
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 def _normalize_section(text, title):
-    """板块正文规范化: 所有标题降为 ###, 无标题时补 ### 板块名。"""
+    """板块正文规范化: 所有标题降为 ###, 表格转自然语言, 无标题时补 ### 板块名。"""
     out = []
     for raw in (text or "").split("\n"):
         s = raw.strip()
@@ -716,7 +1188,7 @@ def _normalize_section(text, title):
         if s.startswith("#"):
             s = re.sub(r"^(#{1,6})\s+", "### ", s)
         out.append(s)
-    body = "\n".join(out).strip()
+    body = _strip_markdown_tables("\n".join(out)).strip()
     first = next((ln for ln in body.split("\n") if ln.strip()), "")
     if not _MAG_HEAD_RE.match(first):
         return f"### {title}\n\n{body}"
@@ -724,18 +1196,21 @@ def _normalize_section(text, title):
 
 
 def _build_article_list(data):
-    """按数据可用性裁剪文章板块: 无真实升职/降职样本时跳过《蜕变者》。"""
+    """按数据可用性裁剪文章板块:
+    和平年第一篇文章切换为《军营与家园》; 无真实升职/降职样本时跳过《蜕变者》。"""
     m = data.get("magazine") or {}
     has_promo = bool(m.get("promotions"))
     articles = []
     for a in ARTICLES:
-        if a["key"] == "migration_change" and not has_promo:
+        if a["key"] == "war_family":
+            a2 = _war_article_variant(data)
+        elif a["key"] == "migration_change" and not has_promo:
             a2 = dict(a)
             a2["sections"] = [s for s in a["sections"] if s["key"] != "transformed"]
-            if a2["sections"]:
-                articles.append(a2)
         else:
-            articles.append(a)
+            a2 = a
+        if a2["sections"]:
+            articles.append(a2)
     return articles
 
 
@@ -754,6 +1229,13 @@ def _assemble(intro, leads, sections, data, articles=None):
 # ---------------------------------------------------------------------------
 
 def generate_magazine(data, cfg, force=True):
+    # 兼容两种调用形态: player_at_war / player_wars 可能直接挂在 data 上,
+    # 也可能在 build_magazine_data 返回的 data["magazine"] 里, 统一提升到 data。
+    m = data.get("magazine") or {}
+    if data.get("player_at_war") is None and m.get("player_at_war") is not None:
+        data["player_at_war"] = m.get("player_at_war")
+    if not data.get("player_wars") and m.get("player_wars"):
+        data["player_wars"] = m.get("player_wars")
     year = data.get("year")
     folder = data.get("output_dir") or journal.SESSION.get("folder") or ""
     base_dir = os.path.join(cfg["journal_dir"], folder)
@@ -809,9 +1291,13 @@ def generate_magazine(data, cfg, force=True):
 
     def _gen_section(article, section):
         try:
+            sec2 = dict(sec_cfg)
+            # 末篇收束板块常被模型写长, 单独提高输出预算防止截断
+            if section["key"] == "newhome":
+                sec2["max_tokens"] = min(cfg.get("max_tokens", 8000), 6000)
             msg = build_section_messages(article, section, data, intro,
                                          leads[article["key"]])
-            text = journal.call_deepseek(msg, sec_cfg).strip()
+            text = journal.call_deepseek(msg, sec2).strip()
             return (article["key"], section["key"],
                     _normalize_section(text, section["title"]))
         except Exception as e:
