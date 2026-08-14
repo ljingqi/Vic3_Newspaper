@@ -18,87 +18,16 @@ from concurrent.futures import ThreadPoolExecutor
 
 import journal
 
-
-# ---------------------------------------------------------------------------
-# 政体 -> 杂志基调 (需求3: 每个政体拥有自己的提示词)
-# ---------------------------------------------------------------------------
-
-GOVT_PROMPTS = {
-    "council_republic": (
-        "本刊为委员会制共和国的机关刊物，编辑立场站在工农与雇员一边。"
-        "叙事重心放在劳动、集体、工厂与公社生活上；把职业转变视为阶级队伍的成长，"
-        "把移民视为劳动者在世界范围内的流动，把战争中的士兵视为穿军装的工人。"
-        "对旧贵族、教会与私人资本保持审视，鼓励读者以主人翁姿态看待国事。"
-        "刊名宜带集体色彩，如《公社月刊》《工人之友》《人民纪事》。"
-    ),
-    "parliamentary_republic": (
-        "本刊为议会制共和国的公共舆论平台，编辑立场尊重议会程序、政党竞争与公民权利。"
-        "叙事重心放在法律辩论、内阁更迭与民意上；把职业转变视为个人奋斗与社会流动，"
-        "把移民视为公民社会的新闻孔，把战争视为需要议会与舆论监督的国家行为。"
-        "刊名宜带公民与公共色彩，如《共和国月刊》《公民纪事》《议会评论》。"
-    ),
-    "presidential_republic": (
-        "本刊为总统制共和国的独立刊物，编辑立场崇尚宪法、联邦与个人自由。"
-        "叙事重心放在行政权、边疆开发、市场与进步上；把职业转变写成拓荒者式的向上攀登，"
-        "把移民写成新大陆的开拓者，把战争写成保卫共和国制度的斗争。"
-        "刊名宜带自由与进步色彩，如《自由月刊》《合众国杂志》《进步纪事》。"
-    ),
-    "social_monarchy": (
-        "本刊为社会君主立宪制下的改良刊物，编辑立场主张君民调和、改革与秩序并重。"
-        "叙事重心放在王室象征、社会福利与渐进立法上；把职业转变写成国家扶持下的体面上升，"
-        "把移民写成归化帝国的臣民，把战争写成君主统帅下的国家荣誉。"
-        "刊名宜带王室与国家色彩，如《王室纪事月刊》《帝国社会评论》《御览杂志》。"
-    ),
-    "monarchy": (
-        "本刊为君主制（帝国/王国）的宫廷与国民刊物，编辑立场忠于君主、尊崇传统与等级。"
-        "叙事重心放在宫廷、贵族、帝国疆域与天命秩序上；把职业转变写成君恩与勤奋的回报，"
-        "把移民写成受教化归化的新臣民，把战争写成君王御驾亲征的武功。"
-        "刊名宜带宫廷与帝国色彩，如《宫廷月刊》《帝国纪事》《王冠杂志》。"
-    ),
-    "theocracy": (
-        "本刊为神权制国家的宗教刊物，编辑立场以教义为准绳，关切信徒灵魂与俗世生活。"
-        "叙事重心放在信仰、礼拜、教团与圣战上；把职业转变写成神明对勤劳者的眷顾，"
-        "把移民写成来到真信之地的朝圣者，把改信写成归信的喜讯，把战争写成护教之战。"
-        "刊名宜带神圣色彩，如《圣教月刊》《神谕纪事》《信众之友》。"
-    ),
-    "chiefdom": (
-        "本刊为酋邦（部族联盟）的传统刊物，编辑立场尊重长老、土地、血缘与社群。"
-        "叙事重心放在部落议事、丰收、征战与祖灵记忆上；把职业转变写成部族内部分工的演化，"
-        "把移民写成邻邦来投的客民，把同化写成部族吸纳新血的传统。"
-        "刊名宜带土地与部族色彩，如《酋邦纪事》《部落月刊》《篝火纪事》。"
-    ),
-    "other": (
-        "本刊为该国当前政体下的时政与民生刊物，编辑立场中立克制，"
-        "叙事重心放在具体人物的命运与时代大势的交汇处。"
-        "刊名由首都或国名派生，如《XX月刊》《XX纪事》《XX杂志》。"
-    ),
-}
+import style
 
 
-def _govt_category(data):
-    """政体原始键 → 8 类基调 (与 mod GOVT type 分类一致)。"""
-    key = str(data.get("govt_key") or data.get("govt") or "").lower()
-    if any(k in key for k in ("council", "commune", "soviet")):
-        return "council_republic"
-    if "parliament" in key:
-        return "parliamentary_republic"
-    if any(k in key for k in ("president", "republic", "democracy", "technate",
-                              "phalanstere")):
-        return "presidential_republic"
-    if any(k in key for k in ("theocra", "papal", "caliph", "imam", "priest",
-                              "patriarch")):
-        return "theocracy"
-    if any(k in key for k in ("chief", "tribe", "clan", "khan", "horde",
-                              "sultan", "emir")):
-        return "chiefdom"
-    if any(k in key for k in ("social", "welfare", "liberal")) and any(
-            k in key for k in ("monarch", "empire", "kingdom")):
-        return "social_monarchy"
-    if any(k in key for k in ("monarch", "empire", "kingdom", "duchy",
-                              "principality", "regency", "shah", "bakufu",
-                              "shogun", "crown")):
-        return "monarchy"
-    return "other"
+# 当前文风系统 (legacy/dynamic), 由 generate_magazine 从 cfg 设置。
+_STYLE_SYSTEM = "legacy"
+
+
+def _set_style_system(s):
+    global _STYLE_SYSTEM
+    _STYLE_SYSTEM = s or "legacy"
 
 
 # ---------------------------------------------------------------------------
@@ -972,8 +901,11 @@ def render_facts(article_key, section_key, data):
 def _voice(data):
     """政体 → 杂志基调; 和平年自动剥离基调中涉及战争/战事的句子,
     避免模型在无战事时仍按战争语境写作。"""
-    cat = _govt_category(data)
-    prompt = GOVT_PROMPTS.get(cat, GOVT_PROMPTS["other"])
+    if _STYLE_SYSTEM == "dynamic":
+        prompt = style.resolve_magazine_voice(data)
+    else:
+        cat = style.govt_category(data)
+        prompt = style.GOVT_PROMPTS.get(cat, style.GOVT_PROMPTS["other"])
     m = data.get("magazine") or {}
     at_war = data.get("player_at_war")
     if at_war is None:
@@ -1229,6 +1161,7 @@ def _assemble(intro, leads, sections, data, articles=None):
 # ---------------------------------------------------------------------------
 
 def generate_magazine(data, cfg, force=True):
+    _set_style_system(cfg.get("style_system", "legacy"))
     # 兼容两种调用形态: player_at_war / player_wars 可能直接挂在 data 上,
     # 也可能在 build_magazine_data 返回的 data["magazine"] 里, 统一提升到 data。
     m = data.get("magazine") or {}

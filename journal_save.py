@@ -134,7 +134,7 @@ CHARACTER_TEMPLATES_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\char
 
 _NAME_CACHE = None
 _LOC_ALL = None
-_LOC_PLACEHOLDER_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9]*\$")
+_LOC_PLACEHOLDER_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9-]*\$")
 
 def _loc_dirs():
     """本地化目录列表: 游戏原版 + 当前 playset 已启用的 mod (mod 覆盖原版)。
@@ -202,7 +202,7 @@ def _load_loc_all():
                     with open(os.path.join(root, fn), encoding="utf-8-sig",
                               errors="replace") as fp:
                         for line in fp:
-                            m = re.match(r"\s*([A-Za-z_][A-Za-z_0-9]*)(?::\d+)?:\s*\"([^\"]+)\"\s*(?:#.*)?$",
+                            m = re.match(r"\s*([A-Za-z_][A-Za-z_0-9-]*)(?::\d+)?:\s*\"([^\"]+)\"\s*(?:#.*)?$",
                                          line)
                             if m:
                                 loc[m.group(1)] = m.group(2).strip()
@@ -616,20 +616,22 @@ def build_culture_map():
                         keys.append(k)
     except Exception:
         pass
-    # key → 中文名 (本地化)
+    # key → 中文名 (本地化; 兼容数字/连字符 key, 并含 mod 覆盖)
     zh = {}
-    loc_dir = GAME_LOCALIZATION
-    try:
-        for fn in os.listdir(loc_dir):
-            if not fn.endswith(".yml"):
-                continue
-            with open(os.path.join(loc_dir, fn), encoding="utf-8-sig", errors="replace") as fp:
-                for line in fp:
-                    m = re.match(r"\s*([a-z_]+):\s*\"([^\"]+)\"\s*(?:#.*)?$", line)
-                    if m:
-                        zh[m.group(1)] = m.group(2).strip()
-    except Exception:
-        pass
+    for loc_dir in _loc_dirs():
+        try:
+            for fn in os.listdir(loc_dir):
+                if not fn.endswith(".yml"):
+                    continue
+                with open(os.path.join(loc_dir, fn), encoding="utf-8-sig",
+                          errors="replace") as fp:
+                    for line in fp:
+                        m = re.match(
+                            r"\s*([a-z0-9_-]+):\s*\"([^\"]+)\"\s*(?:#.*)?$", line)
+                        if m:
+                            zh[m.group(1)] = m.group(2).strip()
+        except Exception:
+            pass
     _CULTURE_MAP = {i: (keys[i] if i < len(keys) else None) for i in range(500)}
     _CULTURE_MAP["_zh"] = zh
     return _CULTURE_MAP
@@ -726,18 +728,20 @@ def build_goods_map():
                         cost[cur] = float(mc.group(1))
     except Exception:
         pass
-    try:
-        for fn in os.listdir(GAME_LOCALIZATION):
-            if not fn.endswith(".yml"):
-                continue
-            with open(os.path.join(GAME_LOCALIZATION, fn), encoding="utf-8-sig",
-                      errors="replace") as fp:
-                for line in fp:
-                    m = re.match(r"\s*([a-z_]+):\s*\"([^\"]+)\"\s*(?:#.*)?$", line)
-                    if m and m.group(1) in order:
-                        zh[m.group(1)] = m.group(2).strip()
-    except Exception:
-        pass
+    for loc_dir in _loc_dirs():
+        try:
+            for fn in os.listdir(loc_dir):
+                if not fn.endswith(".yml"):
+                    continue
+                with open(os.path.join(loc_dir, fn), encoding="utf-8-sig",
+                          errors="replace") as fp:
+                    for line in fp:
+                        m = re.match(
+                            r"\s*([a-z0-9_-]+):\s*\"([^\"]+)\"\s*(?:#.*)?$", line)
+                        if m and m.group(1) in order:
+                            zh[m.group(1)] = m.group(2).strip()
+        except Exception:
+            pass
     _GOODS_CACHE = {"order": order, "cost": cost, "zh": zh}
     return _GOODS_CACHE
 
@@ -902,23 +906,28 @@ def _market_price_map(data, country):
 _GOV_CACHE = None
 
 def build_gov_map():
-    """建立 gov_key → 中文名 映射(从 simp_chinese 本地化 gov_ 开头的 key)。"""
+    """建立 gov_key → 中文名 映射 (从游戏+已启用 mod 的 simp_chinese 本地化
+    读取 gov_ 开头的 key; 兼容数字 key 如 gov_french_2nd_republic_parliamentary
+    与版本后缀如 gov_xxx:0)。"""
     global _GOV_CACHE
     if _GOV_CACHE is not None:
         return _GOV_CACHE
     gov = {}
-    loc_dir = GAME_LOCALIZATION
-    try:
-        for fn in os.listdir(loc_dir):
-            if not fn.endswith(".yml"):
-                continue
-            with open(os.path.join(loc_dir, fn), encoding="utf-8-sig", errors="replace") as fp:
-                for line in fp:
-                    m = re.match(r"\s*(gov_[a-z_]+):\s*\"([^\"]+)\"\s*(?:#.*)?$", line)
-                    if m:
-                        gov[m.group(1)] = m.group(2).strip()
-    except Exception:
-        pass
+    for loc_dir in _loc_dirs():
+        try:
+            for fn in os.listdir(loc_dir):
+                if not fn.endswith(".yml"):
+                    continue
+                with open(os.path.join(loc_dir, fn), encoding="utf-8-sig",
+                          errors="replace") as fp:
+                    for line in fp:
+                        m = re.match(
+                            r"\s*(gov_[a-z0-9_]+)(?::\d+)?:\s*\"([^\"]+)\"\s*(?:#.*)?$",
+                            line)
+                        if m:
+                            gov[m.group(1)] = m.group(2).strip()
+        except Exception:
+            pass
     _GOV_CACHE = gov
     return gov
 
@@ -1530,6 +1539,23 @@ FREE_SPEECH_LAWS = ("law_outlawed_dissent", "law_censorship",
                     "law_right_of_assembly", "law_free_speech",
                     "law_protected_speech")
 
+# 投票权(Distribution of Power)法律组: 供新文风系统做投票权加权
+DOP_LAWS = (
+    "law_autocracy", "law_neo_absolutism", "law_bakufu",
+    "law_technocracy", "law_oligarchy", "law_organic_regulation",
+    "law_elder_council", "law_landed_voting", "law_wealth_voting",
+    "law_census_voting", "law_universal_suffrage", "law_anarchy",
+    "law_single_party_state",
+)
+
+# 治理原则(Governance Principles)法律组: 供新文风系统判定政体类别
+GOVT_LAWS = (
+    "law_chiefdom", "law_monarchy", "law_social_monarchy",
+    "law_presidential_republic", "law_parliamentary_republic",
+    "law_theocracy", "law_council_republic", "law_corporate_state",
+    "law_colonial_administration",
+)
+
 def _country_ig_slots(data, country_id):
     """解析存档 interest_groups.database，返回该国的 {槽位: IG key}。
 
@@ -1691,10 +1717,14 @@ def _localize_character_name(first, last, loc):
     """角色名中文化: 存档存英文名, 游戏 names_l 本地化提供英文名→中文表。
     优先整词匹配 (如 Karam_Singh→卡拉姆·辛格), 否则按空格/下划线拆词逐个查表,
     查不到保留原文。存档姓氏里的连字符 (如 of_Saxe-Coburg-Gotha) 会先归一为
-    下划线再整词查表 (→萨克森‑科堡‑哥达)。"""
+    下划线再整词查表 (→萨克森‑科堡‑哥达); 本地化文件同时存在连字符与下划线
+    两种 key 形式, 故先试原始 key, 再试下划线归一 (如 d-Oilliamson→德·奥扬松)。"""
     parts = []
     for raw in (first, last):
         if not raw:
+            continue
+        if raw in loc:
+            parts.append(loc[raw])
             continue
         cand = raw.replace("-", "_")
         if cand in loc:
@@ -2052,39 +2082,8 @@ def _extract_political_movements(data, country_id, state_ids, pop_stats, player_
 
 def _building_type_map(data, state_ids):
     """解析 building_manager.database，返回 {建筑id: 建筑类型key}（仅玩家州内）。"""
-    state_ids = set(state_ids or [])
-    bm = {}
-    idx = data.find(b'"building_manager"')
-    if idx < 0:
-        return bm
-    bm_end = _object_end(data, data.find(b'{', idx))
-    db = data.find(b'"database"', idx)
-    if db < 0:
-        return bm
-    _IDOBJ = re.compile(rb'"(\d+)":\{')
-    j = data.find(b'{', db)
-    while True:
-        m = _IDOBJ.search(data, j, bm_end - 1)
-        if not m:
-            break
-        ob2 = m.start() + len(m.group(0)) - 1
-        head = data[ob2:min(ob2 + 400, len(data))]
-        m_st = re.search(rb'"state":(\d+)', head)
-        if not m_st or int(m_st.group(1)) not in state_ids:
-            j = data.find(b'}', ob2) + 1
-            continue
-        raw, end = extract_json_object(data, ob2)
-        if not raw:
-            break
-        try:
-            obj = json.loads(raw)
-        except Exception:
-            j = end
-            continue
-        if isinstance(obj, dict) and obj.get("state") in state_ids and obj.get("building"):
-            bm[int(m.group(1))] = obj["building"]
-        j = end
-    return bm
+    _bs, btype_map, _objs = _buildings_index(data, state_ids)
+    return btype_map
 
 def _country_technologies(data, country_id):
     """返回该国已研发科技 key 列表。
@@ -2126,7 +2125,7 @@ def _country_technologies(data, country_id):
 def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
                      building_map=None, incorporation=None, harvest_conditions=None,
                      pop_needs=None, hub_names=None, price_map=None, vital=None,
-                     movement_names=None):
+                     movement_names=None, workplace_ownership=None):
     """把单个 pop 对象整理成「家庭采访」数据块。"""
     wf = pop.get("workforce") or 0
     dep = pop.get("dependents") or 0
@@ -2275,6 +2274,7 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "unaffiliated_pct": round(unaff / wf_i * 100, 1) if wf_i and unaff is not None else None,
         "job_satisfaction": round(job_sat, 2) if isinstance(job_sat, (int, float)) else None,
         "workplace": workplace,
+        "workplace_ownership": workplace_ownership if workplace else None,
         "unemployed": unemployed,
         "birth_rate_pct": round(birth_pct, 2) if birth_pct is not None else None,
         "death_rate_pct": round(death_pct, 2) if death_pct is not None else None,
@@ -2463,17 +2463,29 @@ def _buildings_in_state(data, state_id):
 def _buildings_by_state(data, state_ids):
     """单次扫描 building_manager → {state_id: [建筑id]} (仅玩家州)。
     供家庭采访与统治者活动多次取用, 避免每个州反复整文件扫描。"""
+    by_state, _bt, _objs = _buildings_index(data, state_ids)
+    return by_state
+
+
+def _buildings_index(data, state_ids):
+    """单次扫描 building_manager.database → (州→[建筑id], 建筑id→类型, 建筑id→完整对象)。
+
+    合并原 _buildings_by_state 与 _building_type_map 的两次整段扫描, 顺带保留
+    levels/owners/production_methods 等字段, 供所有权解析与访谈复用。"""
     state_ids = set(state_ids or [])
-    out = {s: [] for s in state_ids}
+    by_state = {s: [] for s in state_ids}
+    btype_map = {}
+    objs = {}
     if not state_ids:
-        return out
+        return by_state, btype_map, objs
     idx = data.find(b'"building_manager"')
     if idx < 0:
-        return out
+        return by_state, btype_map, objs
     bm_end = _object_end(data, data.find(b'{', idx))
     db = data.find(b'"database"', idx)
     if db < 0:
-        return out
+        return by_state, btype_map, objs
+    _BUILDING_MANAGER_BOUNDS[id(data)] = (data.find(b'{', db), bm_end)
     _IDOBJ = re.compile(rb'"(\d+)":\{')
     j = data.find(b'{', db)
     while True:
@@ -2495,9 +2507,243 @@ def _buildings_by_state(data, state_ids):
             j = end
             continue
         if isinstance(obj, dict) and obj.get("state") in state_ids and obj.get("building"):
-            out[int(obj["state"])].append(int(m.group(1)))
+            bid = int(m.group(1))
+            by_state[int(obj["state"])].append(bid)
+            btype_map[bid] = obj["building"]
+            objs[bid] = obj
         j = end
-    return out
+    return by_state, btype_map, objs
+
+
+# ---------------------------------------------------------------------------
+# 建筑物所有权解析 (存档 building_ownership_manager)
+# 分类与游戏一致: 国有 / 外国投资(外国政府+外国私人) / 公司所有 / 外国公司持有
+# / 私有 / 当地劳动力。混合时只取份额前三生成文案。
+# ---------------------------------------------------------------------------
+
+_OWNERSHIP_ZH = {
+    "state": "国有",
+    "foreign": "外国投资",
+    "company": "公司所有",
+    "foreign_company": "外国公司持有",
+    "private": "私有",
+    "laborer": "当地劳动力",
+}
+_OWNERSHIP_HOLDER = {
+    "state": "国家",
+    "foreign": "外国投资",
+    "company": "公司",
+    "foreign_company": "外国公司",
+    "private": "私人",
+    "laborer": "当地劳动力",
+}
+_OWNERSHIP_ORDER = ("state", "foreign", "company", "foreign_company",
+                    "private", "laborer")
+
+_BUILDING_MANAGER_BOUNDS = {}
+
+
+def _building_manager_bounds(data):
+    """building_manager.database 的起始/结束字节位 (按熔化 bytes id 缓存)。"""
+    key = id(data)
+    m = _BUILDING_MANAGER_BOUNDS.get(key)
+    if m:
+        return m
+    idx = data.find(b'"building_manager"')
+    if idx < 0:
+        _BUILDING_MANAGER_BOUNDS[key] = (0, 0)
+        return (0, 0)
+    ob = data.find(b'{', idx)
+    ob_end = _object_end(data, ob)
+    db = data.find(b'"database"', idx, ob_end)
+    if db < 0:
+        _BUILDING_MANAGER_BOUNDS[key] = (0, 0)
+        return (0, 0)
+    _BUILDING_MANAGER_BOUNDS[key] = (data.find(b'{', db), ob_end)
+    return _BUILDING_MANAGER_BOUNDS[key]
+
+
+_BUILDING_HEAD_CACHE = {}
+
+
+def _building_head(data, bid):
+    """按需读取单栋建筑的 (类型key, 州id) 头部字段, 供所有权解析; 带缓存。"""
+    cache = _BUILDING_HEAD_CACHE.get(id(data))
+    if cache is None:
+        cache = _BUILDING_HEAD_CACHE[id(data)] = {}
+    hit = cache.get(bid)
+    if hit is not None:
+        return hit
+    db, db_end = _building_manager_bounds(data)
+    if db_end <= db:
+        return None, None
+    pat = ('"' + str(bid) + '":{').encode()
+    i = data.find(pat, db, db_end)
+    if i < 0:
+        cache[bid] = (None, None)
+        return None, None
+    ob2 = i + len(pat) - 1
+    head = data[ob2:min(ob2 + 400, len(data))]
+    m_bt = re.search(rb'"building":"([a-z0-9_]+)"', head)
+    m_st = re.search(rb'"state":(\d+)', head)
+    bt = m_bt.group(1).decode() if m_bt else None
+    st = int(m_st.group(1)) if m_st else None
+    cache[bid] = (bt, st)
+    return bt, st
+
+
+def _building_object(data, bid):
+    """按需解析单栋建筑的完整对象; 找不到返回 None。"""
+    db, db_end = _building_manager_bounds(data)
+    if db_end <= db:
+        return None
+    pat = ('"' + str(bid) + '":{').encode()
+    i = data.find(pat, db, db_end)
+    if i < 0:
+        return None
+    ob2 = i + len(pat) - 1
+    raw, _end = extract_json_object(data, ob2)
+    if not raw:
+        return None
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+_OWNERSHIP_DB_BOUNDS = {}
+_OWNERSHIP_DB_CACHE = {}
+
+
+def _ownership_db_bounds(data):
+    """building_ownership_manager.database 的起始/结束字节位 (按熔化 bytes id 缓存)。"""
+    key = id(data)
+    m = _OWNERSHIP_DB_BOUNDS.get(key)
+    if m:
+        return m
+    idx = data.find(b'"building_ownership_manager"')
+    if idx < 0:
+        _OWNERSHIP_DB_BOUNDS[key] = (0, 0)
+        return (0, 0)
+    ob = data.find(b'{', idx)
+    # 该管理器后紧跟 "decree_manager" 管理器, 用精确边界 "},"decree_manager"" 快速定位段尾,
+    # 避免对整段做逐字节括号匹配; 找不到时回退旧逻辑。
+    nxt = data.find(b'"},"decree_manager"', idx)
+    ob_end = nxt + 1 if nxt > ob else _object_end(data, ob)
+    db = data.find(b'"database"', idx, ob_end)
+    if db < 0:
+        _OWNERSHIP_DB_BOUNDS[key] = (0, 0)
+        return (0, 0)
+    _OWNERSHIP_DB_BOUNDS[key] = (data.find(b'{', db), ob_end)
+    return _OWNERSHIP_DB_BOUNDS[key]
+
+
+def _ownership_entry(data, oid):
+    """按需读取单条所有权实体 {levels, identity, building}; 带缓存。"""
+    cache = _OWNERSHIP_DB_CACHE.get(id(data))
+    if cache is None:
+        cache = _OWNERSHIP_DB_CACHE[id(data)] = {}
+    hit = cache.get(oid)
+    if hit is not None:
+        return hit
+    db, db_end = _ownership_db_bounds(data)
+    if db_end <= db:
+        return None
+    pat = ('"' + str(oid) + '":{').encode()
+    i = data.find(pat, db, db_end)
+    if i < 0:
+        cache[oid] = None
+        return None
+    ob2 = i + len(pat) - 1
+    raw, _end = extract_json_object(data, ob2)
+    if not raw:
+        cache[oid] = None
+        return None
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        cache[oid] = None
+        return None
+    obj = obj if isinstance(obj, dict) else None
+    cache[oid] = obj
+    return obj
+
+
+def _building_ownership(data, bid, player_id=None, building_obj=None):
+    """返回 ({类别: 等级数}, 总等级数); 类别见 _OWNERSHIP_ORDER。
+
+    规则(与游戏一致):
+    - identity.country == 本州所属国 → 国有; 否则 → 外国投资(外国政府);
+    - identity.building == 自身 → 当地劳动力;
+    - identity.building 为公司建筑 → 公司所有; 公司所在州属外国 → 外国公司持有;
+    - 其余 → 私有; 所有者建筑所在州属外国 → 外国投资(外国私人)。
+    """
+    if building_obj is None:
+        building_obj = _building_object(data, bid) or {}
+    owners = building_obj.get("owners") or []
+    total = building_obj.get("levels") or 0
+    dist = {k: 0 for k in _OWNERSHIP_ORDER}
+    if not owners:
+        return dist, total
+    st = building_obj.get("state")
+    owner_ctry = None
+    if st is not None and player_id is None:
+        sobj = _state_object(data, st)
+        owner_ctry = (sobj or {}).get("country")
+    if owner_ctry is None:
+        owner_ctry = player_id
+    for oid in owners:
+        oe = _ownership_entry(data, oid)
+        if not oe:
+            continue
+        lv = oe.get("levels") or 0
+        ident = oe.get("identity") or {}
+        if "country" in ident:
+            c = ident["country"]
+            dist["state" if c == owner_ctry else "foreign"] += lv
+            continue
+        ob = ident.get("building")
+        if ob == bid:
+            dist["laborer"] += lv
+            continue
+        ob_bt, ob_st = _building_head(data, ob)
+        octry = None
+        if ob_st is not None:
+            osb = _state_object(data, ob_st)
+            octry = (osb or {}).get("country")
+        if ob_bt and ob_bt.startswith("building_company_"):
+            if octry is not None and octry != owner_ctry:
+                dist["foreign_company"] += lv
+            else:
+                dist["company"] += lv
+        else:
+            if octry is not None and octry != owner_ctry:
+                dist["foreign"] += lv
+            else:
+                dist["private"] += lv
+    return dist, total
+
+
+def _ownership_sentence(dist, total):
+    """按游戏文本生成一句话; 混合时只列份额前三。无数据返回 None。"""
+    if not total or not any(dist.values()):
+        return None
+    items = [(k, v / total) for k, v in dist.items() if v > 0]
+    items.sort(key=lambda kv: (-kv[1], _OWNERSHIP_ORDER.index(kv[0])))
+    top, share = items[0]
+    holder = _OWNERSHIP_HOLDER[top]
+    if share >= 1.0 - 1e-9:
+        if top == "foreign_company":
+            return f"该建筑物完全由{holder}持有"
+        return f"该建筑物完全由{holder}所有"
+    if share > 0.5:
+        if top == "foreign_company":
+            return f"该建筑物主要由{holder}持有"
+        return f"该建筑物主要由{holder}所有"
+    parts = "、".join(f"{_OWNERSHIP_ZH[k]}约{sh * 100:.0f}%"
+                      for k, sh in items[:3])
+    return f"该建筑物所有权构成：{parts}"
 
 
 def _pops_by_state(data, state_ids):
@@ -2545,7 +2791,7 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                         cid=None, player_tag=None, max_tries=300,
                         preferred_state=None, ruler_visited=False,
                         pops_index=None, buildings_index=None,
-                        forced_family=None, rnd=None):
+                        forced_family=None, rnd=None, building_objs=None):
     """随机选一个州 → 随机选该州一个建筑 → 取建筑内 SoL 最低与最高两个 POP(人口>10)
     分别作为「民生访谈」与「邻里富户」数据块。
     preferred_state: 优先在该州取材 (统治者走访联动); ruler_visited=True 且确实用到
@@ -2644,9 +2890,17 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
     sewerage = "modern_sewerage" in _country_technologies(data, cid)
     bits = _growth_law_bits(laws, health_inv, safety_inv, sewerage)
     btype = (building_map or {}).get(bid)
-    active_pms = _building_production_methods(data, bid)
+    bobj = (building_objs or {}).get(bid)
+    if isinstance(bobj, dict) and isinstance(bobj.get("production_methods"), list):
+        active_pms = [p for p in bobj["production_methods"] if isinstance(p, str)]
+    else:
+        active_pms = _building_production_methods(data, bid)
     building_group = (_load_building_groups().get(btype) if btype else None)
     movement_names = _movement_names_zh(data, player_tag)
+    own_sentence = None
+    if bid is not None and cid is not None:
+        own_dist, own_total = _building_ownership(data, bid, cid, building_obj=bobj)
+        own_sentence = _ownership_sentence(own_dist, own_total)
     common = dict(region_name=region_name, region_key=region_key, ig_slots=ig_slots,
                   building_map=building_map, incorporation=incorporation,
                   harvest_conditions=harvest_conditions, pop_needs=pop_needs,
@@ -2655,7 +2909,7 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                              bits=bits, schools_inv=schools_inv,
                              building_group=building_group, active_pms=active_pms,
                              institutions_active=bool(incorporation and incorporation >= 1)),
-                  movement_names=movement_names)
+                  movement_names=movement_names, workplace_ownership=own_sentence)
     family = _family_from_pop(lowest, **common)
     if ruler_visited and preferred_state is not None and sid == preferred_state:
         family["ruler_visited"] = True
@@ -4337,26 +4591,34 @@ def _pick_state(snap, rnd=None, prefer_capital=True):
     return rnd.choice(nonempty or states)
 
 
-def _pick_building(melted, state_id, rnd=None, buildings_index=None, building_type_map=None):
-    """随机挑一个该州建筑, 返回本地化中文名; 挑不到或名字没本地化则返回 None。"""
+def _pick_building(melted, state_id, rnd=None, buildings_index=None, building_type_map=None,
+                   building_objs=None):
+    """随机挑一个该州建筑, 返回 (本地化中文名, 建筑id); 挑不到返回 (None, None)。"""
     if state_id is None:
-        return None
+        return None, None
     rnd = rnd or random
-    if building_type_map is None:
-        building_type_map = _building_type_map(melted, [state_id])
     if buildings_index is None:
         bids = list(_buildings_in_state(melted, state_id))
     else:
         bids = buildings_index.get(state_id) or []
     loc = _load_loc_all()
-    types = [building_type_map.get(b) for b in bids]
-    types = [t for t in types
-             if t and (loc.get(t) or "") not in ("", t)
-             and not t.startswith("building_company_")
-             and not t.startswith("building_port")]
-    if not types:
-        return None
-    return loc.get(rnd.choice(types))
+    pairs = []
+    for b in bids:
+        if building_objs is not None:
+            obj = building_objs.get(b)
+            t = (obj or {}).get("building") if isinstance(obj, dict) else None
+        else:
+            if building_type_map is None:
+                building_type_map = _building_type_map(melted, [state_id])
+            t = building_type_map.get(b)
+        if t and (loc.get(t) or "") not in ("", t) \
+                and not t.startswith("building_company_") \
+                and not t.startswith("building_port"):
+            pairs.append((b, t))
+    if not pairs:
+        return None, None
+    bid, t = rnd.choice(pairs)
+    return loc.get(t), bid
 
 
 def _religion_zh(key):
@@ -4486,7 +4748,8 @@ def _pick_visit_pop(snap, capital_id, pops_index=None):
 
 
 def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
-                             building_type_map=None, visit_pop_obj=None):
+                             building_type_map=None, visit_pop_obj=None,
+                             building_objs=None):
     """按概率拼装一条「统治者活动」事实 (程序侧完成, 直接作为数据传给模型)。
 
     活动池: 视察某地建筑 / 召集内阁会议 / 走访某州某文化某宗教的 POP 家庭 /
@@ -4514,12 +4777,21 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
         tried.add(kind)
         if kind == "inspect_building":
             st = _pick_state(snap, rnd=rnd) or {}
-            bld = _pick_building(melted, st.get("id"), rnd=rnd,
-                                 buildings_index=buildings_index,
-                                 building_type_map=building_type_map)
+            bld, bid = _pick_building(melted, st.get("id"), rnd=rnd,
+                                      buildings_index=buildings_index,
+                                      building_type_map=building_type_map,
+                                      building_objs=building_objs)
             if bld:
                 where = st.get("name") or capital or "某地"
-                return f"{ruler}视察了位于{where}的{bld}", kind, None
+                own = ""
+                if bid is not None:
+                    bobj = (building_objs or {}).get(bid)
+                    own_dist, own_total = _building_ownership(
+                        melted, bid, country_id, building_obj=bobj)
+                    own_sentence = _ownership_sentence(own_dist, own_total)
+                    if own_sentence:
+                        own = f"（{own_sentence}）"
+                return f"{ruler}视察了位于{where}的{bld}{own}", kind, None
         elif kind == "cabinet_meeting":
             leaders = [g.get("leader_name") for g in igs
                        if g.get("in_government") and g.get("leader_name")]
@@ -4615,7 +4887,10 @@ def build_journal_data(snap):
     data["laws_repealed"] = snap.get("laws_repealed") or []
     data["laws_in_progress"] = snap.get("laws_in_progress") or []
     data["free_speech_law"] = snap.get("free_speech_law")
+    data["dop_law"] = snap.get("dop_law")
+    data["govt_law"] = snap.get("govt_law")
     data["techs"] = snap.get("techs") or []
+    data["tech_keys"] = snap.get("tech_keys") or []
     data["powers"] = snap.get("powers") or []
     data["treaties"] = snap.get("treaties") or []
     data["subjects"] = snap.get("subjects") or []
@@ -4671,6 +4946,10 @@ def extract_full_snapshot(melted, cid=None):
     active_laws = query_laws(melted, cid)
     snap["free_speech_law"] = next(
         (l for l in active_laws if l in FREE_SPEECH_LAWS), None)
+    snap["dop_law"] = next(
+        (l for l in active_laws if l in DOP_LAWS), None)
+    snap["govt_law"] = next(
+        (l for l in active_laws if l in GOVT_LAWS), None)
     # 立法进行中: 法律 + 当前阶段(政体专属本地化) + 提交日期
     laws_ip = query_laws_in_progress(melted, cid)
     phase_names = _enactment_phase_names_zh(_enactment_phase_suffix(active_laws))
@@ -4725,10 +5004,9 @@ def extract_full_snapshot(melted, cid=None):
     snap["last_year_wars"] = _last_year_wars(snap.get("wars") or [], snap.get("year"))
     # 单文件扫描一次建索引: 角色 / 建筑 / POP, 供首领、统治者与家庭采访复用
     chars = _player_characters(melted, cid)
-    buildings_index = _buildings_by_state(melted, state_ids)
+    buildings_index, building_map, building_objs = _buildings_index(melted, state_ids)
     pops_index = _pops_by_state(melted, state_ids)
     ig_slots = _country_ig_slots(melted, cid)
-    building_map = _building_type_map(melted, state_ids)
     price_map = _market_price_map(melted, country)
     snap["interest_groups"] = _extract_interest_groups(melted, cid, chars=chars)
     snap["powers"] = _extract_powers(melted, names, index=index, gp_ids=gp_ids,
@@ -4741,7 +5019,8 @@ def extract_full_snapshot(melted, cid=None):
     visit_pop_obj = _pick_visit_pop(snap, capital_id, pops_index=pops_index)
     ruler_act, act_kind, visit_state = _assemble_ruler_activity(
         melted, snap, cid, buildings_index=buildings_index,
-        building_type_map=building_map, visit_pop_obj=visit_pop_obj)
+        building_type_map=building_map, visit_pop_obj=visit_pop_obj,
+        building_objs=building_objs)
     snap["ruler_activity"] = ruler_act
     # 家庭采访样本: 走访活动必须与统治者访问的家庭完全一致;
     # 其它活动按年份确定性随机，避免同年重生成结果漂移。
@@ -4753,14 +5032,17 @@ def extract_full_snapshot(melted, cid=None):
                                                      if forced_family is not None else None),
                                     ruler_visited=forced_family is not None,
                                     pops_index=pops_index, buildings_index=buildings_index,
-                                    forced_family=forced_family, rnd=interview_rnd)
+                                    forced_family=forced_family, rnd=interview_rnd,
+                                    building_objs=building_objs)
     snap["family_interview"] = interview.get("family_interview")
     snap["top_sol_peer"] = interview.get("top_sol_peer")
     snap["unemployed_interview"] = interview.get("unemployed_interview")
     # 已研发科技 (单份存档无完成日期, 无法识别去年新研发; 上层用逐年 raw JSON 对比
-    # 得出本年新增, 无新增时随机抽取; 本地化后供广告板块使用)
+    # 得出本年新增, 无新增时随机抽取; 本地化后供广告板块使用; 原始 key 供新文风系统计分)
     loc = _load_loc_all()
-    snap["techs"] = [loc.get(t, t) for t in _country_technologies(melted, cid)]
+    tech_keys = _country_technologies(melted, cid)
+    snap["tech_keys"] = tech_keys
+    snap["techs"] = [loc.get(t, t) for t in tech_keys]
     # 激进派/效忠派占全国人口比例
     tot = snap.get("total_population") or 0
     ps = (country.get("pop_statistics") or {})
@@ -5022,23 +5304,25 @@ def _goods_zh(key):
         return key
 
 def _concept_zh():
-    """加载本地化 concept_* 中文名。"""
+    """加载本地化 concept_* 中文名 (游戏+已启用 mod)。"""
     global _CONCEPT_ZH
     if _CONCEPT_ZH is not None:
         return _CONCEPT_ZH
     zh = {}
-    loc_dir = GAME_LOCALIZATION
-    try:
-        for fn in os.listdir(loc_dir):
-            if not fn.endswith(".yml"):
-                continue
-            with open(os.path.join(loc_dir, fn), encoding="utf-8-sig", errors="replace") as fp:
-                for line in fp:
-                    m = re.match(r"\s*(concept_[a-z_]+):\s*\"([^\"]+)\"\s*$", line)
-                    if m and "$" not in m.group(2) and "[" not in m.group(2):
-                        zh[m.group(1)] = m.group(2).strip()
-    except Exception:
-        pass
+    for loc_dir in _loc_dirs():
+        try:
+            for fn in os.listdir(loc_dir):
+                if not fn.endswith(".yml"):
+                    continue
+                with open(os.path.join(loc_dir, fn), encoding="utf-8-sig",
+                          errors="replace") as fp:
+                    for line in fp:
+                        m = re.match(
+                            r"\s*(concept_[a-z0-9_-]+):\s*\"([^\"]+)\"\s*$", line)
+                        if m and "$" not in m.group(2) and "[" not in m.group(2):
+                            zh[m.group(1)] = m.group(2).strip()
+        except Exception:
+            pass
     _CONCEPT_ZH = zh
     return zh
 

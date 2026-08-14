@@ -46,6 +46,9 @@ try:
 except Exception:
     pass
 
+from style import (DEFAULT_STYLE, FREE_SPEECH_FLAVOR, NEWSPAPER_STYLES,
+                   resolve_newspaper_style)
+
 # ---------------------------------------------------------------------------
 # 配置
 # ---------------------------------------------------------------------------
@@ -69,6 +72,9 @@ DEFAULT_CONFIG = {
     # 报纸风格: 1=大公报(20世纪初) 2=人民日报(20世纪) 3=新华网(新华社风格) 4=泰晤士报(中文)
     # 各风格的完整提示词与栏目名见 NEWSPAPER_STYLES
     "newspaper_style": 1,
+    # 文风提示词系统: legacy=旧系统(1~4固定风格) | dynamic=新系统
+    # (基于已解锁社会科技+政体/投票权, 自动解析 1~5 档, 见 style.py)
+    "style_system": "legacy",
     # 自动生成开关: watch/continue 自动管线按开关跳过对应产物;
     # 手动命令 (newspaper <年> / magazine <年>) 不受限, 显式意图优先
     "newspaper_enabled": False,
@@ -103,6 +109,10 @@ def load_config():
             f"回退到默认风格 {DEFAULT_STYLE}（{NEWSPAPER_STYLES[DEFAULT_STYLE]['name']}）。")
         style = DEFAULT_STYLE
     cfg["newspaper_style"] = style
+    # 文风系统: 只接受 legacy/dynamic, 非法时回退 legacy
+    if cfg.get("style_system") not in ("legacy", "dynamic"):
+        log(f"警告: style_system={cfg.get('style_system')!r} 无效, 回退到 legacy。")
+        cfg["style_system"] = "legacy"
     return cfg
 
 # ---------------------------------------------------------------------------
@@ -731,17 +741,6 @@ FREE_SPEECH_LAWS = ("law_outlawed_dissent", "law_censorship",
                     "law_right_of_assembly", "law_free_speech",
                     "law_protected_speech")
 
-# 各言论自由法律对应的新闻自由风味文案（提示词用）。集会权在本法律组中
-# 处于「无审查但无明文保障」的次宽松档位，故文案侧重新闻自由而非集会本身。
-FREE_SPEECH_FLAVOR = {
-    "law_outlawed_dissent": "批评政府被视为叛国而属非法，报纸只可刊发拥护现行体制的内容。",
-    "law_censorship": "新闻出版受主动审查，报纸稿件须经审查机关许可方可刊发，报道须自行把关。",
-    "law_right_of_assembly": "报纸无须事前送审，可较为自由地报道与评论，惟言论自由尚无明文法律保护，报道宜有分寸。",
-    "law_protected_speech": "言论自由已载入法律并受明文保护，报纸可依法自由报道与批评，唯须不逾诽谤、泄密等法律界限。",
-    "law_free_speech": "报纸享有完全的言论与出版自由，可自由报道、评论国政，无须事前送审。",
-}
-
-
 def _press_freedom_line(data):
     """返回当前言论自由法律的风味提示行；法律缺失时返回空串。"""
     fs_law = data.get("free_speech_law")
@@ -909,206 +908,6 @@ FACT_GUIDE = (
     "结合其力量消长说明朝局与施政倾向，但不得虚构具体数字。"
 )
 
-
-DEFAULT_STYLE = 1
-
-# 四种报纸风格。config.json 的 newspaper_style 取 1~4 对应下表;
-# 各风格只影响「报名规则 / 文风 / 栏目名」, 传入模型的数据内容完全相同。
-NEWSPAPER_STYLES = {
-    1: {
-        "name": "大公报（20世纪初）",
-        "masthead": (
-            "【报名】报名必须由【首都/都城】名直接派生，如《罗马公报》《巴黎回声报》"
-            "《江户政闻录》，可再结合【政体】微调（如《巴黎共和公报》），"
-            "并随其变迁而调整，以体现时代推移。"
-            "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；"
-            "若为州名如「法兰西岛」，请改用该国更广为人知的都城名来拟报名）。"
-            "不得使用「世界纪闻」这类与任何国家无关的通用报名。"
-            "示例：都城罗马可作《罗马公报》，都城巴黎可作《巴黎回声报》，"
-            "都城京都可作《京都新闻》；若首都或政体数据缺失，则退而用国名拟定，"
-            "如《法兰西新闻》《日本新闻》。"
-        ),
-        "voice": (
-            "你是一位生活于19世纪至20世纪上半叶的报纸总编辑，文风「半文半白」："
-            "以白话为主体、晓畅明白，又保留文言的凝练庄重（梁启超、鲁迅及民国初年"
-            "《申报》《大公报》笔法）。使用简体中文与 Markdown。"
-            "铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
-            "数据缺失时相应内容简写或略去，不得编造；行文中以「本报」指代本报刊名。"
-        ),
-        "econ_guide": (
-            "经济板块首句必须以「据户部消息，我国国民生产总值为……」（填入给定GDP数值）"
-            "引出经济总量，如「据户部消息，我国国民生产总值为四千六百余万英镑」；"
-            "人口、生活水平、识字率等其余指标同样以旧式公文笔法展开。"
-        ),
-        "ads_guide": (
-            "广告栏须为20世纪初报刊告白体：商品告白、工艺铺面招贴、学堂晓谕、书画社启事皆可，"
-            "措辞半文半白、文雅得体，可带「本店」「特此告白」「惠顾」等语汇，篇幅短小有趣。"
-        ),
-        "number_format": "chinese",
-        "number_guide": (
-            "大数一律用汉字数字（如「四千六百零七万七千二百六十七」），"
-            "百分比等现代度量可用阿拉伯数字（如 69.45%）。"
-        ),
-        "section_titles": {
-            "headline": "头版",
-            "war": "战事专电",
-            "diplo": "外交风云",
-            "econ": "经济要闻",
-            "politics": "政界动态",
-            "society": "民族宗教与社会",
-            "family": "民生访谈",
-            "peer": "邻里富户",
-            "unemployed": "失业民生",
-            "comment": "本报评论",
-            "ads": "广告与启示",
-        },
-    },
-    2: {
-        "name": "人民日报（20世纪）",
-        "masthead": (
-            "【报名】报名必须由【首都/都城】名直接派生，本风格可采用《XX日报》《XX早报》"
-            "《XX晨报》等体例，如都城巴黎可作《巴黎日报》、都城京都可作《京都早报》；"
-            "可再结合【政体】微调（如《巴黎共和日报》），并随其变迁而调整，以体现时代推移。"
-            "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；"
-            "若为州名如「法兰西岛」，请改用该国更广为人知的都城名来拟报名）。"
-            "不得使用「世界纪闻」这类与任何国家无关的通用报名。"
-            "若首都或政体数据缺失，则退而用国名拟定，如《法兰西日报》《日本日报》。"
-        ),
-        "voice": (
-            "你是一位生活于20世纪的权威大报总编辑，供职于以人民立场为根本、"
-            "服务社会主义建设与人民生活的报纸。你的文风端正庄重、朴实有力："
-            "善用「人民」「群众」「建设」「发展」「团结」等语汇，消息客观、社论有高度，"
-            "措辞审慎而不空喊口号；有喜报喜、有忧报忧，以建设与发展为主线，不轻佻浮夸。"
-            "使用简体中文与 Markdown。"
-            "铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
-            "数据缺失时相应内容简写或略去，不得编造；行文中以「本报」指代本报刊名。"
-        ),
-        "econ_guide": (
-            "经济板块首句必须以「国家统计局最新数据显示，我国GDP为……」（填入给定GDP数值）"
-            "引出经济总量，如「国家统计局最新数据显示，我国GDP为四千六百零七万英镑」；"
-            "人口、生活水平、识字率等其余指标以官方书面语展开。"
-        ),
-        "ads_guide": (
-            "广告栏须为20世纪党报广告体：国营厂矿产品广告、展览会通知、招生启事、征订启事等，"
-            "措辞正式简明，突出为人民生活服务与建设成果（如「为人民生活服务」「欢迎选购」），"
-            "不得使用旧式文言告白腔。"
-        ),
-        "number_format": "arabic",
-        "number_guide": (
-            "一律使用阿拉伯数字并加千分位分隔符（如 46,077,267 英镑、21,862,816 人、69.45%），"
-            "不得使用汉字数字。"
-        ),
-        "section_titles": {
-            "headline": "今日要闻",
-            "war": "军事报道",
-            "diplo": "国际要闻",
-            "econ": "经济建设",
-            "politics": "时政要闻",
-            "society": "民族与宗教",
-            "family": "人民生活",
-            "peer": "先富观察",
-            "unemployed": "就业民生",
-            "comment": "社论",
-            "ads": "广告启事",
-        },
-    },
-    3: {
-        "name": "新华网（新华社风格）",
-        "masthead": (
-            "【报名】报名必须由【首都/都城】名直接派生，本风格可采用《XX新华报》"
-            "《XX新华电讯》等体例，如都城巴黎可作《巴黎新华报》、都城京都可作"
-            "《京都新华电讯》；可再结合【政体】微调（如《巴黎共和新华报》），"
-            "并随其变迁而调整，以体现时代推移。"
-            "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；"
-            "若为州名如「法兰西岛」，请改用该国更广为人知的都城名来拟报名）。"
-            "不得使用「世界纪闻」这类与任何国家无关的通用报名。"
-            "若首都或政体数据缺失，则退而用国名拟定，如《法兰西新华报》《日本新华电讯》。"
-        ),
-        "voice": (
-            "你是一位供职于国家通讯社的资深记者与编辑，写作新华社通稿体："
-            "消息开门见山，首段即时间、地点、事件三要素；事实准确、行文凝练、"
-            "措辞规范，标题朴实有力，不堆砌形容词，不用网络用语；报道以事实说话，"
-            "注重权威与可信，不渲染、不夸张。使用简体中文与 Markdown。"
-            "铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
-            "数据缺失时相应内容简写或略去，不得编造；行文中以「本社」指代本通讯社。"
-        ),
-        "econ_guide": (
-            "经济板块首句必须以「国家统计局最新数据显示，我国GDP为……」（填入给定GDP数值）"
-            "引出经济总量，其余数据以新华社通稿体如实报道。"
-        ),
-        "ads_guide": (
-            "广告栏须为现代新闻媒体分类广告/公告体：产品服务信息、展会通知、公益公告等，"
-            "信息要素齐全（名称、地点、方式），标题简明，措辞平实，不得使用旧式文言告白腔。"
-        ),
-        "number_format": "arabic",
-        "number_guide": (
-            "一律使用阿拉伯数字并加千分位分隔符（如 46,077,267 英镑、21,862,816 人、69.45%），"
-            "不得使用汉字数字。"
-        ),
-        "section_titles": {
-            "headline": "要闻",
-            "war": "军事新闻",
-            "diplo": "国际新闻",
-            "econ": "经济新闻",
-            "politics": "时政新闻",
-            "society": "社会新闻",
-            "family": "民生一线",
-            "peer": "富户见闻",
-            "unemployed": "就业观察",
-            "comment": "新华时评",
-            "ads": "分类广告",
-        },
-    },
-    4: {
-        "name": "泰晤士报（中文）",
-        "masthead": (
-            "【报名】报名必须由【首都/都城】名直接派生，本风格可采用《XX泰晤士报》"
-            "《XX泰晤士纪事》等体例，如都城罗马可作《罗马泰晤士报》、都城巴黎可作"
-            "《巴黎泰晤士报》；可再结合【政体】微调（如《巴黎共和泰晤士报》），"
-            "并随其变迁而调整，以体现时代推移。"
-            "【首都】数据取自游戏中的都城名（优先城市名，如「巴黎」「京都」；"
-            "若为州名如「法兰西岛」，请改用该国更广为人知的都城名来拟报名）。"
-            "不得使用「世界纪闻」这类与任何国家无关的通用报名。"
-            "若首都或政体数据缺失，则退而用国名拟定，如《法兰西泰晤士报》《日本泰晤士报》。"
-        ),
-        "voice": (
-            "你是一位供职于英伦百年大报的中文版总编辑（风格仿《泰晤士报》）。"
-            "你的文风庄重冷静、含蓄克制，以绅士笔调叙述世事：句子结构完整、措辞考究，"
-            "善用「据悉」「据可靠消息」「观乎」「有识之士」等书面语；报道重事实、重细节，"
-            "评论持重、不偏不倚，偶带英式含蓄的讽喻，标题典雅而不夸张。"
-            "使用简体中文与 Markdown。"
-            "铁律：只能基于给定事实合理演绎，不编造具体数字或国家名；"
-            "数据缺失时相应内容简写或略去，不得编造；行文中以「本报」指代本报刊名。"
-        ),
-        "econ_guide": (
-            "经济板块首句必须以「据户部消息，我国国民生产总值为……」（填入给定GDP数值）"
-            "引出经济总量，如「据户部消息，我国国民生产总值为四千六百余万英镑」；"
-            "再以庄重含蓄的笔调展开人口、生活水平、识字率等其余指标。"
-        ),
-        "ads_guide": (
-            "广告栏须为英式大报典雅广告体：绅士用品、出版社新书、私人学校、俱乐部启事等，"
-            "措辞庄重含蓄、讲究体面，可带「谨此奉告」「敬请惠顾」等英式译风用语，篇幅短小。"
-        ),
-        "number_format": "chinese",
-        "number_guide": (
-            "大数一律用汉字数字（如「四千六百零七万七千二百六十七」），"
-            "百分比等现代度量可用阿拉伯数字（如 69.45%）。"
-        ),
-        "section_titles": {
-            "headline": "头版要闻",
-            "war": "战地报道",
-            "diplo": "国际时讯",
-            "econ": "财经报道",
-            "politics": "政坛纪事",
-            "society": "社会万象",
-            "family": "民间专访",
-            "peer": "富室专访",
-            "unemployed": "失业调查",
-            "comment": "社评",
-            "ads": "启事与广告",
-        },
-    },
-}
 
 _TERRITORY_CAP = 8
 
@@ -1954,6 +1753,9 @@ def render_family(data, style=None):
         L.append(f"- 采访对象：{loc}的一户失业的{culture}人{rel_zh}{pop_zh}家庭")
     else:
         L.append(f"- 采访对象：{loc}的一户{culture}人{rel_zh}{pop_zh}家庭")
+    own = fi.get("workplace_ownership")
+    if own:
+        L.append(f"- {own}")
     if fi.get("ruler_visited"):
         who = _ruler_name_title(data)
         if who:
@@ -2083,6 +1885,9 @@ def render_peer(data, style=None):
             L.append(f"- 追踪对象：在{loc}的{workplace}工作的、生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
         else:
             L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
+    own = peer.get("workplace_ownership")
+    if own and workplace:
+        L.append(f"- {own}")
     # 与民生访谈的关联: 同建筑或同州对照
     fi = data.get("family_interview")
     if fi:
@@ -2202,6 +2007,9 @@ def render_unemployed(data, style=None):
     rate_s = f"约{rate:.1f}%" if isinstance(rate, (int, float)) else "（数据缺）"
     L.append(f"- 追踪对象：{loc}的一群失业的{culture}人{rel_zh}{pop_zh}")
     L.append(f"- 该州失业率（失业人口/该州总人口）：{rate_s}")
+    own = uni.get("workplace_ownership")
+    if own:
+        L.append(f"- {own}")
     homeland = uni.get("is_homeland")
     if homeland is not None:
         if homeland:
@@ -2410,9 +2218,21 @@ def render_ads(data, history=None):
             "新政晓谕、学堂启事等非商品形式；至少一条广告须直接体现所选科技。")
 
 
+def resolve_style(cfg, data=None):
+    """按 config 的文风系统解析风格 dict。
+    legacy: 固定 1~4 风格; dynamic: 依据 data 的科技/政体/投票权动态解析。"""
+    if cfg.get("style_system") == "dynamic" and data:
+        return resolve_newspaper_style(data, cfg)
+    style = cfg.get("newspaper_style", DEFAULT_STYLE)
+    return NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
+
+
 def _section_title(style, key, fallback):
-    """按报纸风格取板块标题；缺失时返回 fallback。"""
-    st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
+    """按报纸风格取板块标题；缺失时返回 fallback。style 可为风格 dict 或 legacy id。"""
+    if isinstance(style, dict):
+        st = style
+    else:
+        st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
     return st.get("section_titles", {}).get(key, fallback)
 
 
@@ -2443,7 +2263,10 @@ def render_section_facts(key, data, history=None, style=None):
     return render_overview(data, history)
 
 def build_masthead_messages(data, style=DEFAULT_STYLE):
-    st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
+    if isinstance(style, dict):
+        st = style
+    else:
+        st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
     country = data.get("player", "未知")
     year = data.get("year", "?")
@@ -2469,8 +2292,12 @@ def build_masthead_messages(data, style=DEFAULT_STYLE):
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
 def build_section_messages(key, data, cfg, history, masthead, style=None):
-    style = style or cfg.get("newspaper_style", DEFAULT_STYLE)
-    st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
+    if style is None:
+        style = resolve_style(cfg, data)
+    if isinstance(style, dict):
+        st = style
+    else:
+        st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
     spec = next(s for s in SECTION_DEFS if s[0] == key)
     title = st["section_titles"].get(key, spec[1])
     country = data.get("player", "未知")
@@ -2550,10 +2377,9 @@ def _insert_thousand_separators(text):
 
 def generate_newspaper(data, cfg, history=None):
     """分板块生成: 先定抬头, 再并发调用各板块, 最后按序组合。"""
-    style = cfg.get("newspaper_style", DEFAULT_STYLE)
-    st = NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])
+    st = resolve_style(cfg, data)
     use_sep = st.get("number_format") == "arabic"
-    masthead = call_deepseek(build_masthead_messages(data, style), cfg).strip()
+    masthead = call_deepseek(build_masthead_messages(data, st), cfg).strip()
     m = re.search(r"《([^《》]+)》", masthead)
     paper_name = m.group(1) if m else None
     section_cfg = dict(cfg)
@@ -2561,7 +2387,7 @@ def generate_newspaper(data, cfg, history=None):
 
     def _gen_section(key, title):
         try:
-            msg = build_section_messages(key, data, cfg, history, masthead)
+            msg = build_section_messages(key, data, cfg, history, masthead, style=st)
             text = call_deepseek(msg, section_cfg).strip()
             return _normalize_section_text(text, title, use_separators=use_sep,
                                            paper_name=paper_name)
@@ -2815,9 +2641,12 @@ def cmd_check(cfg):
             print("          2. 年份尚未滚动(需等到每年 1 月 1 日);")
             print("          3. 游戏版本与 supported_version 不匹配。")
             print("          debug_log 在正常游玩下即可写入(已验证), 无需 -debug_mode。")
-    style = cfg.get("newspaper_style", DEFAULT_STYLE)
     print(f"报纸输出目录: {cfg['journal_dir']}  (按国名分文件夹, 如 output/<国名>/报纸_<年份>.md)")
-    print(f"报纸风格: {style} - {NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])['name']}")
+    if cfg.get("style_system") == "dynamic":
+        print(f"报纸风格: dynamic (依据科技/政体/投票权动态解析 1~5 档, 见 style.py)")
+    else:
+        style = cfg.get("newspaper_style", DEFAULT_STYLE)
+        print(f"报纸风格: legacy - {NEWSPAPER_STYLES.get(style, NEWSPAPER_STYLES[DEFAULT_STYLE])['name']}")
     print(f"API Key: {('已配置 ' + cfg['deepseek_api_key'][:6] + '...') if cfg.get('deepseek_api_key', '').startswith('sk-') else '未配置'}")
     return 0
 

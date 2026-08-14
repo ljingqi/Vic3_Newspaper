@@ -8,6 +8,7 @@
   "max_tokens": 8000,
   "temperature": 1.0,
   "newspaper_style": 1,
+  "style_system": "legacy",
   "newspaper_enabled": true,
   "magazine_enabled": true
 }
