@@ -462,8 +462,7 @@ def _facts_front(m, data):
                 shown_goal_wars.add(b.get("war"))
                 lines.append("战争目的：")
                 for g in wg[:5]:
-                    who = g.get("holder_zh") or "未知方"
-                    lines.append(f"- {who}（{g.get('demand_type_zh') or '目的'}）：{g.get('nl')}")
+                    lines.append(f"- {g.get('nl') or '未知'}")
     if not battles and wars:
         lines.append("存档未保留我方战役细节，依战争记录报道：")
         for w in wars[:2]:
@@ -483,8 +482,7 @@ def _facts_front(m, data):
                 shown_goal_wars.add(wid)
                 lines.append("战争目的：")
                 for g in wg[:5]:
-                    who = g.get("holder_zh") or "未知方"
-                    lines.append(f"- {who}（{g.get('demand_type_zh') or '目的'}）：{g.get('nl')}")
+                    lines.append(f"- {g.get('nl') or '未知'}")
     return "\n".join(lines)
 
 
@@ -628,9 +626,9 @@ def _facts_aftermath(m):
             cas = w.get("casualties_total")
             wnd = w.get("wounded_total")
             if isinstance(cas, (int, float)):
-                bits.append(f"阵亡及失踪约{_fmt_int(cas * 1000000)}人")
+                bits.append(f"阵亡及失踪约{_fmt_int(cas * 100000)}人")
             if isinstance(wnd, (int, float)):
-                bits.append(f"负伤约{_fmt_int(wnd * 1000000)}人")
+                bits.append(f"负伤约{_fmt_int(wnd * 100000)}人")
             if bits:
                 lines.append(f"- 参战方{'、'.join(str(x) for x in parts[:6])}的战争累计"
                              + "，".join(bits) + "。")

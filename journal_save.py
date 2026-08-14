@@ -3354,7 +3354,8 @@ def _state_migration_buckets(sobj):
 
 
 def _migration_records_zh(data, sobj):
-    """迁移桶 → 带中文州名/文化/宗教的完整记录。"""
+    """迁移桶 → 带中文州名/文化/宗教的完整记录。
+    换算后不足 1 人的微量记录直接丢弃, 避免「约0人」进提示词。"""
     out = []
     for r in _state_migration_buckets(sobj):
         rec = dict(r)
@@ -3366,13 +3367,17 @@ def _migration_records_zh(data, sobj):
         num = r.get("num")
         rec["num_people"] = (int(round(num * 10000))
                              if isinstance(num, (int, float)) else None)
+        if (rec["num_people"] or 0) < 1:
+            continue
         rec.pop("pops", None)
         out.append(rec)
     return out
 
 
 def _character_index(data, ids):
-    """批量读取角色: 单次扫描 character_manager.database, 返回 {id: 信息}。"""
+    """批量读取角色: 单次扫描 character_manager.database, 返回 {id: 信息}。
+    只扫 database 子对象, 不扫同 manager 里的 deaths / previous_deaths;
+    无姓名字段的对象(死亡记录/占位符)跳过, 已读到的角色不被后续重复条目覆盖。"""
     ids = {int(x) for x in ids if x is not None}
     ids.discard(4294967295)
     if not ids:
@@ -3386,33 +3391,20 @@ def _character_index(data, ids):
     if db < 0 or db > end:
         return {}
     dob = data.find(b'{', db)
+    db_end = _object_end(data, dob)
     pat = re.compile(rb'"(\d+)":\{')
     loc = _load_loc_all()
     out = {}
     j = dob
 
-    def _skip_object(s):
-        depth = 0
-        k = s
-        while k < len(data):
-            c = data[k:k + 1]
-            if c == b'{':
-                depth += 1
-            elif c == b'}':
-                depth -= 1
-                if depth == 0:
-                    return k + 1
-            k += 1
-        return len(data)
-
     while True:
-        m = pat.search(data, j, end - 1)
+        m = pat.search(data, j, db_end - 1)
         if not m:
             break
         cid = int(m.group(1))
         ob2 = m.start() + len(m.group(0)) - 1
         if cid not in ids:
-            j = _skip_object(ob2)
+            j = _object_end(data, ob2)
             continue
         raw, nxt = extract_json_object(data, ob2)
         if not raw:
@@ -3422,21 +3414,31 @@ def _character_index(data, ids):
         except Exception:
             j = nxt
             continue
-        if isinstance(obj, dict):
-            nm = _localize_character_name(str(obj.get("first_name") or ""),
-                                          str(obj.get("last_name") or ""), loc)
-            hr = obj.get("home_region")
-            ideo = obj.get("ideology")
-            out[cid] = {
-                "name": nm or None,
-                "culture": (culture_id_to_name(obj.get("culture"))
-                            if obj.get("culture") is not None else None),
-                "home_region": (_clean_loc_name(loc.get(hr, hr), loc) if hr else None),
-                "ideology": (_clean_loc_name(loc.get(ideo, ideo), loc) if ideo else None),
-                "roles": obj.get("character_roles") or [],
-            }
-            if len(out) == len(ids):
-                break
+        if not isinstance(obj, dict):
+            j = nxt
+            continue
+        # 死亡记录/占位对象没有姓名字段, 跳过
+        if not (obj.get("first_name") or obj.get("last_name")
+                or obj.get("character_roles")):
+            j = nxt
+            continue
+        if cid in out:
+            j = nxt
+            continue
+        nm = _localize_character_name(str(obj.get("first_name") or ""),
+                                      str(obj.get("last_name") or ""), loc)
+        hr = obj.get("home_region")
+        ideo = obj.get("ideology")
+        out[cid] = {
+            "name": nm or None,
+            "culture": (culture_id_to_name(obj.get("culture"))
+                        if obj.get("culture") is not None else None),
+            "home_region": (_clean_loc_name(loc.get(hr, hr), loc) if hr else None),
+            "ideology": (_clean_loc_name(loc.get(ideo, ideo), loc) if ideo else None),
+            "roles": obj.get("character_roles") or [],
+        }
+        if len(out) == len(ids):
+            break
         j = nxt
     return out
 
@@ -3609,7 +3611,7 @@ def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
     返回 [{war, diplomatic_play, holder, holder_zh, target, target_zh, type,
            type_zh, state, state_zh, region, region_zh, demand_type,
            demand_type_zh, status, nl, article_zh}]。
-    nl 为自然语言 (不含地区 ID 括号)。"""
+    nl 为完整自然语言句 (如「巴西要求大不列颠转让属国大南」)。"""
     if zh is None or gp_ids is None:
         zh, gp_ids = _country_zh_map(data)
     if dp_index is None:
@@ -3641,6 +3643,7 @@ def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
             continue
         target = v.get("target") or {}
         tcid = target.get("country")
+        other_id = target.get("other")
         state_id = target.get("state")
         region = target.get("region")
         dp = v.get("diplomatic_play")
@@ -3648,6 +3651,7 @@ def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
         state_zh = _state_zh(data, state_id) if state_id is not None else None
         region_zh = loc.get(region) if region else None
         target_zh = zh.get(tcid) if tcid is not None else None
+        other_zh = zh.get(other_id) if other_id is not None else None
         holder_zh = zh.get(v.get("holder")) if v.get("holder") is not None else None
         type_zh = loc.get(f"war_goal_{typ}_type_name") or str(typ)
         demand = v.get("demand_type") or ""
@@ -3660,28 +3664,37 @@ def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
             article_zh = loc.get(art) or art
         st = state_zh or region_zh
         if typ == "conquer_state":
-            nl = f"征服{target_zh}的{st}" if st else f"征服{target_zh}"
+            demand_nl = (f"征服{target_zh}的{st}"
+                         if st and target_zh else (f"征服{st}" if st else "征服该地区"))
         elif typ == "annex_country":
-            nl = f"吞并{target_zh}"
+            demand_nl = f"吞并{target_zh or '该国'}"
         elif typ == "humiliation":
-            nl = f"羞辱{target_zh}"
+            demand_nl = f"羞辱{target_zh or '该国'}"
         elif typ == "return_state":
-            nl = f"归还{target_zh}的{st}" if st else "归还地区"
+            demand_nl = (f"归还{target_zh}的{st}"
+                         if st and target_zh else (f"归还{st}" if st else "归还地区"))
         elif typ == "transfer_subject":
-            nl = f"转让属国{target_zh}"
+            demand_nl = (f"{other_zh}转让属国{target_zh}"
+                         if other_zh and target_zh else f"转让属国{target_zh or '该国'}")
         elif typ == "liberate_subject":
-            nl = f"解放附属国{target_zh}"
+            demand_nl = f"解放附属国{target_zh or '该国'}"
         elif typ == "liberate_country":
-            nl = f"解放{target_zh}"
+            demand_nl = f"解放{target_zh or '该国'}"
+        elif typ == "make_protectorate":
+            demand_nl = f"将{target_zh or '该国'}建立为受保护国"
         elif typ == "colonization_rights":
-            nl = f"索取{target_zh}的殖民权"
+            demand_nl = f"索取{target_zh or '该国'}的殖民权"
         elif typ == "enforce_treaty_article":
-            nl = f"强制{target_zh}执行{article_zh or '条约'}条款"
+            demand_nl = f"在{target_zh or '该国'}强制执行{article_zh or '条约'}"
+        elif typ == "independence":
+            demand_nl = f"自{other_zh}独立" if other_zh else "独立"
         else:
-            nl = f"{type_zh}（目标{target_zh}）"
+            demand_nl = f"{type_zh}{target_zh}" if target_zh else type_zh
+        nl = f"{holder_zh}要求{demand_nl}" if holder_zh else demand_nl
         out.append({
             "war": war_id, "diplomatic_play": dp, "holder": v.get("holder"),
             "holder_zh": holder_zh, "target": tcid, "target_zh": target_zh,
+            "other": other_id, "other_zh": other_zh,
             "state": state_id, "state_zh": state_zh, "region": region,
             "region_zh": region_zh, "type": typ, "type_zh": type_zh,
             "demand_type": demand, "demand_type_zh": demand_zh,
@@ -4113,10 +4126,37 @@ def build_magazine_data(melted, snap, folder, year):
     # 战役 (仅玩家参战, ≤12 场; 玩家未参战的列强战役不进杂志)
     data["battles"] = parse_battles(melted, player_id=snap.get("country_id"),
                                     wars=snap.get("wars"), zh=zh, gp_ids=gp_ids0)
+    # 报告年度: 存档在年初(1月)时报道上一历年, 否则报道本年度至今。
+    # 战役州只取报告年度内的战役, 避免把前几年的战场/遗留荒废度误报为当前战乱。
+    save_date = str(snap.get("date") or "")
+    try:
+        save_month = int(save_date.split(".")[1]) if "." in save_date else 1
+    except (ValueError, IndexError):
+        save_month = 1
+    report_year = (year - 1) if save_month <= 1 else year
+
+    def _battle_year(b):
+        try:
+            return int(str(b.get("start_date") or "").split(".")[0])
+        except (ValueError, TypeError):
+            return None
+
+    recent_battles = [b for b in data["battles"] if _battle_year(b) == report_year]
     battle_state_ids = set()
-    for b in data["battles"]:
+    battle_place_names = set()
+    for b in recent_battles:
         for o in b.get("occupation") or []:
             battle_state_ids.add(o.get("state"))
+        if b.get("place"):
+            battle_place_names.add(b.get("place"))
+    # 战役发生地(州名)同样计入战场州, 供士兵/平民样本排序与 in_battle_state 标记
+    state_name_to_id = {str(s.get("name")): s.get("id")
+                        for s in (snap.get("states") or [])
+                        if s.get("name") and s.get("id") is not None}
+    for name in battle_place_names:
+        sid = state_name_to_id.get(str(name))
+        if sid is not None:
+            battle_state_ids.add(sid)
 
     # 玩家相关战争: 去年/前年玩家参战 + 当前仍在进行的玩家战争。
     # player_at_war 供杂志第一篇文章切换「战地报道 / 和平年驻地训练」结构。
@@ -4284,10 +4324,11 @@ def build_magazine_data(melted, snap, folder, year):
     data["promotions"] = _pick(promotions, 6)
     data["pop_migrations"] = _pick(pop_migrations, 6)
 
-    # 战乱州民生 (玩家州中荒废度>0 或 有战役占领)
+    # 战乱州民生: 仅报告年度内有战役的玩家州 (战役发生地或占领州)。
+    # 荒废度为历史战争遗留, 不作为入选条件, 避免停战多年后仍被误报。
     war_states = []
     for s in (snap.get("states") or []):
-        if s.get("devastation") or s.get("id") in battle_state_ids:
+        if s.get("id") in battle_state_ids or s.get("name") in battle_place_names:
             war_states.append(s)
     data["war_states"] = war_states
 

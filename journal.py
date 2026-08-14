@@ -77,7 +77,7 @@ DEFAULT_CONFIG = {
     "style_system": "legacy",
     # 自动生成开关: watch/continue 自动管线按开关跳过对应产物;
     # 手动命令 (newspaper <年> / magazine <年>) 不受限, 显式意图优先
-    "newspaper_enabled": False,
+    "newspaper_enabled": True,
     "magazine_enabled": True,
 }
 
@@ -121,7 +121,7 @@ def load_config():
 
 LOG_FILE = os.path.join(SCRIPT_DIR, "logs", "journal.log")
 PROMPT_LOG = os.path.join(SCRIPT_DIR, "logs", "prompts.log")
-PROMPT_LOG_MAX_BYTES = 50 * 1024 * 1024
+PROMPT_LOG_MAX_BYTES = 5 * 1024 * 1024
 _LOG_LOCK = threading.Lock()
 
 def log(msg):
@@ -138,7 +138,7 @@ def log(msg):
 
 def _log_prompt(messages):
     """把每次整理好、发送给模型的 messages 原文写入 logs/prompts.log。
-    超过 50MB 时先自动清空再写入 (按调用一次记一份, 重试不重复记录)。"""
+    超过 5MB 时先自动清空再写入 (按调用一次记一份, 重试不重复记录)。"""
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         os.makedirs(os.path.dirname(PROMPT_LOG), exist_ok=True)
@@ -1170,8 +1170,8 @@ def render_war(data, history=None):
                 continue
             bits = []
             if cas is not None:
-                # 存档伤亡为小数，按百万人口口径还原为实际人数
-                people = int(round(cas * 1000000))
+                # 存档伤亡为小数，按十万人口口径还原为实际人数
+                people = int(round(cas * 100000))
                 bits.append(f"死伤约{people}人")
             if cost is not None:
                 bits.append(f"耗资约{cost:.0f}英镑")
@@ -1184,7 +1184,7 @@ def render_war(data, history=None):
             cost = w.get('total_cost')
             bits = []
             if cas is not None:
-                people = int(round(cas * 1000000))
+                people = int(round(cas * 100000))
                 bits.append(f"双方死伤约{people}人")
             if cost:
                 bits.append(f"耗资约{cost:.0f}英镑")
