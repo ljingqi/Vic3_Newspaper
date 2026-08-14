@@ -889,13 +889,16 @@ SECTION_DEFS = [
     ("family", "民生访谈", "记者在随机州随机建筑内，采访生活水平最低的人群，"
      "以访谈体写衣食住行、收入支出、受抚养人口与生活水平；须体现该人群政治倾向"
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
-     "须基于给定数据，不得编造具体数字。"),
+     "须基于给定数据，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
+     "可融入叙事作风味，但不得改写成具体数字。"),
     ("peer", "邻里富户", "与民生访谈同一建筑内生活水平最高的人群（富户），"
      "以同样的访谈体写其衣食住行与收支，并体现该人群政治倾向与参与比例最高的两个政治运动，"
-     "须与民生访谈形成贫富对照，不得编造具体数字。"),
+     "须与民生访谈形成贫富对照，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
+     "可融入叙事作风味，但不得改写成具体数字。"),
     ("unemployed", "失业民生", "仅当随机州失业率>5%时发送：报道该州失业状况，"
      "采访失业POP中人口最多的一群（同访谈体），必须体现给定失业率，并体现该人群政治倾向"
-     "与参与比例最高的两个政治运动，不得编造具体数字。"),
+     "与参与比例最高的两个政治运动，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
+     "可融入叙事作风味，但不得改写成具体数字。"),
     ("comment", "本报评论", "编辑部评论，结合历年发展对照，评述国运与民生之变迁。"),
     ("ads", "广告与启示", "围绕本期提供的已研发科技创作一两条趣味广告：可为商品、工艺、铺面告白，"
      "也可为文学沙龙、社科研讨会、新政晓谕、学堂启事等非商品形式；至少一条须直接体现科技，富有时代气息。"),
@@ -1620,6 +1623,40 @@ def _devastation_band(d):
     return "近乎废墟"
 
 
+def _life_expectancy_hint(sol, death_pct, hazard_excess_pct=None,
+                          pollution_pct=None, devastation=None):
+    """风格化「预期寿命」短语 (供 pop 相关文本块作风味参考)。
+
+    注意: V3 的死亡率是人口增长模型参数 (00_defines.txt NPops 段, 按月), 并非
+    人口学意义上的粗死亡率, 直接按 1/年死亡率 换算会得到荒谬年龄; 因此这里只按
+    年化死亡率分档, 叠加高危劳动/污染/荒废修饰, 产出历史锚定的定性表述。
+    """
+    if death_pct is None:
+        return None
+    if death_pct >= 6:
+        hint = "新生儿的半数活不到十岁，成年劳动力也大多熬不过四十"
+    elif death_pct >= 4:
+        hint = "平均寿数不过三十出头，村中白发长者寥寥"
+    elif death_pct >= 2.5:
+        hint = "新生儿夭折仍多，能活过四十已算中寿，五十便称高寿"
+    elif death_pct >= 1.5:
+        hint = "半数孩童能长大成人，活过五十者并不少见"
+    elif death_pct >= 0.8:
+        hint = "花甲老人不再稀奇，卫生改善让更多人看到孙辈出生"
+    else:
+        hint = "活到古稀仍精神矍铄者比比皆是"
+    extras = []
+    if hazard_excess_pct and hazard_excess_pct >= 10:
+        extras.append("矿坑与车间里的壮年夭亡尤多")
+    if pollution_pct and pollution_pct >= 15:
+        extras.append("呛人的烟尘让肺病与早夭如影随形")
+    if devastation and devastation >= 25:
+        extras.append("战火过处，坟茔比新生儿长得更快")
+    if extras:
+        hint += "，" + "、".join(extras)
+    return hint
+
+
 def _render_vital_stats(obj):
     """出生/死亡信息: 修正后的年化估算率 + 污染/荒废度 + (本土) 医疗/教育制度。"""
     L = []
@@ -1634,6 +1671,12 @@ def _render_vital_stats(obj):
         else:
             note = "结合生活水平、污染、荒废度、卫生机构与相关法律修正的年化估算率"
         L.append(f"- 出生率/死亡率（{note}）：约{birth:.2f}% / 约{death:.2f}%")
+        le = _life_expectancy_hint(obj.get("sol"), death,
+                                   obj.get("hazard_excess_pct"),
+                                   obj.get("pollution_pct"),
+                                   obj.get("devastation"))
+        if le:
+            L.append(f"- 预期寿命：{le}")
     hx = obj.get("hazard_excess_pct")
     hpms = obj.get("hazard_pms_zh")
     if hx is not None and hpms:
