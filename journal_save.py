@@ -1833,6 +1833,31 @@ def _building_production_methods(data, bid):
     return [p for p in pms if isinstance(p, str)] if isinstance(pms, list) else []
 
 
+def _pm_names_zh(pms, drop_raw=False):
+    """生产方式 key 列表 → 中文名列表 (本地化, 含 $引用$ 解析)。
+    drop_raw=True 时丢弃未本地化的 key (与杂志 shelf 口径一致), 否则保留原 key。
+    返回 None 表示无有效生产方式。"""
+    if not pms:
+        return None
+    loc = _load_loc_all()
+    names = []
+    for pm in pms:
+        nm = loc.get(pm) or pm
+        seen = {pm}
+        while isinstance(nm, str) and nm.startswith("$") and nm.endswith("$"):
+            ref = nm[1:-1]
+            if ref in seen or ref not in loc:
+                break
+            seen.add(ref)
+            nm = loc[ref]
+        if drop_raw and (nm == pm or "$" in str(nm)
+                         or str(nm).startswith("pm_")):
+            continue
+        if nm and nm not in names:
+            names.append(nm)
+    return names or None
+
+
 def _state_object(data, state_id):
     """州 id → 完整 state 对象 (含 region/incorporation 等字段); 找不到返回 None。
 
@@ -2559,7 +2584,7 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
                      building_map=None, incorporation=None, harvest_conditions=None,
                      pop_needs=None, hub_names=None, price_map=None, vital=None,
                      movement_names=None, workplace_ownership=None,
-                     state_obj=None):
+                     state_obj=None, building_ctx=None):
     """把单个 pop 对象整理成「家庭采访」数据块。"""
     wf = pop.get("workforce") or 0
     dep = pop.get("dependents") or 0
@@ -2580,22 +2605,7 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         active_pms=vital.get("active_pms"),
         institutions_active=vital.get("institutions_active", True))
     # 高危生产方式的中文名 (本地化, 含 $引用$ 解析)
-    hazard_pms_zh = None
-    if hazard_pms:
-        loc = _load_loc_all()
-        names = []
-        for pm in hazard_pms:
-            nm = loc.get(pm) or pm
-            seen = {pm}
-            while isinstance(nm, str) and nm.startswith("$") and nm.endswith("$"):
-                ref = nm[1:-1]
-                if ref in seen or ref not in loc:
-                    break
-                seen.add(ref)
-                nm = loc[ref]
-            if nm and nm not in names:
-                names.append(nm)
-        hazard_pms_zh = names
+    hazard_pms_zh = _pm_names_zh(hazard_pms)
     wb = pop.get("weekly_budget") or []
     income = sum(v for v in wb if isinstance(v, (int, float)) and v > 0)
     expense = -sum(v for v in wb if isinstance(v, (int, float)) and v < 0)
@@ -2667,7 +2677,9 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         workplace, unemployed = None, True
     else:
         unemployed = False
-        workplace = _load_loc_all().get(btype, btype) if btype else None
+        workplace = (building_ctx or {}).get("workplace")
+        if not workplace and btype:
+            workplace = _load_loc_all().get(btype, btype)
     # 消费画像: 州 pop_needs 按该 pop 文化 id 取需求权重
     profile = _consumption_profile((pop_needs or {}).get(str(pop.get("culture"))), sol)
     # 消费商品市价对比 (市价 vs 商品基准价 cost)
@@ -2679,14 +2691,15 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
             g["dev_pct"] = round((price - base) / base * 100)
         else:
             g["dev_pct"] = None
-    # 访谈地点: 优先用工作建筑所属 hub 的城市名
-    hub_name = None
-    hub_cat = _hub_for_building(btype)
-    if hub_cat:
-        if state_obj is not None:
-            hub_name = _hub_name_for(state_obj, hub_cat)
-        elif hub_names:
-            hub_name = hub_names[HUB_ORDER.index(hub_cat)]
+    # 访谈地点: 优先用工作建筑所属 hub 的城市名 (建筑级上下文已按州预取一次)
+    hub_name = (building_ctx or {}).get("hub_name")
+    if not hub_name:
+        hub_cat = _hub_for_building(btype)
+        if hub_cat:
+            if state_obj is not None:
+                hub_name = _hub_name_for(state_obj, hub_cat)
+            elif hub_names:
+                hub_name = hub_names[HUB_ORDER.index(hub_cat)]
     return {
         "location": pop.get("location"),
         "workplace_id": pop.get("workplace"),
@@ -2699,6 +2712,8 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "is_homeland": is_homeland,
         "incorporation": incorporation,
         "harvest_conditions": harvest_conditions or [],
+        "workplace_pms_zh": ((building_ctx or {}).get("pms_zh")
+                             if not unemployed else None),
         "consumption_goods": profile["goods"],
         "engel_coefficient": profile["engel"],
         "sol": pop.get("previous_quality_of_life"),
@@ -3357,6 +3372,18 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
     else:
         active_pms = _building_production_methods(data, bid)
     building_group = (_load_building_groups().get(btype) if btype else None)
+    # 建筑级上下文只提取一次: 民生访谈/邻里富户/失业板块共用同一建筑与州,
+    # 生产方式中文名、建筑名与 hub 名不在每次 _family_from_pop 里重复计算。
+    building_ctx = {}
+    if btype:
+        building_ctx["workplace"] = _load_loc_all().get(btype, btype)
+        hub_cat = _hub_for_building(btype)
+        if hub_cat:
+            if state_obj is not None:
+                building_ctx["hub_name"] = _hub_name_for(state_obj, hub_cat)
+            elif hub_names:
+                building_ctx["hub_name"] = hub_names[HUB_ORDER.index(hub_cat)]
+    building_ctx["pms_zh"] = _pm_names_zh(active_pms, drop_raw=True) if bid is not None else None
     movement_names = _movement_names_zh(data, player_tag)
     own_sentence = None
     if bid is not None and cid is not None:
@@ -3366,7 +3393,7 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                   building_map=building_map, incorporation=incorporation,
                   harvest_conditions=harvest_conditions, pop_needs=pop_needs,
                   hub_names=hub_names, price_map=price_map,
-                  state_obj=state_obj,
+                  state_obj=state_obj, building_ctx=building_ctx,
                   vital=dict(pollution_pct=pollution_pct, devastation=devastation,
                              bits=bits, schools_inv=schools_inv,
                              building_group=building_group, active_pms=active_pms,
@@ -6420,9 +6447,14 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
         not w.get("ended") for w in player_wars)
 
     # 战争目的 (主战+次生, 自然语言, 不含地区 ID)
-    data["war_goals"] = parse_war_goals(
-        melted, wars=snap.get("wars"), player_id=snap.get("country_id"),
-        zh=zh, gp_ids=gp_ids0, dp_index=dp_index0)
+    # 优先复用快照中已解析的一次性结果 (extract_full_snapshot 已解析),
+    # 旧快照/直接传入的 snap 无该字段时才各自补解析
+    if snap.get("war_goals") is not None:
+        data["war_goals"] = snap["war_goals"]
+    else:
+        data["war_goals"] = parse_war_goals(
+            melted, wars=snap.get("wars"), player_id=snap.get("country_id"),
+            zh=zh, gp_ids=gp_ids0, dp_index=dp_index0)
 
     # 军团 / 营 / 舰船
     cid = snap.get("country_id")
@@ -7225,6 +7257,8 @@ def build_journal_data(snap):
     data["unemployed_interview"] = snap.get("unemployed_interview")
     data["prev_year_wars"] = snap.get("prev_year_wars")
     data["last_year_wars"] = snap.get("last_year_wars")
+    # 战争目的: 随快照解析一次, 供报纸战事专电与杂志共用
+    data["war_goals"] = snap.get("war_goals") or []
     return data
 
 def extract_full_snapshot(melted, cid=None, ctx=None):
@@ -7317,6 +7351,12 @@ def extract_full_snapshot(melted, cid=None, ctx=None):
     snap["prev_year_wars"] = _prev_year_player_wars(snap.get("wars") or [], snap.get("year"))
     # 去年发生的战争(玩家/列强参战, 仅主要参加者), 供战事专电
     snap["last_year_wars"] = _last_year_wars(snap.get("wars") or [], snap.get("year"))
+    # 战争目的: 与报纸/杂志共用的快照字段, 只在提取快照时解析一次,
+    # 杂志不再各自重扫 war_goal_manager (见 build_magazine_data)
+    snap["war_goals"] = parse_war_goals(
+        melted, wars=snap.get("wars"), player_id=cid,
+        zh=build_country_id_names(melted, index), gp_ids=gp_ids,
+        dp_index=dp_index)
     # 单文件扫描一次建索引: 角色 / 建筑 / POP, 供首领、统治者与家庭采访复用
     chars = _player_characters(melted, cid)
     buildings_index, building_map, building_objs = ctx.buildings_index(state_ids)
@@ -8212,7 +8252,7 @@ def _extract_interest_groups(data, player_id, chars=None):
 # 快照缓存 (阶段2: 落盘缓存, 重复生成报纸/杂志时跳过熔化+提取)
 # ---------------------------------------------------------------------------
 
-SNAPSHOT_CACHE_VERSION = 2
+SNAPSHOT_CACHE_VERSION = 3
 # 快照缓存写入锁: 报纸/杂志并行生成时两者会各自落盘同一 snapshot_<year>.json
 # (内容相同), 加锁避免并发写同一文件交错。
 _SNAP_CACHE_LOCK = threading.Lock()

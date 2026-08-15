@@ -1153,6 +1153,10 @@ def render_war(data, history=None):
     wars = _merged_last_year_wars(data, history)
     if not wars:
         L.append("  (去年无相关战事记录)")
+    # 战争目的: 按战争 id 分组, 格式与杂志 _facts_front 一致
+    by_war = {}
+    for g in (data.get("war_goals") or []):
+        by_war.setdefault(str(g.get("war")), []).append(g)
     for w in wars:
         parties = _war_parties_line(w.get('participants') or [])
         if w.get('ended'):
@@ -1207,6 +1211,11 @@ def render_war(data, history=None):
         if tail:
             line += "。" + "；".join(tail)
         L.append(line)
+        wg = by_war.get(str(w.get("id"))) or []
+        if wg:
+            L.append("战争目的：")
+            for g in wg[:5]:
+                L.append(f"- {g.get('nl') or '未知'}")
     return "\n".join(L)
 
 def _format_pact_date(sd):
@@ -1799,10 +1808,13 @@ def render_family(data, style=None):
     own = fi.get("workplace_ownership")
     if own:
         L.append(f"- {own}")
+    pms_zh = fi.get("workplace_pms_zh") or []
+    if pms_zh and not fi.get("unemployed"):
+        L.append("- 工作场所生产方式：该建筑目前采用" + "、".join(pms_zh))
     if fi.get("ruler_visited"):
         who = _ruler_name_title(data)
         if who:
-            L.append(f"- 统治者走访：{who}近日曾走访本州（详见政界动态「本期统治者活动」），"
+            L.append(f"- 统治者走访：{who}近日曾走访该家庭（详见政界动态「本期统治者活动」），"
                      f"受访者对此记忆犹新，可在访谈中自然提及")
     # 本土归属: 存档直读时按“该州域是否是该族本土(add_homeland)”判定
     homeland = fi.get("is_homeland")
@@ -1931,6 +1943,9 @@ def render_peer(data, style=None):
     own = peer.get("workplace_ownership")
     if own and workplace:
         L.append(f"- {own}")
+    pms_zh = peer.get("workplace_pms_zh") or []
+    if pms_zh and workplace:
+        L.append("- 工作场所生产方式：该建筑目前采用" + "、".join(pms_zh))
     # 与民生访谈的关联: 同建筑或同州对照
     fi = data.get("family_interview")
     if fi:
