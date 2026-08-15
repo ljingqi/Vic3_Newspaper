@@ -745,6 +745,234 @@ def build_goods_map():
     _GOODS_CACHE = {"order": order, "cost": cost, "zh": zh}
     return _GOODS_CACHE
 
+
+# ---------------------------------------------------------------------------
+# 工业品产业链 (游戏 common 数据): 建筑 → PM组 → 生产方法 → 投入/产出商品。
+# 供「从货架里长出来的」只选「至少经过两个环节」的加工品,
+# 保证有上游原料建筑可写 (如 铁矿→铁→工具 / 谷物→加工食品)。
+# ---------------------------------------------------------------------------
+
+BUILDINGS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\buildings"
+PM_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\production_methods"
+PMG_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\production_method_groups"
+INDUSTRIAL_BUILDING_GROUPS = ("bg_manufacturing", "bg_light_industry",
+                              "bg_heavy_industry", "bg_military_industry")
+
+_GOODS_CHAIN_CACHE = None
+_CONSUMER_GOODS_CACHE = None
+_PM_EMPLOYMENT_CACHE = None
+POP_NEEDS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\pop_needs"
+
+
+def _parse_braced_blocks(text):
+    """把 paradox 文本里 name = { ... } 顶层块拆成 (name, 块内文本)。"""
+    n = len(text)
+    i = 0
+    while i < n:
+        m = re.search(r"^([a-z0-9_]+)\s*=\s*\{", text[i:], re.M)
+        if not m:
+            break
+        name = m.group(1)
+        start = i + m.end() - 1
+        depth = 0
+        j = start
+        while j < n:
+            c = text[j]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        yield name, text[start + 1:j]
+        i = j + 1
+
+
+def _game_dirs(vanilla, sub):
+    """解析游戏数据时扫描的目录: 原版 + 已启用 mod 的对应子目录 (mod 覆盖原版)。"""
+    dirs = [vanilla]
+    for base in _enabled_mod_dirs():
+        p = os.path.join(base, sub)
+        if os.path.isdir(p):
+            dirs.append(p)
+    return dirs
+
+
+def _load_goods_chain():
+    """解析建筑/生产方法 → ({good: {producers, inputs}}, industrial_goods)。
+    只统计工业分组建筑的生产方法; industrial_goods = 有原料投入的产出品。"""
+    global _GOODS_CHAIN_CACHE
+    if _GOODS_CHAIN_CACHE is not None:
+        return _GOODS_CHAIN_CACHE
+    import glob as _glob
+    building_groups = {}
+    for d in _game_dirs(BUILDINGS_DIR, "common/buildings"):
+        for fn in _glob.glob(os.path.join(d, "*.txt")):
+            try:
+                text = open(fn, encoding="utf-8-sig", errors="replace").read()
+            except Exception:
+                continue
+            for name, body in _parse_braced_blocks(text):
+                if not name.startswith("building_"):
+                    continue
+                group = re.search(r"\bbuilding_group\s*=\s*([a-z0-9_]+)", body)
+                pmgs = re.search(r"\bproduction_method_groups\s*=\s*\{(.*?)\}",
+                                 body, re.S)
+                building_groups[name] = {
+                    "group": group.group(1) if group else "",
+                    "pmgs": re.findall(r"([a-z0-9_]+)", pmgs.group(1))
+                            if pmgs else [],
+                }
+    pmg_to_pms = {}
+    for d in _game_dirs(PMG_DIR, "common/production_method_groups"):
+        for fn in _glob.glob(os.path.join(d, "*.txt")):
+            try:
+                text = open(fn, encoding="utf-8-sig", errors="replace").read()
+            except Exception:
+                continue
+            for name, body in _parse_braced_blocks(text):
+                m = re.search(r"\bproduction_methods\s*=\s*\{(.*?)\}", body, re.S)
+                if m:
+                    pmg_to_pms[name] = re.findall(r"([a-z0-9_]+)", m.group(1))
+    pm_io = {}
+    for d in _game_dirs(PM_DIR, "common/production_methods"):
+        for fn in _glob.glob(os.path.join(d, "*.txt")):
+            try:
+                text = open(fn, encoding="utf-8-sig", errors="replace").read()
+            except Exception:
+                continue
+            for name, body in _parse_braced_blocks(text):
+                ins, outs = set(), set()
+                for m in re.finditer(r"goods_input_([a-z0-9_]+)_add\s*=\s*(-?[0-9.]+)",
+                                     body):
+                    try:
+                        if float(m.group(2)) > 0:
+                            ins.add(m.group(1))
+                    except ValueError:
+                        pass
+                for m in re.finditer(r"goods_output_([a-z0-9_]+)_add\s*=\s*(-?[0-9.]+)",
+                                     body):
+                    try:
+                        if float(m.group(2)) > 0:
+                            outs.add(m.group(1))
+                    except ValueError:
+                        pass
+                if ins or outs:
+                    pm_io[name] = {"inputs": ins, "outputs": outs}
+    chain = {}
+    for bname, b in building_groups.items():
+        if b["group"] not in INDUSTRIAL_BUILDING_GROUPS:
+            continue
+        ins, outs = set(), set()
+        for pmg in b["pmgs"]:
+            for pm in pmg_to_pms.get(pmg, []):
+                io = pm_io.get(pm)
+                if io:
+                    ins |= io["inputs"]
+                    outs |= io["outputs"]
+        for g in outs:
+            chain.setdefault(g, {"producers": set(), "inputs": set()})
+            chain[g]["producers"].add(bname)
+            chain[g]["inputs"] |= ins
+    industrial = {g for g, info in chain.items() if info["inputs"]}
+    _GOODS_CHAIN_CACHE = (chain, industrial)
+    return _GOODS_CHAIN_CACHE
+
+
+def _load_consumer_goods():
+    """pop 可直接消费的商品集合 (common/pop_needs 的 goods/default 字段)。"""
+    global _CONSUMER_GOODS_CACHE
+    if _CONSUMER_GOODS_CACHE is not None:
+        return _CONSUMER_GOODS_CACHE
+    goods = set()
+    import glob as _glob
+    for d in _game_dirs(POP_NEEDS_DIR, "common/pop_needs"):
+        for fn in _glob.glob(os.path.join(d, "*.txt")):
+            try:
+                text = open(fn, encoding="utf-8-sig", errors="replace").read()
+            except Exception:
+                continue
+            goods |= set(re.findall(r"(?:^|\s)(?:goods|default)\s*=\s*([a-z_]+)",
+                                    text))
+    _CONSUMER_GOODS_CACHE = goods
+    return goods
+
+
+def _load_pm_employment():
+    """生产方法 → {职业: 每级雇佣数}: 解析 building_modifiers.level_scaled 中
+    building_employment_<type>_add (每级满编雇佣, 游戏文件口径)。"""
+    global _PM_EMPLOYMENT_CACHE
+    if _PM_EMPLOYMENT_CACHE is not None:
+        return _PM_EMPLOYMENT_CACHE
+    out = {}
+    import glob as _glob
+    for d in _game_dirs(PM_DIR, "common/production_methods"):
+        for fn in _glob.glob(os.path.join(d, "*.txt")):
+            try:
+                text = open(fn, encoding="utf-8-sig", errors="replace").read()
+            except Exception:
+                continue
+            for name, body in _parse_braced_blocks(text):
+                m = re.search(r"\blevel_scaled\s*=\s*\{(.*?)\}", body, re.S)
+                if not m:
+                    continue
+                emp = {}
+                for e in re.finditer(r"building_employment_([a-z]+)_add\s*=\s*([0-9.]+)",
+                                     m.group(1)):
+                    emp[e.group(1)] = emp.get(e.group(1), 0.0) + float(e.group(2))
+                if emp:
+                    out[name] = emp
+    _PM_EMPLOYMENT_CACHE = out
+    return out
+
+
+def _pool_building_employment(obj, pm_emp, pops=None, bid=None):
+    """建筑 → ({职业: 雇佣数}, 是否满编口径)。
+    建筑信息默认统计实际在该建筑工作的 POP (按职业汇总 workforce);
+    无 POP 数据时退回按活跃生产方法每级雇佣 × 等级计算满编人数
+    (游戏文件口径, 逻辑保留)。"""
+    if pops and bid is not None:
+        agg = {}
+        for _pid, o in pops.items():
+            if o.get("workplace") != bid:
+                continue
+            t = o.get("type")
+            wf = o.get("workforce")
+            if t and isinstance(wf, (int, float)):
+                agg[t] = agg.get(t, 0.0) + wf
+        if agg:
+            return agg, False
+    lv = obj.get("levels")
+    if isinstance(lv, (int, float)) and lv > 0:
+        out = {}
+        for pm in (obj.get("production_methods") or []):
+            e = pm_emp.get(pm) or {}
+            for t, v in e.items():
+                out[t] = out.get(t, 0.0) + v
+        if out:
+            return {t: v * lv for t, v in out.items()}, True
+    return {}, False
+
+
+def _pool_btype_kind(bts):
+    """建筑类型列表 → 上游/生产环节形态 (mine/field/forest/fishing/None)。"""
+    for t in bts:
+        if "_mine" in (t or ""):
+            return "mine"
+    for t in bts:
+        if any(x in (t or "") for x in ("_plantation", "_farm", "_ranch",
+                                        "_orchard", "_pasture")):
+            return "field"
+    for t in bts:
+        if "_logging" in (t or ""):
+            return "forest"
+    for t in bts:
+        if "_fishing" in (t or "") or "_whaling" in (t or ""):
+            return "fishing"
+    return None
+
+
 def _resolve_loc_template(value, loc, depth=0):
     """解析本地化模板值中的 $KEY$ 引用 (如 $HUB_NAME_STATE_X_city$)。"""
     if not isinstance(value, str) or "$" not in value or depth > 5:
@@ -4457,7 +4685,1421 @@ class SaveContext:
         return self._formations
 
 
-def build_magazine_data(melted, snap, folder, year, ctx=None):
+# ---------------------------------------------------------------------------
+# 杂志文章池 (pool): 每期从候选文章随机抽取 3 篇
+# 候选: railway(帝国铁道纪行) / turmoil(在光辉以外的地方) /
+#       shelf(从货架里长出来的) / service(为人民服务) /
+#       voting(神圣庄严的权利) / price(餐桌上的价格) / letters(海外来信)
+# 判定「数据可用性」后抽取 (种子=年份, 同年稳定), 只对选中的文章懒构建事实。
+# 数据不足时用兜底文章补位 (court/migration/war, 数据永远可用)。
+# ---------------------------------------------------------------------------
+
+MAGAZINE_POOL_KEYS = ("railway", "turmoil", "shelf", "service", "voting",
+                      "price", "letters", "war_family", "court_household",
+                      "migration_change")
+
+MAGAZINE_POOL_FALLBACK = ("court_household", "migration_change", "war_family")
+
+_POOL_CITIZENSHIP_LAWS = (
+    "law_ethnostate", "law_national_supremacy", "law_racial_segregation",
+    "law_multiculturalism",
+)
+_POOL_SECURITY_LAWS = (
+    "law_national_guard", "law_secret_police", "law_guaranteed_liberties",
+)
+_POOL_CHURCH_LAWS = (
+    "law_state_religion", "law_freedom_of_conscience", "law_total_separation",
+    "law_state_atheism",
+)
+_POOL_SPEECH_LAWS = (
+    "law_outlawed_dissent", "law_censorship", "law_right_of_assembly",
+    "law_protected_speech", "law_free_speech",
+)
+_POOL_EDUCATION_LAWS = (
+    "law_public_schools", "law_private_schools", "law_religious_schools",
+    "law_no_schools",
+)
+_POOL_HEALTH_LAWS = (
+    "law_charitable_health_system", "law_private_health_insurance",
+    "law_public_health_insurance", "law_no_health_system",
+)
+_POOL_DOP_LAWS = (
+    "law_autocracy", "law_neo_absolutism", "law_bakufu", "law_technocracy",
+    "law_oligarchy", "law_organic_regulation", "law_elder_council",
+    "law_landed_voting", "law_wealth_voting", "law_census_voting",
+    "law_universal_suffrage", "law_anarchy", "law_single_party_state",
+)
+
+# 游戏文件解析失败时的选品兜底清单: 有生产链条 + pop 可直接消费的制成品
+_POOL_SHELF_FALLBACK_GOODS = {
+    "groceries", "clothes", "luxury_clothes", "furniture", "luxury_furniture",
+    "glass", "paper", "porcelain", "liquor", "silk", "small_arms",
+    "aeroplanes", "automobiles", "radios", "telephones",
+}
+
+
+def _pool_state_ids(snap):
+    return [s.get("id") for s in (snap.get("states") or [])
+            if s.get("id") is not None]
+
+
+def _pool_goods_text(go, gm):
+    """建筑 input/output_goods → 自然语言「商品约数量」串。"""
+    goods = (go or {}).get("goods") or {}
+    order, zh = gm["order"], gm["zh"]
+    items = []
+    for gid, gv in goods.items():
+        try:
+            idx = int(gid)
+        except (TypeError, ValueError):
+            continue
+        key = order[idx] if 0 <= idx < len(order) else None
+        v = (gv or {}).get("value")
+        if isinstance(v, (int, float)) and abs(v) > 1e-9:
+            items.append((abs(v), zh.get(key, key or str(gid)), v))
+    return "、".join(f"{name}约{round(v, 1)}" for _a, name, v in
+                     sorted(items, reverse=True)[:4])
+
+
+def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None):
+    """一栋建筑 → 自然语言: 类型/州/等级/生产方法/所有权/雇佣/投入产出。"""
+    btype = obj.get("building") or ""
+    zh = loc.get(btype) or btype or "未知建筑"
+    state = ctx.state_zh(obj.get("state")) or "未知州"
+    bits = [f"{zh}（位于{state}）"]
+    lv = obj.get("levels")
+    if isinstance(lv, (int, float)):
+        bits.append(f"{int(round(lv))}级")
+    pms = obj.get("production_methods") or []
+    pms_zh = []
+    for p in pms:
+        v = loc.get(p)
+        if v and "$" not in v and v != p and not str(v).startswith("pm_"):
+            pms_zh.append(v)
+    if pms_zh:
+        bits.append("采用" + "、".join(pms_zh))
+    try:
+        dist, total = _building_ownership(melted, bid, cid, building_obj=obj)
+        own = _ownership_sentence(dist, total)
+        if own:
+            bits.append(own)
+    except Exception:
+        pass
+    emp, is_full = _pool_building_employment(obj, _load_pm_employment(),
+                                             pops=pops, bid=bid)
+    if emp:
+        try:
+            from journal import POP_TYPE_NAMES
+        except Exception:
+            POP_TYPE_NAMES = {}
+        parts = []
+        for t, v in sorted(emp.items(), key=lambda kv: -kv[1])[:5]:
+            parts.append(f"约{int(round(v))}名{POP_TYPE_NAMES.get(t, t)}")
+        if parts:
+            bits.append(("满编雇佣" if is_full else "实际雇佣") + "、".join(parts))
+    else:
+        st = obj.get("staffing")
+        if isinstance(st, (int, float)):
+            bits.append(f"当前雇佣约{round(st, 1)}单位劳动力")
+    outs = _pool_goods_text(obj.get("output_goods"), gm)
+    if outs:
+        bits.append("产出" + outs)
+    ins = _pool_goods_text(obj.get("input_goods"), gm)
+    if ins:
+        bits.append("消耗" + ins)
+    return "，".join(bits) + "。"
+
+
+def _pool_pop_text(pid, obj, ctx, loc):
+    """一个 POP → 自然语言: 身份/州/人数/生活水平/识字/接受度/周预算。"""
+    try:
+        from journal import POP_TYPE_NAMES, sol_band
+    except Exception:
+        POP_TYPE_NAMES, sol_band = {}, None
+    t = POP_TYPE_NAMES.get(obj.get("type"), obj.get("type") or "未知职业")
+    state = ctx.state_zh(obj.get("location")) or "未知州"
+    culture = culture_id_to_name(obj.get("culture")) or ""
+    rel = _religion_zh(obj.get("religion")) or ""
+    if culture and rel:
+        who = f"{rel}{culture}的{t}"
+    elif culture:
+        who = f"{culture}的{t}"
+    elif rel:
+        who = f"{rel}信徒中的{t}"
+    else:
+        who = t
+    bits = [f"{who}，居住在{state}"]
+    wf = obj.get("workforce")
+    if isinstance(wf, (int, float)) and wf > 0:
+        bits.append(f"劳动力约{format(int(round(wf)), ',')}人")
+    sol = obj.get("previous_quality_of_life")
+    if isinstance(sol, (int, float)) and sol_band:
+        band = sol_band(sol)
+        if band:
+            bits.append(f"生活水平{band}")
+    nl = obj.get("num_literate")
+    if isinstance(nl, (int, float)) and isinstance(wf, (int, float)) and wf > 0:
+        bits.append(f"识字率约{min(100, int(round(nl / wf * 100)))}%")
+    acc = (obj.get("acceptance_data") or {}).get("acceptance_status")
+    if acc:
+        try:
+            from journal import ACCEPTANCE_NAMES
+        except Exception:
+            ACCEPTANCE_NAMES = {}
+        bits.append(f"当地接受度为{ACCEPTANCE_NAMES.get(acc, acc)}")
+    wb = obj.get("weekly_budget")
+    if isinstance(wb, (int, float)):
+        bits.append(f"每周收支约{round(wb, 1)}")
+    return "，".join(bits) + "。"
+
+
+def _pool_pop_class(obj):
+    """存档 social_class 为嵌套 dict ({"social_class": "lower_class"})。"""
+    v = obj.get("social_class")
+    if isinstance(v, dict):
+        return v.get("social_class")
+    return v
+
+
+def _pool_pick_pops(pops, bid=None, classes=None, n=1, rnd=None, min_wf=1):
+    """按建筑/阶层过滤 POP 并随机抽 n 个; classes 为 social_class 值集合。"""
+    cand = []
+    for pid, obj in pops.items():
+        if bid is not None and obj.get("workplace") != bid:
+            continue
+        if classes and _pool_pop_class(obj) not in classes:
+            continue
+        if isinstance(obj.get("workforce"), (int, float)) and obj["workforce"] < min_wf:
+            continue
+        cand.append((pid, obj))
+    if not cand:
+        return []
+    if rnd is None:
+        return cand[:n]
+    idxs = rnd.sample(range(len(cand)), min(n, len(cand)))
+    return [cand[i] for i in idxs]
+
+
+def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
+    """帝国铁道纪行: 铁路州/城市Hub + 两个乡村Hub建筑 + 中上层/下层 POP。"""
+    loc = _load_loc_all()
+    gm = build_goods_map()
+    state_ids = _pool_state_ids(snap)
+    by_state, btype_map, objs = ctx.buildings_index(state_ids)
+    railways = [(b, objs[b]) for b, t in btype_map.items()
+                if t == "building_railway" and (objs[b].get("staffing") or 0) > 0]
+    if not railways:
+        return None
+    rb, robj = rnd.choice(railways)
+    sid = robj.get("state")
+    hub_names = _hub_names(ctx.state_object(sid))
+    city_hub = hub_names[0] if hub_names else None
+    st_name = ctx.state_zh(sid) or "未知州"
+    div = _pool_division_label(snap)
+    if div and city_hub:
+        main = f"本期铁道主线：{st_name}{div}{city_hub}。"
+    else:
+        main = f"本期铁道主线：{st_name}（城市名：{city_hub or '未知'}）。"
+    pops = ctx.player_pops(state_ids)
+    lead = [
+        main,
+        _pool_building_text(melted, ctx, cid, rb, robj, loc, gm, pops=pops),
+        "这条铁路连接城镇与乡村，运送旅客与货物，并拉动沿线农矿产品外运；"
+        "行文以给定数据为准，不得虚构车站名与里程。",
+    ]
+    rural = []
+    for hub_cat in ("farm", "mine", "wood", "port"):
+        cand = [(b, o) for b, o in objs.items()
+                if (o.get("staffing") or 0) > 0
+                and o.get("building") != "building_railway"
+                and _hub_for_building(o.get("building")) == hub_cat]
+        if cand:
+            rural.append(rnd.choice(cand))
+    rural = rural[:2]
+    rural_lines = []
+    if rural:
+        rural_lines.append("本期随线走访两座乡村Hub：")
+        for b, o in rural:
+            hub_cat = _hub_for_building(o.get("building"))
+            hs = _hub_names(ctx.state_object(o.get("state")))
+            idx = HUB_ORDER.index(hub_cat) if hub_cat in HUB_ORDER else 0
+            hub_n = hs[idx] if hs and idx < len(hs) else None
+            rural_lines.append(
+                f"【{hub_n or '乡村Hub'}】"
+                + _pool_building_text(melted, ctx, cid, b, o, loc, gm, pops=pops))
+    ups = _pool_pick_pops(pops, bid=rb, classes=("middle_class", "upper_class"),
+                          n=1, rnd=rnd)
+    low_rail = _pool_pick_pops(pops, bid=rb, classes=("lower_class",),
+                               n=1, rnd=rnd)
+    workers_lines = ["铁路车站与机车库里的人物样本："]
+    if ups:
+        workers_lines.append("- " + _pool_pop_text(ups[0][0], ups[0][1], ctx, loc))
+    if low_rail:
+        workers_lines.append("- " + _pool_pop_text(low_rail[0][0], low_rail[0][1], ctx, loc))
+    if not ups and not low_rail:
+        workers_lines.append("（该铁路建筑当前无足量POP样本，请据雇佣与产出数据含蓄写作。）")
+    life_lines = []
+    if rural:
+        rb2, robj2 = rural[0]
+        lows = _pool_pick_pops(pops, bid=rb2, classes=("lower_class",),
+                               n=2, rnd=rnd)
+        life_lines.append("乡村建筑里的劳动者样本：")
+        for pid, o in lows:
+            life_lines.append("- " + _pool_pop_text(pid, o, ctx, loc))
+        if not lows:
+            life_lines.append("（该乡村建筑当前无足量POP样本，请据雇佣与产出含蓄写作。）")
+    return {"sections": {
+        "lead": "\n".join(lead),
+        "rural": ("\n".join(rural_lines) if rural_lines
+                  else "（本期无足量乡村Hub建筑样本，请据铁路沿线含蓄写作。）"),
+        "workers": "\n".join(workers_lines),
+        "life": ("\n".join(life_lines) if life_lines
+                 else "（无乡村POP样本，请含蓄收束。）"),
+    }}
+
+
+def _pool_turmoil_data(melted, snap, ctx, rnd, country, cid, data):
+    """在光辉以外的地方: 动乱州(激进派占比≥25%) + 政治运动 + 机构法律。"""
+    loc = _load_loc_all()
+    states = snap.get("states") or []
+    rows = []
+    for s in states:
+        sid = s.get("id")
+        sobj = ctx.state_object(sid) if sid is not None else None
+        ps = (sobj or {}).get("pop_statistics") or {}
+        tot = sum(ps.get(k) or 0 for k in (
+            "population_lower_strata", "population_middle_strata",
+            "population_upper_strata"))
+        rad = ps.get("population_radicals") or 0
+        if tot > 0 and rad / tot * 100 >= 25:
+            rows.append({"sid": sid, "pct": rad / tot * 100, "tot": tot,
+                         "rad": rad, "ps": ps})
+    if not rows:
+        return None
+    pick = rnd.choice(rows)
+    sid, pct, tot, rad, ps = (pick["sid"], pick["pct"], pick["tot"],
+                              pick["rad"], pick["ps"])
+    st = next((s for s in states if s.get("id") == sid), {})
+    state_zh = ctx.state_zh(sid) or st.get("name") or "未知州"
+    lead = [
+        f"本期焦点州：{state_zh}（动乱指数按州内激进派占比估算，约{pct:.1f}%，"
+        f"州总人口约{format(int(round(tot)), ',')}人，"
+        f"其中激进派约{format(int(round(rad)), ',')}人）。",
+    ]
+    nat_rad = snap.get("population_radicals")
+    nat_tot = snap.get("total_population")
+    if nat_rad and nat_tot:
+        lead.append(f"全国激进派占比约{round(nat_rad / nat_tot * 100, 1)}%，"
+                    "该州明显高于全国水平。")
+    lower, middle, upper = (ps.get("population_lower_strata"),
+                            ps.get("population_middle_strata"),
+                            ps.get("population_upper_strata"))
+    if lower is not None:
+        lead.append(f"阶层构成：下层约{format(int(round(lower)), ',')}人、"
+                    f"中层约{format(int(round(middle or 0)), ',')}人、"
+                    f"上层约{format(int(round(upper or 0)), ',')}人。")
+    pops = ctx.player_pops(_pool_state_ids(snap))
+    mov_sum = {}
+    for obj in pops.values():
+        if obj.get("location") != sid:
+            continue
+        for mid, ratio in (obj.get("political_movement_support") or {}).items():
+            try:
+                mid_i = int(mid)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(ratio, (int, float)):
+                mov_sum[mid_i] = mov_sum.get(mid_i, 0.0) + ratio
+    mov_info = {mv.get("id"): mv for mv in (snap.get("political_movements") or [])}
+    top = None
+    if mov_sum:
+        top = mov_info.get(max(mov_sum, key=mov_sum.get))
+    movement_lines = []
+    if top:
+        movement_lines.append(
+            f"该州支持度最高的政治运动：{top.get('name') or '未知'}（"
+            f"{top.get('ideology') or '未知思潮'}）。")
+        if top.get("activism"):
+            movement_lines.append(
+                f"运动处于「{top.get('activism')}」档位，"
+                f"激进指数{round(top.get('radicalism') or 0, 2)}。")
+        if top.get("supporters"):
+            movement_lines.append(
+                f"全国支持者约{format(int(round(top['supporters'])), ',')}人，"
+                f"大众支持率{round(top.get('popular_pct') or 0, 1)}%、"
+                f"军人支持率{round(top.get('military_pct') or 0, 1)}%、"
+                f"财富支持率{round(top.get('wealth_pct') or 0, 1)}%。")
+        if top.get("civil_war"):
+            movement_lines.append("该运动已出现内战/分离倾向。")
+    else:
+        movement_lines.append("（该州暂无显著政治运动样本。）")
+    laws = query_laws(melted, cid)
+    law_lines = []
+    sel = {}
+    for grp, keys in (("公民权", _POOL_CITIZENSHIP_LAWS),
+                      ("内部安全", _POOL_SECURITY_LAWS),
+                      ("教会与国家", _POOL_CHURCH_LAWS),
+                      ("言论", _POOL_SPEECH_LAWS)):
+        hit = next((l for l in keys if l in laws), None)
+        if hit:
+            sel[grp] = hit
+    if sel:
+        law_lines.append("与冲突相关的现行法律：" + "；".join(
+            f"{g}法为{loc.get(k, k)}" for g, k in sel.items()) + "。")
+    else:
+        law_lines.append("（相关法律数据不足。）")
+    insts = _country_institution_levels(melted, cid)
+    if insts:
+        law_lines.append("全国机构投资等级：" + "、".join(
+            f"{loc.get(k, k)}{v}" for k, v in sorted(insts.items())) + "。")
+    incorp = (ctx.state_object(sid) or {}).get("incorporation")
+    if incorp is not None and incorp < 1:
+        law_lines.append(f"该州尚未完全并入本土（并入进度约{round(incorp * 100)}%），机构覆盖有限。")
+    return {"sections": {
+        "lead": "\n".join(lead),
+        "movement": "\n".join(movement_lines),
+        "institutions": "\n".join(law_lines),
+        "clash": (
+            f"政府立场素材：本刊按现行政体（{snap.get('govt_zh') or '未知'}）"
+            f"与言论法报道；该州激进派占比约{pct:.1f}%，"
+            "执政集团需直面街头与议会的压力，冲突的尺度以给定运动与法律数据为限。"
+        ),
+    }}
+
+
+def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
+    """从货架里长出来的: 贸易中心最大交易商品 → 生产链 POP → 顾客。"""
+    if country is None:
+        return None
+    loc = _load_loc_all()
+    gm = build_goods_map()
+    order, zh, cost = gm["order"], gm["zh"], gm["cost"]
+    state_ids = _pool_state_ids(snap)
+    by_state, btype_map, objs = ctx.buildings_index(state_ids)
+    tcs = [(b, objs[b]) for b, t in btype_map.items()
+           if t == "building_trade_center" and (objs[b].get("staffing") or 0) > 0]
+    if not tcs:
+        return None
+    tb, tobj = rnd.choice(tcs)
+    tsid = tobj.get("state")
+    tstate_zh = ctx.state_zh(tsid) or "未知州"
+    traded = (ctx.state_object(tsid) or {}).get("traded_goods") or []
+    prices = _market_price_map(melted, country) or {}
+    chain, industrial = _load_goods_chain()
+    if not industrial:
+        industrial = set(_POOL_SHELF_FALLBACK_GOODS)
+    consumer = _load_consumer_goods()
+    world_prices = _pool_world_prices(melted)
+
+    def _supply_ok(gk):
+        """世界市场供应代理: 有世界市场价格通道且 价/基准价 < 1.6。
+        存档无逐商品供应量; 价格贴顶 (1.75×) 表示卖单远小于买单、供应近乎为零,
+        这类后期商品 (电话机/无线电/汽车/飞机) 直接排除。"""
+        gid2 = order.index(gk) if gk in order else None
+        p = world_prices.get(gid2) if gid2 is not None else None
+        c = cost.get(gk)
+        if not world_prices:
+            return True  # 世界价格解析失败时不误杀
+        if gid2 is None or gid2 not in world_prices:
+            return False
+        if not isinstance(p, (int, float)) or not isinstance(c, (int, float)) or c <= 0:
+            return False
+        return p / c < _POOL_SUPPLY_PRICE_RATIO
+
+    eligible_goods = {g for g in industrial
+                      if g in consumer and _supply_ok(g)}
+
+    def _rank(gk):
+        if gk not in zh:
+            return None
+        gid = order.index(gk) if gk in order else None
+        p = prices.get(gid) if gid is not None else None
+        return {"key": gk, "zh": zh[gk], "gid": gid, "price": p,
+                "cost": cost.get(gk)}
+
+    ranked = [r for r in (_rank(gk) for gk in traded if gk in eligible_goods) if r]
+    if not ranked:
+        # 该州无可直接消费的加工品交易记录 → 放宽到市场有价的制成品
+        # 按商品名排序迭代, 避免 set 顺序跨进程随机导致同种子选出不同商品
+        ranked = [r for r in (_rank(gk) for gk in sorted(eligible_goods)) if r]
+    ranked.sort(key=lambda r: -(r["price"] if isinstance(r["price"], (int, float))
+                                else 0))
+    if not ranked:
+        return None
+    good = ranked[0]
+    gid = good["gid"]
+    chain_info = chain.get(good["key"]) or {}
+    producers_zh = [loc.get(b, b) for b in sorted(chain_info.get("producers") or [])]
+    inputs_zh = [zh.get(i, i) for i in sorted(chain_info.get("inputs") or [])]
+    producers = [(b, o) for b, o in objs.items()
+                 if str(gid) in ((o.get("output_goods") or {}).get("goods") or {})]
+    # 导读「主要原料」优先取本地生产建筑的实际投入 (与作坊段口径一致, 反映在用 PM);
+    # 本地无生产建筑时才回落静态产业链 (该建筑所有 PM 的并集, 含未启用的电力等)。
+    lead_inputs_zh = inputs_zh
+    if producers:
+        _real_input_keys = []
+        for _b, o in producers:
+            for kg in ((o.get("input_goods") or {}).get("goods") or {}):
+                try:
+                    kid = int(kg)
+                except (TypeError, ValueError):
+                    continue
+                kkey = order[kid] if 0 <= kid < len(order) else None
+                if kkey is not None and kkey not in _real_input_keys:
+                    _real_input_keys.append(kkey)
+        if _real_input_keys:
+            lead_inputs_zh = [zh.get(k, k) for k in sorted(_real_input_keys)]
+    world_p = world_prices.get(gid) if gid is not None else None
+    if not isinstance(world_p, (int, float)):
+        world_p = good["price"] if isinstance(good["price"], (int, float)) else None
+    pops = ctx.player_pops(state_ids)
+    lead = [
+        f"本期货架焦点：{tstate_zh}的贸易中心。",
+        _pool_building_text(melted, ctx, cid, tb, tobj, loc, gm, pops=pops),
+        f"该州交易的大宗商品按市价推定，最活跃商品为「{good['zh']}」"
+        + (f"，市价约{round(good['price'], 2)}"
+           if isinstance(good["price"], (int, float)) else "") + "。",
+        (f"「{good['zh']}」为可直接被居民消费的制成品，"
+         "产业链至少经过原料→加工两个环节"
+         + (f"（主要原料：{'、'.join(lead_inputs_zh[:4])}）"
+            if lead_inputs_zh else "")
+         + (f"；通常由{'、'.join(producers_zh[:3])}加工"
+            if producers_zh else "") + "。"),
+        (f"经我国贸易中心出口至世界市场（世界市场参考价约{round(world_p, 2)}）"
+         if isinstance(world_p, (int, float))
+         else "该商品经我国贸易中心出口至世界市场。"),
+    ]
+    workshop_lines = [f"生产「{good['zh']}」的本地建筑："]
+    if producers:
+        for b, o in producers[:2]:
+            workshop_lines.append("- " + _pool_building_text(
+                melted, ctx, cid, b, o, loc, gm, pops=pops))
+            for pid, po in _pool_pick_pops(pops, bid=b,
+                                           classes=("lower_class", "middle_class"),
+                                           n=1, rnd=rnd):
+                workshop_lines.append("  工人样本：" + _pool_pop_text(pid, po, ctx, loc))
+    else:
+        workshop_lines.append(
+            "（该商品本地无生产建筑样本；按产业链，此类商品通常由"
+            + ("、".join(producers_zh[:3]) if producers_zh else "工业建筑")
+            + (f"以{'、'.join(inputs_zh[:4])}为原料加工"
+               if inputs_zh else "") + "，请据此写外地输入与商路。）")
+    mine_lines = ["原材料链条："]
+    up_chain = []
+    for b, o in producers[:2]:
+        ig = (o.get("input_goods") or {}).get("goods") or {}
+        for kg, _kv in ig.items():
+            try:
+                kid = int(kg)
+            except (TypeError, ValueError):
+                continue
+            kkey = order[kid] if 0 <= kid < len(order) else None
+            if kkey is None:
+                continue
+            upb = [(b2, o2) for b2, o2 in objs.items()
+                   if str(kid) in ((o2.get("output_goods") or {}).get("goods") or {})]
+            for b2, o2 in upb[:1]:
+                up_chain.append((zh.get(kkey, kkey), b2, o2))
+    if up_chain:
+        for name, b2, o2 in up_chain[:2]:
+            mine_lines.append(f"- 上游「{name}」：" + _pool_building_text(
+                melted, ctx, cid, b2, o2, loc, gm, pops=pops))
+            up_kind = _pool_btype_kind([o2.get("building")])
+            up_label = {"mine": "矿工样本", "field": "农工样本",
+                        "forest": "林工样本", "fishing": "渔工样本"}.get(
+                up_kind, "工人样本")
+            for pid, po in _pool_pick_pops(pops, bid=b2, classes=("lower_class",),
+                                           n=1, rnd=rnd):
+                mine_lines.append(f"  {up_label}：" + _pool_pop_text(pid, po, ctx, loc))
+    else:
+        mine_lines.append(
+            ("（本地无上游生产建筑样本；该商品的主要原料为"
+             + "、".join(inputs_zh[:4])
+             + "，多依赖外地输入，行文须含蓄。）" if inputs_zh
+             else "（本地无上游生产建筑样本，原料多依赖外地输入，行文须含蓄。）"))
+    importer = None
+    market_prices = {}
+    try:
+        laws_by_cid = _pool_all_laws(melted)
+        countries, market_prices = _pool_country_objects(melted)
+        importer = _pool_shelf_importer(melted, ctx, snap, rnd, countries,
+                                        market_prices, world_prices, gid, cid,
+                                        data.get("player") or "", good["key"],
+                                        laws_by_cid=laws_by_cid)
+    except Exception:
+        laws_by_cid = {}
+        importer = None
+    cust_lines = ["目的地顾客样本："]
+    if importer:
+        tariff_txt = ""
+        if importer.get("tariff"):
+            if importer["tariff"] < 0:
+                tariff_txt = f"，进口补贴约{-importer['tariff']}%"
+            else:
+                tariff_txt = f"，进口关税约{importer['tariff']}%"
+        policy_txt = (f"，贸易政策为{loc.get(importer['policy'], importer['policy'])}"
+                      if importer.get("policy") else "")
+        cust_lines.append(
+            f"该商品被出口到{importer['country']}"
+            f"{tariff_txt}{policy_txt}。")
+        if importer.get("state_zh"):
+            cust_lines.append(f"该国市场中心州：{importer['state_zh']}。")
+        if importer.get("pop"):
+            cust_lines.append("终端顾客样本：" + importer["pop"])
+        else:
+            cust_lines.append("（该国市场中心州无足量POP样本，请含蓄写作。）")
+        # 终端花费 = 出厂价 + 出口关税 + 进口关税 (关税按出厂价计)。
+        # 出厂价取贸易中心所在市场的当地市价, 与 render_unemployed 同源:
+        # _market_price_map 读国家预算价格报告 (缺失回退市场拥有者报告);
+        # 该市场在存档中无价格报告时 (AI 市场常见), 回落世界市场参考价。
+        wp = importer.get("world_price")
+        gate = prices.get(gid) if isinstance(prices.get(gid), (int, float)) else wp
+        exporter_laws = laws_by_cid.get(cid) or []
+        exporter_policy = next((l for l in _POOL_TRADE_POLICY_MULT
+                                if l in exporter_laws), None)
+        er = _pool_tariff_rate((country or {}).get("export_tariffs"), gid,
+                               "export", exporter_policy)
+        ir = importer.get("tariff") or 0.0
+        if isinstance(gate, (int, float)) and gate > 0:
+            # 现实口径: 出口关税/补贴按出厂价计税; 进口关税按
+            # 「出厂价 + 出口关税/补贴金额」(到岸价值) 计税。
+            export_duty = gate * er / 100.0
+            import_base = gate + export_duty
+            import_duty = import_base * ir / 100.0
+            total = gate + export_duty + import_duty
+            bits = [f"出厂价约{round(gate, 2)}"]
+            if abs(er) >= 1e-9:
+                bits.append(
+                    f"出口补贴{-er}%×出厂价{round(gate, 2)}" if er < 0
+                    else f"出口关税{er}%×出厂价{round(gate, 2)}")
+            if abs(ir) >= 1e-9:
+                bits.append(
+                    f"进口补贴{-ir}%×（到岸价{round(import_base, 2)}）" if ir < 0
+                    else f"进口关税{ir}%×（到岸价{round(import_base, 2)}）")
+            cust_lines.append(
+                f"该消费者购买时共花费约{round(total, 2)}英镑（" + "＋".join(bits) + "）。")
+    else:
+        for pid, po in _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
+                                       n=2, rnd=rnd):
+            cust_lines.append("- " + _pool_pop_text(pid, po, ctx, loc))
+        cust_lines.append("（世界市场去向数据不足，按本地市场口径写目的地顾客。）")
+    if not importer and isinstance(good["price"], (int, float)):
+        cust_lines.append(
+            f"「{good['zh']}」当前市价约{round(good['price'], 2)}，"
+            "可作为家庭账本的一笔支出参照。")
+
+    # 动态板块标题: 按生产/上游环节实际形态命名,
+    # 避免「生产染料却写矿井」之类的错位 (生产→田垄/作坊, 上游→田垄/矿脉/林场)
+    prod_bts = [objs[b].get("building") for b, _ in producers]
+    if not prod_bts:
+        prod_bts = list(chain_info.get("producers") or [])
+    wk = _pool_btype_kind(prod_bts)
+    up_bts = [o2.get("building") for _n, _b2, o2 in up_chain]
+    mk = _pool_btype_kind(up_bts)
+    if mk is None:
+        raw_keys = set(chain_info.get("inputs") or [])
+        if raw_keys & {"iron", "coal", "sulfur", "lead", "gold", "oil",
+                       "stone", "clay", "graphite", "salt", "copper", "zinc"}:
+            mk = "mine"
+        elif raw_keys & {"grain", "fish", "meat", "sugar", "fruit", "milk",
+                         "rice", "cotton", "dye", "silk", "tobacco"}:
+            mk = "field"
+        elif raw_keys & {"wood", "hardwood", "rubber"}:
+            mk = "forest"
+    section_titles = {
+        "workshop": {"mine": "矿场里的手", "field": "田垄上的手",
+                     "forest": "林场里的手", "fishing": "渔场里的手"}.get(
+            wk, "工场里的手"),
+        "mine": {"mine": "矿脉的尽头", "field": "田垄的尽头",
+                 "forest": "林场的尽头", "fishing": "渔场的尽头"}.get(
+            mk, "原料的来处"),
+    }
+    return {"sections": {
+        "lead": "\n".join(lead),
+        "workshop": "\n".join(workshop_lines),
+        "mine": "\n".join(mine_lines),
+        "customer": "\n".join(cust_lines),
+    }, "section_titles": section_titles}
+
+
+def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
+    """为人民服务: 教育/医疗/执法机构 + 随机州随机 POP。"""
+    loc = _load_loc_all()
+    insts = _country_institution_levels(melted, cid) or {}
+    laws = query_laws(melted, cid)
+    edu = next((l for l in _POOL_EDUCATION_LAWS if l in laws), None)
+    health = next((l for l in _POOL_HEALTH_LAWS if l in laws), None)
+    state_ids = _pool_state_ids(snap)
+    states = snap.get("states") or []
+    lead = ["国家机构投资等级：" + "、".join(
+        f"{loc.get(k, k)}{v}" for k, v in sorted(insts.items())) + "。"]
+    if edu:
+        lead.append(f"教育法律为{loc.get(edu, edu)}。")
+    if health:
+        lead.append(f"卫生法律为{loc.get(health, health)}。")
+    if not insts:
+        lead.append("（机构数据不足，请据法律与民情含蓄写作。）")
+    pops = ctx.player_pops(state_ids)
+    state_pops = {}
+    for pid, obj in pops.items():
+        state_pops.setdefault(obj.get("location"), []).append((pid, obj))
+    cand_states = [s for s in states if state_pops.get(s.get("id"))]
+    st = rnd.choice(cand_states) if cand_states else (states[0] if states else {})
+    sid = st.get("id")
+    st_zh = ctx.state_zh(sid) or st.get("name") or "未知州"
+    sps = state_pops.get(sid) or []
+    wf_tot = sum((o.get("workforce") or 0) for _p, o in sps)
+    lit_tot = sum((o.get("num_literate") or 0) for _p, o in sps)
+    classroom = [f"样本州：{st_zh}。"]
+    if wf_tot > 0:
+        classroom.append(f"该州识字率约{min(100, int(round(lit_tot / wf_tot * 100)))}%"
+                         "（按POP样本估算）。")
+    gov_wf = (ctx.state_object(sid) or {}).get("pop_statistics") or {}
+    g = gov_wf.get("population_government_workforce")
+    if g is not None:
+        classroom.append(f"该州政府雇员约{format(int(round(g)), ',')}人。")
+    staff = _pool_pick_pops(pops, classes=("middle_class", "upper_class"),
+                            n=2, rnd=rnd)
+    state_pool = {pid: o for pid, o in sps}
+    staff = (_pool_pick_pops(state_pool, classes=("middle_class", "upper_class"),
+                             n=2, rnd=rnd)
+             or staff)
+    if staff:
+        classroom.append("基层公职/教员样本：")
+        for pid, o in staff:
+            classroom.append("- " + _pool_pop_text(pid, o, ctx, loc))
+    grassroots_pop = (_pool_pick_pops(state_pool, classes=("lower_class",),
+                                      n=1, rnd=rnd)
+                      or _pool_pick_pops(pops, classes=("lower_class",),
+                                         n=1, rnd=rnd))
+    grassroots = ["最基层样本："]
+    if grassroots_pop:
+        pid, o = grassroots_pop[0]
+        grassroots.append(_pool_pop_text(pid, o, ctx, loc))
+    else:
+        grassroots.append("（无足量基层POP样本，请含蓄写作。）")
+    lights = []
+    if snap.get("literacy"):
+        lights.append(f"全国识字率约{snap.get('literacy')}。")
+    if snap.get("population_radicals") and snap.get("total_population"):
+        lights.append(f"全国激进派占比约"
+                      f"{round(snap['population_radicals'] / snap['total_population'] * 100, 1)}%。")
+    if not lights:
+        lights.append("（收束数据不足，请据机构与法律含蓄展望。）")
+    return {"sections": {
+        "lead": "\n".join(lead),
+        "classroom": "\n".join(classroom),
+        "grassroots": "\n".join(grassroots),
+        "lights": "\n".join(lights),
+    }}
+
+
+_POOL_VOTE_RULES = {
+    "law_universal_suffrage": ("普选制", "全体成年公民均可投票"),
+    "law_census_voting": ("资格性选举制", "有产与识字者投票，下层劳动者多数被排除"),
+    "law_wealth_voting": ("财产投票", "达到财产门槛者投票，无产者被排除"),
+    "law_landed_voting": ("地产投票", "贵族、军官、教士与资本家等显贵投票"),
+    "law_oligarchy": ("寡头制", "普通民众不参与选举"),
+    "law_technocracy": ("技术官僚制", "普通民众不参与选举"),
+    "law_organic_regulation": ("有机体规制", "普通民众不参与选举"),
+    "law_elder_council": ("长老会议", "普通民众不参与选举"),
+    "law_autocracy": ("独裁制", "不设选举"),
+    "law_neo_absolutism": ("新专制", "不设选举"),
+    "law_bakufu": ("幕府制", "不设选举"),
+    "law_single_party_state": ("一党制", "无自由选举"),
+    "law_anarchy": ("无政府", "无正式选举程序"),
+}
+
+
+def _pool_vote_verdict(pop, dop, citizenship):
+    """按权力分配法/公民权法近似检定 POP 是否拥有投票权。
+    存档无逐 POP 选民标记, 此为程序口径: 文化宗教接纳性 (acceptance) +
+    社会阶层 (social_class) + 职业类型。"""
+    acc = (pop.get("acceptance_data") or {}).get("acceptance_status") or ""
+    excluded_by_culture = (
+        acc in ("open_prejudice", "cultural_erasure")
+        and citizenship in ("law_ethnostate", "law_national_supremacy",
+                            "law_racial_segregation"))
+    if dop == "law_universal_suffrage":
+        if excluded_by_culture:
+            return False, "虽为普选制，但该POP因文化/宗教不被接纳，被排除在选民之外"
+        return True, "普选制下全体成年公民均可投票"
+    if dop in ("law_census_voting", "law_wealth_voting"):
+        if excluded_by_culture:
+            return False, "该POP因文化/宗教不被接纳，被排除在选民之外"
+        ok = _pool_pop_class(pop) in ("middle_class", "upper_class")
+        return ok, ("达到财产/资格门槛" if ok else "未达到财产或资格门槛")
+    if dop == "law_landed_voting":
+        if excluded_by_culture:
+            return False, "该POP因文化/宗教不被接纳，被排除在选民之外"
+        ok = pop.get("type") in ("aristocrats", "capitalists", "clergymen",
+                                 "officers")
+        return ok, ("属于地产投票认可的显贵阶层" if ok else "地产投票制下无投票权")
+    rule = _POOL_VOTE_RULES.get(dop)
+    if rule:
+        return False, rule[1]
+    return False, "现行权力分配法未提供普选程序"
+
+
+def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
+    """神圣庄严的权利: 选举法律 + 随机州随机 POP 的投票权检定。"""
+    loc = _load_loc_all()
+    laws = query_laws(melted, cid)
+    dop = next((l for l in _POOL_DOP_LAWS if l in laws), None)
+    citizenship = next((l for l in _POOL_CITIZENSHIP_LAWS if l in laws), None)
+    church = next((l for l in _POOL_CHURCH_LAWS if l in laws), None)
+    state_ids = _pool_state_ids(snap)
+    states = snap.get("states") or []
+    pops = ctx.player_pops(state_ids)
+    state_pops = {}
+    for pid, obj in pops.items():
+        state_pops.setdefault(obj.get("location"), []).append((pid, obj))
+    cand = [s for s in states if state_pops.get(s.get("id"))]
+    st = rnd.choice(cand) if cand else (states[0] if states else {})
+    sid = st.get("id")
+    st_zh = ctx.state_zh(sid) or st.get("name") or "未知州"
+    ps = (ctx.state_object(sid) or {}).get("pop_statistics") or {}
+    ev = ps.get("population_eligible_voters")
+    parts = ps.get("population_political_participants")
+    rule = _POOL_VOTE_RULES.get(dop)
+    lead = [f"现行权力分配法：{loc.get(dop, dop) if dop else '未知'}。"]
+    if rule:
+        lead.append(rule[1] + "。")
+    if citizenship:
+        lead.append(f"公民权法律为{loc.get(citizenship, citizenship)}，"
+                    "文化/宗教接纳与否直接影响投票资格。")
+    if church:
+        lead.append(f"教会与国家关系法律为{loc.get(church, church)}。")
+    gate = [f"样本州：{st_zh}。"]
+    if isinstance(ev, (int, float)):
+        gate.append(f"该州合格选民占政治参与人口约{round(ev * 100, 1)}%。")
+    if isinstance(parts, (int, float)):
+        gate.append(f"政治参与人口约{format(int(round(parts)), ',')}人。")
+    sps = state_pops.get(sid) or []
+    ballot = []
+    if sps:
+        pid, pop = rnd.choice(sps)
+        ballot.append(_pool_pop_text(pid, pop, ctx, loc))
+        ok, reason = _pool_vote_verdict(pop, dop, citizenship)
+        ballot.append(f"程序检定：该POP{'拥有' if ok else '不拥有'}投票权——{reason}。")
+        ballot.append("请严格按检定结果描写投票日场景：拥有则写他履行权利的过程；"
+                      "不拥有则写他被拦在门外的情景，不得反转检定结果。")
+    else:
+        ballot.append("（该州无POP样本。）")
+    future = []
+    movs = snap.get("political_movements") or []
+    if movs:
+        m0 = movs[0]
+        future.append(f"当前最有影响力的政治运动：{m0.get('name') or '未知'}（"
+                      f"{m0.get('ideology') or '未知思潮'}），大众支持率"
+                      f"{round(m0.get('popular_pct') or 0, 1)}%。")
+    if snap.get("laws_in_progress"):
+        future.append("立法进行中：" + "、".join(
+            str(loc.get(x.get("law"), x.get("law")))
+            for x in snap["laws_in_progress"][:3]) + "。")
+    if not future:
+        future.append("（展望数据不足。）")
+    return {"sections": {
+        "lead": "\n".join(lead),
+        "gate": "\n".join(gate),
+        "ballot": "\n".join(ballot),
+        "future": "\n".join(future),
+    }}
+
+
+def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
+    """餐桌上的价格: 市价涨落 + 一户人家的餐桌账本。"""
+    if country is None:
+        return None
+    loc = _load_loc_all()
+    gm = build_goods_map()
+    order, zh, cost = gm["order"], gm["zh"], gm["cost"]
+    prices = _market_price_map(melted, country) or {}
+    rows = []
+    for gid, p in prices.items():
+        key = order[gid] if 0 <= gid < len(order) else None
+        if not key or key not in zh:
+            continue
+        c = cost.get(key)
+        if not isinstance(c, (int, float)) or c <= 0:
+            continue
+        rows.append({"key": key, "zh": zh[key], "gid": gid, "price": p,
+                     "cost": c, "ratio": p / c})
+    if not rows:
+        return None
+    # 只保留市价与基准价有实际差异的商品, 避免默认价(未交易)混入榜单
+    rows_dev = [r for r in rows if abs(r["ratio"] - 1) > 1e-6]
+    if rows_dev:
+        rows = rows_dev
+    up = sorted(rows, key=lambda r: -(r["ratio"]))[:3]
+    down = sorted(rows, key=lambda r: r["ratio"])[:3]
+    lead = ["本年度市场物价（以基准价为参照）："]
+    lead.append("上涨最明显：" + "、".join(
+        f"{r['zh']}（约为基准价的{round(r['ratio'], 2)}倍）" for r in up) + "。")
+    lead.append("下跌最明显：" + "、".join(
+        f"{r['zh']}（约为基准价的{round(r['ratio'], 2)}倍）" for r in down) + "。")
+    state_ids = _pool_state_ids(snap)
+    pops = ctx.player_pops(state_ids)
+    states = snap.get("states") or []
+    locs = {p.get("location") for p in pops.values()}
+    cand = [s for s in states if s.get("id") in locs]
+    st = rnd.choice(cand) if cand else (states[0] if states else {})
+    sid = st.get("id")
+    st_zh = ctx.state_zh(sid) or st.get("name") or "未知州"
+    household = [f"样本家庭所在地：{st_zh}。"]
+    ps = (ctx.state_object(sid) or {}).get("pop_statistics") or {}
+    wage = ps.get("wage")
+    if isinstance(wage, (int, float)):
+        household.append(f"该州平均周薪约{round(wage, 1)}。")
+    state_pool = {pid: o for pid, o in pops.items()
+                  if o.get("location") == sid}
+    lows = (_pool_pick_pops(state_pool, classes=("lower_class",), n=1, rnd=rnd)
+            or _pool_pick_pops(pops, classes=("lower_class",), n=1, rnd=rnd))
+    if lows:
+        pid, o = lows[0]
+        household.append("餐桌上的主妇/劳工样本：" + _pool_pop_text(pid, o, ctx, loc))
+        sobj = ctx.state_object(sid)
+        pn = (sobj or {}).get("pop_needs") or {}
+        entry = None
+        if isinstance(pn, dict):
+            entry = pn.get(str(o.get("culture"))) or pn.get(o.get("culture"))
+        if entry:
+            try:
+                prof = _consumption_profile(entry, o.get("previous_quality_of_life"))
+                if prof and prof.get("goods"):
+                    household.append("家庭消费画像（按需求权重估算）：" + "、".join(
+                        f"{g.get('name')}（权重{g.get('weight')}）"
+                        for g in prof["goods"][:4]) + "。")
+                if prof and prof.get("engel") is not None:
+                    household.append(f"恩格尔系数约{prof['engel']}%。")
+            except Exception:
+                pass
+    market = ["本刊关注的几件商品与市价："]
+    for r in rows[:5]:
+        market.append(f"- {r['zh']}：市价约{round(r['price'], 2)}（基准价{r['cost']}）")
+    street = ["街市与生计收束素材："]
+    if isinstance(wage, (int, float)):
+        street.append(f"{st_zh}平均周薪约{round(wage, 1)}，可作家庭支出参照。")
+    street.append("物价涨落与工资、识字率、阶层结构共同构成百姓餐桌的底色，"
+                  "行文以给定数字为准，不得编造。")
+    return {"sections": {
+        "lead": "\n".join(lead),
+        "household": "\n".join(household),
+        "market": "\n".join(market),
+        "street": "\n".join(street),
+    }}
+
+
+def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
+    """海外来信: 未并入本土的海外属地 + 本土首都对照。"""
+    loc = _load_loc_all()
+    state_ids = _pool_state_ids(snap)
+    states = snap.get("states") or []
+    pops = ctx.player_pops(state_ids)
+    state_pops = {}
+    for pid, obj in pops.items():
+        state_pops.setdefault(obj.get("location"), []).append((pid, obj))
+    colonies = []
+    for s in states:
+        sid = s.get("id")
+        sobj = ctx.state_object(sid) if sid is not None else None
+        incorp = (sobj or {}).get("incorporation")
+        if incorp is not None and incorp < 1 and state_pops.get(sid):
+            colonies.append(s)
+    if not colonies:
+        return None
+    st = rnd.choice(colonies)
+    sid = st.get("id")
+    st_zh = ctx.state_zh(sid) or st.get("name") or "未知州"
+    sobj = ctx.state_object(sid)
+    hs = _hub_names(sobj)
+    lead = [
+        f"海外属地：{st_zh}（尚未完全并入本土，"
+        f"并入进度约{round(((sobj or {}).get('incorporation') or 0) * 100)}%）。",
+    ]
+    if hs and hs[0]:
+        lead.append(f"当地首府：{hs[0]}。")
+    if st.get("top_culture"):
+        lead.append(f"当地主要文化：{st.get('top_culture')}。")
+    harbor = []
+    by_state, btype_map, objs = ctx.buildings_index(state_ids)
+    gm = build_goods_map()
+    in_state = [objs[b] for b in by_state.get(sid, []) if b in objs]
+    port = next((o for o in in_state
+                 if _hub_for_building(o.get("building")) == "port"), None)
+    if port:
+        bid = next(b for b, o in objs.items() if o is port)
+        harbor.append("港口建筑：" + _pool_building_text(
+            melted, ctx, cid, bid, port, loc, gm, pops=pops))
+    traded = (sobj or {}).get("traded_goods") or []
+    if traded:
+        harbor.append("该州交易商品：" + "、".join(
+            str(gm["zh"].get(k, k)) for k in traded[:8]) + "。")
+    island = ["属地居民样本："]
+    sps = state_pops.get(sid) or []
+    if sps:
+        for pid, o in rnd.sample(sps, min(2, len(sps))):
+            island.append("- " + _pool_pop_text(pid, o, ctx, loc))
+    else:
+        island.append("（无POP样本。）")
+    home = [f"本土对照：首都{snap.get('capital') or '未知'}。"]
+    cap_pops = [(pid, o) for pid, o in pops.items()
+                if o.get("location") == snap.get("capital_id")]
+    if cap_pops:
+        home.append("本土家庭样本：" + _pool_pop_text(cap_pops[0][0], cap_pops[0][1], ctx, loc))
+    return {"sections": {
+        "lead": "\n".join(lead),
+        "harbor": "\n".join(harbor) if harbor else "（该属地港口数据不足。）",
+        "island": "\n".join(island),
+        "home": "\n".join(home),
+    }}
+
+
+# ---------------------------------------------------------------------------
+# 货架文章: 世界市场出口去向模拟 (按 Victoria 3 Wiki 贸易优势口径近似)
+# 存档不保存逐国贸易路线, 用可得的国家级数据模拟:
+#   出口 → 世界市场 (world_market 每商品价格) → 按「贸易优势代理权重」
+#   (价格差 + 市场准入 + 贸易能力 − 进口关税, 再乘贸易政策修正) 加权抽取进口国
+#   → 进口国市场中心州 (market_capital/首都) 随机 POP 作为终端顾客。
+# ---------------------------------------------------------------------------
+
+# 关税/补贴率(%) = 贸易政策法案的基础税率(按进出口方向) × 档位系数。
+# 法案 modifier 见 common/laws/01_trade_policy.txt; 档位系数见 00_defines.txt
+# TARIFF_LEVEL_EFFECT_LOW/HIGH/MAXIMUM = 0.25/0.5/1.0。
+# 存档 tariffs 字典只保存显式设置的档位, 未设置的走游戏默认档位
+# DEFAULT_EXPORT_TARIFFS / DEFAULT_IMPORT_TARIFFS = low_tariffs。
+_POOL_TARIFF_LAW_BASE = {
+    "law_mercantilism": {"import": 0.50, "export": 0.20,
+                         "import_sub": 0.20, "export_sub": 0.50},
+    "law_protectionism": {"import": 0.50, "export": 0.50,
+                          "import_sub": 0.50, "export_sub": 0.50},
+    "law_canton_system": {"import": 0.50, "export": 0.50,
+                          "import_sub": 0.20, "export_sub": 0.20},
+    "law_sakoku": {"import": 0.50, "export": 0.50,
+                   "import_sub": 0.20, "export_sub": 0.20},
+    "law_free_trade": {"import": 0.0, "export": 0.0,
+                       "import_sub": 0.50, "export_sub": 0.50},
+    "law_isolationism": {"import": 0.0, "export": 0.0,
+                         "import_sub": 0.0, "export_sub": 0.0},
+}
+_POOL_TARIFF_LEVEL_FRACTION = {
+    "no_tariffs_or_subventions": 0.0,
+    "low_tariffs": 0.25,
+    "high_tariffs": 0.5,
+    "max_tariffs": 1.0,
+    "low_subventions": -0.25,
+    "high_subventions": -0.5,
+    "max_subventions": -1.0,
+}
+_POOL_TRADE_POLICY_MULT = {
+    "law_free_trade": 1.25,
+    "law_protectionism": 1.0,
+    "law_mercantilism": 0.75,
+    "law_isolationism": 0.0,
+    "law_canton_system": 0.0,
+}
+
+# 世界市场供应代理阈值: 存档无逐商品供应量字段, 用「世界市场价/基准价」代替。
+# 价格贴顶 (1.75×基准价) 表示卖单远小于买单、供应近乎为零 —— 这类后期商品
+# (电话机/无线电/汽车/飞机) 直接排除; 实际有供应的商品通常 ≤1.5×。
+_POOL_SUPPLY_PRICE_RATIO = 1.6
+
+# 商品 → (需求类别, 最低消费 SoL)
+# 按 Needs Wiki (1.13) 需求档位表: 需求类别首次被消费的财富档位下界;
+# 商品跨多类别时取最小阈值 (如 groceries 属基本食物, SoL 1 即可消费)。
+_POOL_NEED_INFO = {
+    "groceries": ("基本食物", 1),
+    "clothes": ("简朴衣物", 1),
+    "liquor": ("酒类饮品", 1),
+    "furniture": ("粗制品", 5),
+    "glass": ("家用物品", 10),
+    "paper": ("家用物品", 10),
+    "luxury_clothes": ("奢侈品", 15),
+    "luxury_furniture": ("奢侈品", 15),
+    "porcelain": ("奢侈品", 15),
+    "silk": ("奢侈品", 15),
+    "radios": ("奢侈品", 15),
+    "automobiles": ("自由出行", 10),
+    "small_arms": ("休闲", 20),
+    "telephones": ("通讯", 20),
+    "aeroplanes": ("休闲", 20),
+}
+
+
+def _pool_tariff_rate(tariffs, gid, direction="import", law=None):
+    """某商品关税/补贴率(%): 贸易政策法案基础税率 × 档位系数。
+    tariffs 为存档国家 tariffs 字典 (商品id字符串键 → {level}); 该商品未显式
+    设置时回落游戏默认档位 low_tariffs (00_defines DEFAULT_*_TARIFFS)。
+    direction 为 "import"/"export", law 为该国现行贸易政策法案。"""
+    if gid is None:
+        return 0.0
+    entry = (tariffs or {}).get(str(gid)) or {}
+    level = entry.get("level") or "low_tariffs"
+    frac = _POOL_TARIFF_LEVEL_FRACTION.get(level, 0.0)
+    bases = _POOL_TARIFF_LAW_BASE.get(law) or {}
+    key = ("import_sub" if direction == "import" else "export_sub") \
+        if "subvention" in level else direction
+    return bases.get(key, 0.0) * frac * 100.0
+
+
+def _pool_division_label(snap):
+    """政体 → 行政区划后缀 (省/州), 与报纸口径一致 (journal._division_label)。"""
+    try:
+        from journal import _division_label
+    except Exception:
+        return None
+    return _division_label(snap.get("govt") or snap.get("govt_key") or "")
+
+
+def _pool_series_last(obj, key):
+    """国家对象里 gdp/prestige 等时序字段的当前值 (最后一个通道最后一个值)。"""
+    ch = ((obj or {}).get(key) or {}).get("channels") or {}
+    last = None
+    for v in ch.values():
+        vals = v.get("values") or []
+        if vals:
+            last = vals[-1]
+    return last
+
+
+def _pool_country_objects(melted):
+    """单次扫描 country_manager → ({cid: 国家对象}, {市场id: {商品id: 价格}})。"""
+    out = {}
+    prices_by_market = {}
+    cm = melted.find(b'"country_manager"')
+    if cm < 0:
+        return out, prices_by_market
+    cm_end = _object_end(melted, melted.find(b'{', cm))
+    db = melted.find(b'"database"', cm)
+    if db < 0:
+        return out, prices_by_market
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = melted.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(melted, j, cm_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(melted, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if isinstance(obj, dict) and obj.get("definition") and obj.get("states"):
+            cid = int(m.group(1))
+            out[cid] = obj
+            pm = _price_report_to_map((obj.get("budget") or {}).get("current_price_report"))
+            if not pm:
+                pm = _price_report_to_map((obj.get("budget") or {}).get("previous_price_report"))
+            mid = obj.get("market")
+            if pm and mid is not None and mid not in prices_by_market:
+                prices_by_market[mid] = pm
+        j = end
+    return out, prices_by_market
+
+
+def _pool_world_prices(melted):
+    """世界市场每商品价格: world_market.price_trend.channels[商品id].values[-1]。"""
+    i = melted.find(b'"world_market":{')
+    if i < 0:
+        return {}
+    ob = melted.find(b'{', i)
+    end = _object_end(melted, ob)
+    seg = melted[ob:min(end, ob + 600000)]
+    out = {}
+    for m in re.finditer(rb'"(\d+)":\{.*?"values":\[(.*?)\]', seg, re.S):
+        vals = m.group(2).decode("utf-8", "replace").split(",")
+        if not vals:
+            continue
+        try:
+            out[int(m.group(1))] = float(vals[-1].strip())
+        except ValueError:
+            pass
+    return out
+
+
+def _pool_world_market_hubs(melted, ctx):
+    """世界市场中心 (每个有港口的市场区域一个): [{state, country, trade_centers}]。"""
+    i = melted.find(b'"active_world_market_hubs":[')
+    if i < 0:
+        return []
+    start = melted.find(b'[', i)
+    depth, end, n = 0, start, len(melted)
+    while end < n:
+        c = melted[end]
+        if c == 91:
+            depth += 1
+        elif c == 93:
+            depth -= 1
+            if depth == 0:
+                break
+        end += 1
+    try:
+        arr = json.loads(melted[start:end + 1])
+    except Exception:
+        return []
+    out = []
+    for e in arr:
+        sid = e.get("state")
+        if sid is None:
+            continue
+        sobj = ctx.state_object(sid)
+        out.append({"state": sid, "country": (sobj or {}).get("country"),
+                    "trade_centers": e.get("trade_centers") or []})
+    return out
+
+
+def _pool_all_laws(melted):
+    """单次扫描 laws.database → {cid: [法律key]}。"""
+    out = {}
+    idx = melted.find(b'"laws"')
+    if idx < 0:
+        return out
+    laws_end = _object_end(melted, melted.find(b'{', idx))
+    db = melted.find(b'"database"', idx)
+    if db < 0:
+        return out
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = melted.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(melted, j, laws_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(melted, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if (isinstance(obj, dict) and obj.get("law") and obj.get("active")
+                and obj.get("country") is not None):
+            out.setdefault(obj["country"], []).append(obj["law"])
+        j = end
+    return out
+
+
+def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
+                         world_prices, gid, player_cid, player_name, good_key,
+                         laws_by_cid=None):
+    """按贸易优势代理权重抽取进口国, 返回事实 dict; 无候选返回 None。"""
+    if gid is None:
+        return None
+    hubs = _pool_world_market_hubs(melted, ctx)
+    cand = {}
+    for h in hubs:
+        cid = h.get("country")
+        if cid is None or cid == player_cid:
+            continue
+        cand.setdefault(cid, {"state": h["state"],
+                              "tcs": len(h.get("trade_centers") or [])})
+    if not cand:
+        return None
+    at_war = set()
+    for w in (snap.get("wars") or []):
+        if w.get("player_involved"):
+            for p in (w.get("participants") or []):
+                c = p.get("country_id") or p.get("id")
+                if c is not None:
+                    at_war.add(c)
+    if laws_by_cid is None:
+        laws_by_cid = _pool_all_laws(melted)
+    world_p = world_prices.get(gid)
+    if not isinstance(world_p, (int, float)) or world_p <= 0:
+        return None
+    rows = []
+    for cid, info in cand.items():
+        c = countries.get(cid)
+        if not c or cid in at_war:
+            continue
+        laws = laws_by_cid.get(cid) or []
+        policy = next((l for l in _POOL_TRADE_POLICY_MULT if l in laws), None)
+        mult = _POOL_TRADE_POLICY_MULT.get(policy, 0.0)
+        if mult <= 0:
+            continue
+        mid = c.get("market")
+        local_p = (market_prices.get(mid) or {}).get(gid) if mid is not None else None
+        if not isinstance(local_p, (int, float)):
+            local_p = world_p
+        price_bonus = max(0.0, (local_p - world_p) / world_p) * 200
+        tariff = _pool_tariff_rate(c.get("import_tariffs"), gid, "import", policy)
+        capacity = min(info["tcs"], 10) * 8
+        sobj = ctx.state_object(info["state"])
+        incorp = (sobj or {}).get("incorporation")
+        access = 100.0 if (incorp is None or incorp >= 1) else max(0.0, incorp * 100)
+        gdp = _pool_series_last(c, "gdp")
+        gdp_w = 1.0
+        if isinstance(gdp, (int, float)) and gdp > 0:
+            gdp_w = min(2.0, 1.0 + 0.05 * (gdp / 1000000.0))
+        w = (100 + price_bonus + access + capacity - tariff) * mult * gdp_w
+        if w <= 0:
+            continue
+        rows.append({"cid": cid, "obj": c, "state": info["state"],
+                     "market_price": local_p, "world_price": world_p,
+                     "tariff": tariff, "policy": policy,
+                     "tcs": info["tcs"], "weight": w})
+    if not rows:
+        return None
+    pick = rnd.choices(rows, weights=[r["weight"] for r in rows], k=1)[0]
+    index, _, _ = ctx.index()
+    try:
+        names = build_country_id_names(melted, index)
+    except Exception:
+        names = {}
+    cname = names.get(pick["cid"]) or str(pick["cid"])
+    tsid = pick["obj"].get("market_capital") or pick["obj"].get("capital")
+    tsid = tsid if isinstance(tsid, int) and tsid > 0 else None
+    need = _POOL_NEED_INFO.get(good_key)
+    need_name = need[0] if need else None
+    need_sol = need[1] if need else None
+    pop_text = None
+    sol_note = None
+    if tsid is not None:
+        pops = ctx.player_pops([tsid])
+        loc = _load_loc_all()
+        if need_sol:
+            qualified = [(pid, o) for pid, o in pops.items()
+                         if isinstance(o.get("previous_quality_of_life"), (int, float))
+                         and o["previous_quality_of_life"] >= need_sol]
+            if qualified:
+                pid, o = rnd.choice(qualified)
+                pop_text = _pool_pop_text(pid, o, ctx, loc)
+                sol_note = (f"该商品属{need_name}需求，通常由生活水平{need_sol}及以上"
+                            "的家庭消费，本样本满足门槛。")
+            else:
+                best = None
+                for _pid, o in pops.items():
+                    v = o.get("previous_quality_of_life")
+                    if isinstance(v, (int, float)) and (best is None or v > best):
+                        best = v
+                top = [(pid, o) for pid, o in pops.items()
+                       if isinstance(o.get("previous_quality_of_life"), (int, float))
+                       and o["previous_quality_of_life"] == best]
+                if top:
+                    pid, o = rnd.choice(top)
+                    pop_text = _pool_pop_text(pid, o, ctx, loc)
+                sol_note = (
+                    f"该商品属{need_name}需求，通常由生活水平{need_sol}及以上的家庭消费；"
+                    + (f"该州生活水平最高的样本约{best}，略低于门槛，请据样本含蓄写作。"
+                       if best is not None else "该州无足量样本。"))
+        else:
+            picked = _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
+                                     n=1, rnd=rnd)
+            if picked:
+                pop_text = _pool_pop_text(picked[0][0], picked[0][1], ctx, loc)
+    total_w = sum(r["weight"] for r in rows)
+    return {
+        "country": cname,
+        "state": tsid,
+        "state_zh": ctx.state_zh(tsid) if tsid else None,
+        "market_price": pick["market_price"],
+        "world_price": pick["world_price"],
+        "tariff": pick["tariff"],
+        "policy": pick["policy"],
+        "pop": pop_text,
+        "need": need_name,
+        "need_sol": need_sol,
+        "sol_note": sol_note,
+        "weight_share": round(pick["weight"] / total_w * 100, 1),
+    }
+
+
+def _magazine_pool_eligibility(melted, snap, ctx, country):
+    """便宜判定 7 篇文章的数据可用性 (复用 ctx 缓存, 不新增整文件扫描)。"""
+    state_ids = _pool_state_ids(snap)
+    states = snap.get("states") or []
+    by_state, btype_map, objs = ctx.buildings_index(state_ids)
+    railway = any(t == "building_railway" and (objs.get(b) or {}).get("staffing", 0) > 0
+                  for b, t in btype_map.items())
+    shelf = any(t == "building_trade_center" and (objs.get(b) or {}).get("staffing", 0) > 0
+                for b, t in btype_map.items())
+    turmoil = False
+    for s in states:
+        sid = s.get("id")
+        sobj = ctx.state_object(sid) if sid is not None else None
+        ps = (sobj or {}).get("pop_statistics") or {}
+        tot = sum(ps.get(k) or 0 for k in (
+            "population_lower_strata", "population_middle_strata",
+            "population_upper_strata"))
+        rad = ps.get("population_radicals") or 0
+        if tot > 0 and rad / tot * 100 >= 25:
+            turmoil = True
+            break
+    pops = ctx.player_pops(state_ids)
+    letters = False
+    for s in states:
+        sid = s.get("id")
+        if sid is None:
+            continue
+        sobj = ctx.state_object(sid)
+        incorp = (sobj or {}).get("incorporation")
+        if (incorp is not None and incorp < 1
+                and any(p.get("location") == sid for p in pops.values())):
+            letters = True
+            break
+    prices = False
+    if country is not None:
+        prices = bool(_market_price_map(melted, country))
+    return {
+        "railway": railway,
+        "turmoil": turmoil,
+        "shelf": shelf,
+        "service": True,
+        "voting": True,
+        "price": prices,
+        "letters": letters,
+        "war_family": True,
+        "court_household": True,
+        "migration_change": True,
+    }
+
+
+def _select_magazine_pool(melted, snap, ctx, country, pool_override=None, size=3):
+    """抽取本期文章: 种子=年份 (同年稳定); pool_override 可固定组合调试。"""
+    elig = _magazine_pool_eligibility(melted, snap, ctx, country)
+    year = snap.get("year") or 0
+    candidates = [k for k in MAGAZINE_POOL_KEYS if elig.get(k)]
+    if pool_override:
+        picked = [k for k in pool_override if k in MAGAZINE_POOL_KEYS and elig.get(k)]
+        picked = list(dict.fromkeys(picked))
+    else:
+        rnd = random.Random(f"pool|{year}")
+        picked = (rnd.sample(candidates, min(size, len(candidates)))
+                  if candidates else [])
+    fallback = []
+    for k in MAGAZINE_POOL_FALLBACK:
+        if len(picked) + len(fallback) >= size:
+            break
+        if k not in picked and k not in fallback:
+            fallback.append(k)
+    return {
+        "seed": year,
+        "size": size,
+        "candidates": candidates,
+        "eligibility": elig,
+        "picked": picked,
+        "fallback": fallback,
+    }
+
+
+_POOL_BUILDERS = {
+    "railway": _pool_railway_data,
+    "turmoil": _pool_turmoil_data,
+    "shelf": _pool_shelf_data,
+    "service": _pool_service_data,
+    "voting": _pool_voting_data,
+    "price": _pool_price_data,
+    "letters": _pool_letters_data,
+}
+
+
+def build_magazine_data(melted, snap, folder, year, ctx=None,
+                        pool_override=None, pool_size=3):
     """汇总杂志数据 (全部来自真实存档, 采样由 year 播种保证同年稳定)。
     返回 dict: battles / migrations / promotions / pop_migrations / conversions /
     soldiers / families / elites / civilians / war_states / cabinet / ruler。
@@ -4702,6 +6344,35 @@ def build_magazine_data(melted, snap, folder, year, ctx=None):
         "home_region": ri.get("home_region"),
         "activity": snap.get("ruler_activity"),
     }
+
+    # 文章池: 抽取本期 3 篇, 只对选中的文章懒构建事实
+    try:
+        country_obj = _find_country_by_id(melted, cid)
+    except Exception:
+        country_obj = None
+    pool = _select_magazine_pool(melted, snap, ctx, country_obj,
+                                 pool_override=pool_override, size=pool_size)
+    for key in list(pool["picked"]):
+        fn = _POOL_BUILDERS.get(key)
+        if not fn:
+            continue
+        try:
+            facts = fn(melted, snap, ctx, random.Random(f"{year or 0}|{key}"),
+                       country_obj, cid, data)
+        except Exception as e:
+            print(f"[magazine-pool] {key} 数据构建失败: {e}")
+            facts = None
+        if facts:
+            data[key] = facts
+        else:
+            # 构建期才发现不可用: 从本期剔除, 用兜底文章补位
+            pool["picked"].remove(key)
+            for k in MAGAZINE_POOL_FALLBACK:
+                if len(pool["picked"]) + len(pool["fallback"]) >= pool["size"]:
+                    break
+                if k not in pool["picked"] and k not in pool["fallback"]:
+                    pool["fallback"].append(k)
+    data["pool"] = pool
     return data
 
 
@@ -6518,7 +8189,9 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None, ctx=N
     jdata["output_dir"] = journal.SESSION["folder"]
     session_dir = os.path.join(cfg["journal_dir"], journal.SESSION["folder"])
     jdata["magazine"] = build_magazine_data(
-        melted, snap, session_dir, snap.get("year"), ctx=ctx)
+        melted, snap, session_dir, snap.get("year"), ctx=ctx,
+        pool_override=cfg.get("magazine_pool_override"),
+        pool_size=cfg.get("magazine_pool_size", 3))
     import magazine
     magazine.generate_magazine(jdata, cfg, force=force)
     print("杂志生成完成")

@@ -10,5 +10,7 @@
   "newspaper_style": 1,
   "style_system": "legacy",
   "newspaper_enabled": true,
-  "magazine_enabled": true
+  "magazine_enabled": true,
+  "magazine_pool_size": 3,
+  "magazine_pool_override": null
 }

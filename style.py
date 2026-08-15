@@ -803,3 +803,42 @@ def resolve_magazine_voice(data):
         parts.append(f"投票权现状：{note}")
     parts.append(f"时代定位：{build_era_profile(tech_keys, _tier_from_score(score))}")
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# 新系统: 杂志文章标题指南 (按文风档位)
+# 每期文章标题不写死, 由模型依本指南拟题; 档位越低越庄重, 越高越现代/先锋。
+# ---------------------------------------------------------------------------
+
+MAGAZINE_TITLE_GUIDES = {
+    1: (
+        "文章标题宜古朴庄重，多用四至六字、对仗或典故化用（如《铁轨上的州》"
+        "《门槛与选票》《街垒与公文》），忌现代新闻腔与西式长题。"
+    ),
+    2: (
+        "文章标题宜半文半白、凝练典雅，四至八字皆可，可用对仗或意象"
+        "（如《货架上的价签》《海外的来信》），避免口语化。"
+    ),
+    3: (
+        "文章标题宜现代规范、信息明确，四至十字皆可，允许主副题或冒号句式"
+        "（如《铁道上的州：蒸汽与民生的时速》），不堆砌辞藻。"
+    ),
+    4: (
+        "文章标题宜新闻感强、有锐度，可用主副题、疑问或对比句式"
+        "（如《光辉以外：动乱州的旗帜与衙门》），标题本身可点明矛盾。"
+    ),
+    5: (
+        "文章标题宜先锋新颖、允许意象化与长标题，可用反讽、悖论或文学化表达"
+        "（如《从货架里长出来的帝国》《在光辉以外的地方》），标题本身即观点。"
+    ),
+}
+
+
+def resolve_magazine_title_guide(data):
+    """按当前文风档位返回文章标题拟题指南。"""
+    tech_keys = data.get("tech_keys") or []
+    score = modernity_score(tech_keys)
+    cat = govt_category(data)
+    dop = dop_law(data)
+    tier = resolve_tier(score, cat, dop)
+    return MAGAZINE_TITLE_GUIDES.get(tier, MAGAZINE_TITLE_GUIDES[3])
