@@ -112,7 +112,7 @@ def load_config():
     # 文风系统: 只接受 legacy/dynamic, 非法时回退 legacy
     if cfg.get("style_system") not in ("legacy", "dynamic"):
         log(f"警告: style_system={cfg.get('style_system')!r} 无效, 回退到 legacy。")
-        cfg["style_system"] = "legacy"
+        cfg["style_system"] = "dynamic"
     return cfg
 
 # ---------------------------------------------------------------------------

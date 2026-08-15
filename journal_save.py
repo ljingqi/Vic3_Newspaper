@@ -33,6 +33,7 @@ import threading
 import time
 import zipfile
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -131,10 +132,17 @@ GAME_LOCALIZATION = r"F:\Game\steamapps\common\Victoria 3\game\localization\simp
 WORKSHOP_DIR = r"F:\Game\steamapps\workshop\content\529340"
 GOVERNMENT_TYPES_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\government_types"
 CHARACTER_TEMPLATES_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\character_templates"
+GAME_DIR = os.path.dirname(os.path.dirname(GAME_LOCALIZATION))
+MAP_EDITOR_STATUS = os.path.join(GAME_DIR, "tools", "mapeditor",
+                                 "map_editor_status.txt")
+STATE_REGIONS_DIR = os.path.join(GAME_DIR, "map_data", "state_regions")
 
 _NAME_CACHE = None
 _LOC_ALL = None
 _LOC_PLACEHOLDER_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9-]*\$")
+_PROVINCE_ID_BY_COLOR = None
+_REGION_HUB_KEYS = None
+_PROVINCE_HUB_TYPES = None
 
 def _loc_dirs():
     """本地化目录列表: 游戏原版 + 当前 playset 已启用的 mod (mod 覆盖原版)。
@@ -984,6 +992,154 @@ def _resolve_loc_template(value, loc, depth=0):
         return m.group(0)
     return re.sub(r"\$([A-Za-z_][A-Za-z_0-9]*)\$", repl, value)
 
+def _brace_block(text, open_idx):
+    """返回从 '{' 下标开始的配对大括号内容 (含两端); 不配对返回 ""。"""
+    depth = 0
+    for i in range(open_idx, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_idx:i + 1]
+    return ""
+
+
+def _load_province_id_by_color():
+    """省份颜色 (十进制, 如 xF080A0 → 15761568) → 存档省份 id。
+
+    数据源: 游戏 tools/mapeditor/map_editor_status.txt 首个 completed 块,
+    其条目按省份 id 升序导出, 即条目顺序就是省份 id。
+    """
+    global _PROVINCE_ID_BY_COLOR
+    if _PROVINCE_ID_BY_COLOR is not None:
+        return _PROVINCE_ID_BY_COLOR
+    mapping = {}
+    try:
+        with open(MAP_EDITOR_STATUS, encoding="utf-8-sig") as fp:
+            txt = fp.read()
+        i = txt.find("completed={")
+        if i >= 0:
+            body = _brace_block(txt, txt.find("{", i))
+            for j, n in enumerate(re.findall(r"\b(\d+)\s*=", body)):
+                mapping[int(n)] = j
+    except Exception:
+        pass
+    _PROVINCE_ID_BY_COLOR = mapping
+    return mapping
+
+
+def _region_hub_keys():
+    """州域 key → hub 省份键: {STATE_XXX: {city/port/farm/mine/wood: 'xHEX'}}。
+
+    解析 map_data/state_regions/*.txt 的 city/port/farm/mine/wood 字段;
+    目录缺失/解析失败返回 {}。
+    """
+    global _REGION_HUB_KEYS
+    if _REGION_HUB_KEYS is not None:
+        return _REGION_HUB_KEYS
+    out = {}
+    try:
+        if not os.path.isdir(STATE_REGIONS_DIR):
+            _REGION_HUB_KEYS = out
+            return out
+        for fn in sorted(os.path.join(STATE_REGIONS_DIR, n)
+                         for n in os.listdir(STATE_REGIONS_DIR)
+                         if n.endswith(".txt")):
+            with open(fn, encoding="utf-8-sig") as fp:
+                txt = fp.read()
+            for m in re.finditer(r"\b(STATE_[A-Z0-9_]+)\s*=\s*\{", txt):
+                body = _brace_block(txt, m.end() - 1)
+                hubs = {}
+                for hub in HUB_ORDER:
+                    hm = re.search(r"\b" + hub +
+                                   r'\s*=\s*"(x[0-9A-Fa-f]{6})"', body)
+                    if hm:
+                        hubs[hub] = hm.group(1)
+                if hubs:
+                    out[m.group(1)] = hubs
+    except Exception:
+        pass
+    _REGION_HUB_KEYS = out
+    return out
+
+
+def _province_hub_types():
+    """存档省份 id → hub 类型 (city/port/farm/mine/wood); 仅 hub 省份有映射。
+
+    由 state_regions 的 hub 省份键 + 颜色→id 表拼出; 同一省份兼作多类 hub
+    (如城市兼农场) 时按 HUB_ORDER 优先取首个 (city)。
+    """
+    global _PROVINCE_HUB_TYPES
+    if _PROVINCE_HUB_TYPES is not None:
+        return _PROVINCE_HUB_TYPES
+    pid_by_color = _load_province_id_by_color()
+    out = {}
+    for hubs in _region_hub_keys().values():
+        for hub, key in hubs.items():
+            try:
+                pid = pid_by_color.get(int(key[1:], 16))
+            except ValueError:
+                pid = None
+            if pid is not None and pid not in out:
+                out[pid] = hub
+    _PROVINCE_HUB_TYPES = out
+    return out
+
+
+def _owned_state_provinces(state_obj):
+    """州对象 provinces 字段 → 占有省份 id 列表 (多个 [起点, 额外数] 区间对)。"""
+    provs = (state_obj.get("provinces") or {}).get("provinces") or []
+    out = []
+    for i in range(0, len(provs) - 1, 2):
+        first, extra = provs[i], provs[i + 1]
+        out.extend(range(first, first + extra + 1))
+    return out
+
+
+def _hub_province_owned(state_obj, hub_type):
+    """hub 类型对应的州域 hub 省份是否在本州占有省份内。
+    州对象缺失 / hub 键缺失 / 省份映射失败时按 True 处理 (沿用原取名, 不误伤普通州)。"""
+    if not state_obj or hub_type not in HUB_ORDER:
+        return True
+    key = (_region_hub_keys().get(state_obj.get("region") or "") or {}).get(hub_type)
+    if not key:
+        return True
+    try:
+        prov = _load_province_id_by_color().get(int(key[1:], 16))
+    except ValueError:
+        return True
+    if prov is None:
+        return True
+    return prov in _owned_state_provinces(state_obj)
+
+
+def _hub_name_for(state_obj, hub_type):
+    """州内某 hub 类型的显示名 (分治州校正)。
+
+    普通州 (hub 省份归本州): 与原逻辑一致。分治州: 若该 hub 类型的省份
+    属别国 (如卢卡的伐木营地 → wood hub 在帕尔马), 回退到本州首都省所在
+    hub 名 (该国自己那块地的 hub); 本州不占有任何 hub 省份时返回 None
+    (不把别国 hub 名安在别国分治州的建筑上)。
+    """
+    if not state_obj or hub_type not in HUB_ORDER:
+        return None
+    hubs = _hub_names(state_obj)
+    idx = HUB_ORDER.index(hub_type)
+    if not (0 <= idx < len(hubs)) or not hubs[idx]:
+        return None
+    if _hub_province_owned(state_obj, hub_type):
+        return hubs[idx]
+    cap = state_obj.get("capital")
+    if cap is not None:
+        cap_hub = _province_hub_types().get(cap)
+    if cap_hub in HUB_ORDER:
+        i2 = HUB_ORDER.index(cap_hub)
+        if i2 < len(hubs) and hubs[i2]:
+            return hubs[i2]
+    return None
+
+
 def _hub_name_bad(v):
     """hub 名解析失败判定: 空 / 含未替换占位符 / 仍是本地化键或全大写 key。"""
     return (not isinstance(v, str) or not v or "$" in v
@@ -1742,7 +1898,11 @@ def _state_region_key(data, state_id):
     return obj.get("region") if obj else None
 
 def _capital_name(data, country, ctx=None):
-    """首都 state → 中文名: 优先城市 hub 名(本地化/玩家改名), 失败回退州域名。
+    """首都 state → 中文名: 优先首都省所在 hub 名(本地化/玩家改名),
+    其次城市 hub 名, 失败回退州域名。
+
+    分治州域 (如艾米利亚被卢卡/帕尔马/摩德纳拆分) 里, 小国首都省可能不是
+    city hub (卢卡 = port hub), 故先按州 capital 省份定位 hub 类型再取对应名。
     ctx 可选: SaveContext, 传入时州对象走一次解析缓存, 避免重复扫描 states 库。"""
     cap_id = (country or {}).get("capital")
     if not cap_id:
@@ -1750,6 +1910,13 @@ def _capital_name(data, country, ctx=None):
     sobj = ctx.state_object(cap_id) if ctx else _state_object(data, cap_id)
     if sobj:
         hubs = _hub_names(sobj)
+        cap_prov = sobj.get("capital")
+        if cap_prov is not None:
+            hub_type = _province_hub_types().get(cap_prov)
+            if hub_type in HUB_ORDER:
+                idx = HUB_ORDER.index(hub_type)
+                if idx < len(hubs) and hubs[idx]:
+                    return hubs[idx]
         if hubs and hubs[0]:
             return hubs[0]
     rk = ctx.state_region_key(cap_id) if ctx else _state_region_key(data, cap_id)
@@ -2391,7 +2558,8 @@ def _country_technologies(data, country_id):
 def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
                      building_map=None, incorporation=None, harvest_conditions=None,
                      pop_needs=None, hub_names=None, price_map=None, vital=None,
-                     movement_names=None, workplace_ownership=None):
+                     movement_names=None, workplace_ownership=None,
+                     state_obj=None):
     """把单个 pop 对象整理成「家庭采访」数据块。"""
     wf = pop.get("workforce") or 0
     dep = pop.get("dependents") or 0
@@ -2514,8 +2682,11 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
     # 访谈地点: 优先用工作建筑所属 hub 的城市名
     hub_name = None
     hub_cat = _hub_for_building(btype)
-    if hub_cat and hub_names:
-        hub_name = hub_names[HUB_ORDER.index(hub_cat)]
+    if hub_cat:
+        if state_obj is not None:
+            hub_name = _hub_name_for(state_obj, hub_cat)
+        elif hub_names:
+            hub_name = hub_names[HUB_ORDER.index(hub_cat)]
     return {
         "location": pop.get("location"),
         "workplace_id": pop.get("workplace"),
@@ -3195,6 +3366,7 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                   building_map=building_map, incorporation=incorporation,
                   harvest_conditions=harvest_conditions, pop_needs=pop_needs,
                   hub_names=hub_names, price_map=price_map,
+                  state_obj=state_obj,
                   vital=dict(pollution_pct=pollution_pct, devastation=devastation,
                              bits=bits, schools_inv=schools_inv,
                              building_group=building_group, active_pms=active_pms,
@@ -4761,11 +4933,12 @@ def _pool_goods_text(go, gm):
                      sorted(items, reverse=True)[:4])
 
 
-def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None):
-    """一栋建筑 → 自然语言: 类型/州/等级/生产方法/所有权/雇佣/投入产出。"""
+def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None, place=None):
+    """一栋建筑 → 自然语言: 类型/州/等级/生产方法/所有权/雇佣/投入产出。
+    place 非空时用它替代州名 (如贸易中心改用 Hub 名)。"""
     btype = obj.get("building") or ""
     zh = loc.get(btype) or btype or "未知建筑"
-    state = ctx.state_zh(obj.get("state")) or "未知州"
+    state = place or ctx.state_zh(obj.get("state")) or "未知州"
     bits = [f"{zh}（位于{state}）"]
     lv = obj.get("levels")
     if isinstance(lv, (int, float)):
@@ -4921,9 +5094,8 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
         rural_lines.append("本期随线走访两座乡村Hub：")
         for b, o in rural:
             hub_cat = _hub_for_building(o.get("building"))
-            hs = _hub_names(ctx.state_object(o.get("state")))
-            idx = HUB_ORDER.index(hub_cat) if hub_cat in HUB_ORDER else 0
-            hub_n = hs[idx] if hs and idx < len(hs) else None
+            hub_n = _hub_name_for(ctx.state_object(o.get("state")), hub_cat) \
+                if hub_cat in HUB_ORDER else None
             rural_lines.append(
                 f"【{hub_n or '乡村Hub'}】"
                 + _pool_building_text(melted, ctx, cid, b, o, loc, gm, pops=pops))
@@ -5067,6 +5239,19 @@ def _pool_turmoil_data(melted, snap, ctx, rnd, country, cid, data):
     }}
 
 
+def _pool_shelf_hub_zh(tsid, ctx):
+    """贸易中心所在州的 Hub 名: 有 port 优先取 port, 内陆省份取 city;
+    解析失败返回 None (调用方回退州名)。"""
+    sobj = ctx.state_object(tsid) if tsid is not None else None
+    if not sobj:
+        return None
+    for hub_type in ("port", "city"):
+        name = _hub_name_for(sobj, hub_type)
+        if name:
+            return name
+    return None
+
+
 def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     """从货架里长出来的: 贸易中心最大交易商品 → 生产链 POP → 顾客。"""
     if country is None:
@@ -5080,10 +5265,6 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
            if t == "building_trade_center" and (objs[b].get("staffing") or 0) > 0]
     if not tcs:
         return None
-    tb, tobj = rnd.choice(tcs)
-    tsid = tobj.get("state")
-    tstate_zh = ctx.state_zh(tsid) or "未知州"
-    traded = (ctx.state_object(tsid) or {}).get("traded_goods") or []
     prices = _market_price_map(melted, country) or {}
     chain, industrial = _load_goods_chain()
     if not industrial:
@@ -5109,6 +5290,13 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     eligible_goods = {g for g in industrial
                       if g in consumer and _supply_ok(g)}
 
+    def _local_producers(gid):
+        """本地 (玩家各州) 产出该商品的生产建筑; 无则返回空列表。"""
+        if gid is None:
+            return []
+        return [(b, o) for b, o in objs.items()
+                if str(gid) in ((o.get("output_goods") or {}).get("goods") or {})]
+
     def _rank(gk):
         if gk not in zh:
             return None
@@ -5117,22 +5305,51 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         return {"key": gk, "zh": zh[gk], "gid": gid, "price": p,
                 "cost": cost.get(gk)}
 
-    ranked = [r for r in (_rank(gk) for gk in traded if gk in eligible_goods) if r]
-    if not ranked:
-        # 该州无可直接消费的加工品交易记录 → 放宽到市场有价的制成品
-        # 按商品名排序迭代, 避免 set 顺序跨进程随机导致同种子选出不同商品
+    def _pick_qualified(cands):
+        """逐个检定「本地有生产建筑」: 不合格换下一种, 返回 (商品, 生产建筑列表)。"""
+        for c in cands:
+            prod = _local_producers(c["gid"])
+            if prod:
+                return c, prod
+        return None, []
+
+    # 贸易中心按年份种子打乱顺序逐个检定: 优先该州交易记录里的合格制成品
+    # (市价降序, 无本地生产建筑就换下一种), 全部不合格再换下一个贸易中心。
+    tc_order = list(tcs)
+    rnd.shuffle(tc_order)
+    good = None
+    producers = []
+    tb = tobj = None
+    tsid = tstate_zh = None
+    source = None
+    for tb, tobj in tc_order:
+        tsid = tobj.get("state")
+        tstate_zh = ctx.state_zh(tsid) or "未知州"
+        traded = (ctx.state_object(tsid) or {}).get("traded_goods") or []
+        ranked = [r for r in (_rank(gk) for gk in traded if gk in eligible_goods) if r]
+        ranked.sort(key=lambda r: -(r["price"] if isinstance(r["price"], (int, float))
+                                    else 0))
+        good, producers = _pick_qualified(ranked)
+        if good:
+            source = "traded"
+            break
+    if good is None and tc_order:
+        # 所有贸易中心都没有本地可产的交易商品 → 放宽到市场有价的制成品;
+        # 按商品名排序迭代, 避免 set 顺序跨进程随机导致同种子选出不同商品。
+        tb, tobj = tc_order[0]
+        tsid = tobj.get("state")
+        tstate_zh = ctx.state_zh(tsid) or "未知州"
         ranked = [r for r in (_rank(gk) for gk in sorted(eligible_goods)) if r]
-    ranked.sort(key=lambda r: -(r["price"] if isinstance(r["price"], (int, float))
-                                else 0))
-    if not ranked:
+        good, producers = _pick_qualified(ranked)
+        if good:
+            source = "fallback"
+    if good is None:
+        # 本地确实没有任何可产出的合格制成品 → 数据不足, 交文章池兜底。
         return None
-    good = ranked[0]
     gid = good["gid"]
     chain_info = chain.get(good["key"]) or {}
     producers_zh = [loc.get(b, b) for b in sorted(chain_info.get("producers") or [])]
     inputs_zh = [zh.get(i, i) for i in sorted(chain_info.get("inputs") or [])]
-    producers = [(b, o) for b, o in objs.items()
-                 if str(gid) in ((o.get("output_goods") or {}).get("goods") or {})]
     # 导读「主要原料」优先取本地生产建筑的实际投入 (与作坊段口径一致, 反映在用 PM);
     # 本地无生产建筑时才回落静态产业链 (该建筑所有 PM 的并集, 含未启用的电力等)。
     lead_inputs_zh = inputs_zh
@@ -5149,25 +5366,57 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                     _real_input_keys.append(kkey)
         if _real_input_keys:
             lead_inputs_zh = [zh.get(k, k) for k in sorted(_real_input_keys)]
-    world_p = world_prices.get(gid) if gid is not None else None
-    if not isinstance(world_p, (int, float)):
-        world_p = good["price"] if isinstance(good["price"], (int, float)) else None
     pops = ctx.player_pops(state_ids)
+
+    # 出口去向必须在 lead 之前算好: lead 直接写真实进口国, 不写「世界市场」。
+    importer = None
+    market_prices = {}
+    laws_by_cid = {}
+    try:
+        laws_by_cid = _pool_all_laws(melted)
+        countries, market_prices = _pool_country_objects(melted)
+        importer = _pool_shelf_importer(melted, ctx, snap, rnd, countries,
+                                        market_prices, world_prices, gid, cid,
+                                        data.get("player") or "", good["key"],
+                                        laws_by_cid=laws_by_cid)
+    except Exception:
+        importer = None
+
+    hub_zh = _pool_shelf_hub_zh(tsid, ctx)
+    focus_zh = hub_zh or tstate_zh
+    if source == "traded":
+        active_line = (
+            f"该州交易的大宗商品按市价推定，最活跃商品为「{good['zh']}」"
+            + (f"，市价约{round(good['price'], 2)}"
+               if isinstance(good["price"], (int, float)) else "") + "。")
+    else:
+        active_line = (
+            f"本期从我国可自产的制成品中选取市价居前的「{good['zh']}」"
+            + (f"（市价约{round(good['price'], 2)}）"
+               if isinstance(good["price"], (int, float)) else "")
+            + "作为货架焦点。")
+    if importer:
+        dest = f"经我国贸易中心出口至{importer['country']}"
+        extra = []
+        if importer.get("state_zh"):
+            extra.append(f"该国市场中心州：{importer['state_zh']}")
+        if isinstance(importer.get("market_price"), (int, float)):
+            extra.append(f"当地市价约{round(importer['market_price'], 2)}")
+        export_line = dest + (f"（{'，'.join(extra)}）" if extra else "") + "。"
+    else:
+        export_line = "（出口去向数据不足，本期按本地市场口径写作。）"
     lead = [
-        f"本期货架焦点：{tstate_zh}的贸易中心。",
-        _pool_building_text(melted, ctx, cid, tb, tobj, loc, gm, pops=pops),
-        f"该州交易的大宗商品按市价推定，最活跃商品为「{good['zh']}」"
-        + (f"，市价约{round(good['price'], 2)}"
-           if isinstance(good["price"], (int, float)) else "") + "。",
+        f"本期货架焦点：{focus_zh}的贸易中心。",
+        _pool_building_text(melted, ctx, cid, tb, tobj, loc, gm, pops=pops,
+                            place=hub_zh),
+        active_line,
         (f"「{good['zh']}」为可直接被居民消费的制成品，"
          "产业链至少经过原料→加工两个环节"
          + (f"（主要原料：{'、'.join(lead_inputs_zh[:4])}）"
             if lead_inputs_zh else "")
          + (f"；通常由{'、'.join(producers_zh[:3])}加工"
             if producers_zh else "") + "。"),
-        (f"经我国贸易中心出口至世界市场（世界市场参考价约{round(world_p, 2)}）"
-         if isinstance(world_p, (int, float))
-         else "该商品经我国贸易中心出口至世界市场。"),
+        export_line,
     ]
     workshop_lines = [f"生产「{good['zh']}」的本地建筑："]
     if producers:
@@ -5217,18 +5466,6 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
              + "、".join(inputs_zh[:4])
              + "，多依赖外地输入，行文须含蓄。）" if inputs_zh
              else "（本地无上游生产建筑样本，原料多依赖外地输入，行文须含蓄。）"))
-    importer = None
-    market_prices = {}
-    try:
-        laws_by_cid = _pool_all_laws(melted)
-        countries, market_prices = _pool_country_objects(melted)
-        importer = _pool_shelf_importer(melted, ctx, snap, rnd, countries,
-                                        market_prices, world_prices, gid, cid,
-                                        data.get("player") or "", good["key"],
-                                        laws_by_cid=laws_by_cid)
-    except Exception:
-        laws_by_cid = {}
-        importer = None
     cust_lines = ["目的地顾客样本："]
     if importer:
         tariff_txt = ""
@@ -5282,7 +5519,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         for pid, po in _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
                                        n=2, rnd=rnd):
             cust_lines.append("- " + _pool_pop_text(pid, po, ctx, loc))
-        cust_lines.append("（世界市场去向数据不足，按本地市场口径写目的地顾客。）")
+        cust_lines.append("（出口去向数据不足，按本地市场口径写目的地顾客。）")
     if not importer and isinstance(good["price"], (int, float)):
         cust_lines.append(
             f"「{good['zh']}」当前市价约{round(good['price'], 2)}，"
@@ -5617,8 +5854,13 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
         f"海外属地：{st_zh}（尚未完全并入本土，"
         f"并入进度约{round(((sobj or {}).get('incorporation') or 0) * 100)}%）。",
     ]
-    if hs and hs[0]:
-        lead.append(f"当地首府：{hs[0]}。")
+    cap_hub = (_province_hub_types().get(sobj.get("capital"))
+               if sobj and sobj.get("capital") is not None else None)
+    local_cap = (_hub_name_for(sobj, cap_hub)
+                 if cap_hub in HUB_ORDER
+                 else (hs[0] if hs else None))
+    if local_cap:
+        lead.append(f"当地首府：{local_cap}。")
     if st.get("top_culture"):
         lead.append(f"当地主要文化：{st.get('top_culture')}。")
     harbor = []
@@ -7971,6 +8213,9 @@ def _extract_interest_groups(data, player_id, chars=None):
 # ---------------------------------------------------------------------------
 
 SNAPSHOT_CACHE_VERSION = 2
+# 快照缓存写入锁: 报纸/杂志并行生成时两者会各自落盘同一 snapshot_<year>.json
+# (内容相同), 加锁避免并发写同一文件交错。
+_SNAP_CACHE_LOCK = threading.Lock()
 
 
 def _current_save_stamp():
@@ -8008,8 +8253,9 @@ def _save_snapshot_cache(snap, journal_dir, folder, year):
     path = _snapshot_cache_path(journal_dir, folder, year)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as fp:
-            json.dump(snap2, fp, ensure_ascii=False)
+        with _SNAP_CACHE_LOCK:
+            with open(path, "w", encoding="utf-8") as fp:
+                json.dump(snap2, fp, ensure_ascii=False)
     except Exception as e:
         print(f"写入快照缓存失败: {e}")
 
@@ -8199,27 +8445,50 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None, ctx=N
 
 
 def _generate_async(year, snap, melted=None):
-    """后台线程: 生成某年报纸与杂志(同一快照 + 同一 SaveContext,
-    不重复熔化解析, 也不重复扫描索引/POP/州对象), 不阻塞监控。"""
+    """后台线程: 并行生成某年报纸与杂志(同一快照 + 同一 SaveContext,
+    不重复熔化解析, 也不重复扫描索引/POP/州对象), 不阻塞监控。
+
+    报纸与杂志的 LLM 请求相互独立: 报纸只消费 snap+往年 raw JSON, 杂志只消费
+    melted+snap, 两边不读对方输出, 因此顶层并行使总耗时约等于两者较长者,
+    而非顺序相加。DeepSeek 官方对 deepseek-v4-flash 的账号级并发上限为 2500,
+    本项目两边同时打满也仅约 23 个并发请求, 远低于限流, 并行安全。
+    前置步骤(定会话文件夹/落快照缓存/合并去年战争)在线程启动前只做一次:
+    - 避免两线程并发写同一 snapshot_<year>.json (已另加 _SNAP_CACHE_LOCK 兜底);
+    - 避免两线程并发改写 snap 的 last_year_wars/prev_year_wars (幂等但应只算一次)。"""
     import journal
     cfg = journal.load_config()
     ctx = SaveContext(melted) if melted is not None else None
-    try:
-        if cfg.get("newspaper_enabled", True):
-            make_newspaper(year=year, force=True, snap=snap, ctx=ctx)
-        else:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年报纸已在配置中禁用 "
-                  f"(newspaper_enabled=false), 跳过")
-    except Exception as e:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年报纸生成失败: {e}")
-    try:
-        if cfg.get("magazine_enabled", True):
-            make_magazine(year=year, force=True, melted=melted, snap=snap, ctx=ctx)
-        else:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年杂志已在配置中禁用 "
-                  f"(magazine_enabled=false), 跳过")
-    except Exception as e:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年杂志生成失败: {e}")
+    # 前置步骤只做一次 (与 make_newspaper/make_magazine 内部的重复步骤幂等)
+    if not journal.SESSION["folder"]:
+        with journal._FOLDER_LOCK:
+            if not journal.SESSION["folder"]:
+                journal.SESSION["folder"] = journal.determine_folder(
+                    snap.get("player") or "未知名国家", cfg["journal_dir"])
+    _save_snapshot_cache(snap, cfg["journal_dir"],
+                         journal.SESSION["folder"], snap.get("year"))
+    _merge_prev_year_wars(snap, cfg["journal_dir"], journal.SESSION["folder"])
+
+    def _run(name, enabled_key, fn):
+        try:
+            if cfg.get(enabled_key, True):
+                fn()
+            else:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年{name}已在配置中禁用 "
+                      f"({enabled_key}=false), 跳过")
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年{name}生成失败: {e}")
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        futures = [
+            ex.submit(_run, "报纸", "newspaper_enabled",
+                      lambda: make_newspaper(year=year, force=True,
+                                             snap=snap, ctx=ctx)),
+            ex.submit(_run, "杂志", "magazine_enabled",
+                      lambda: make_magazine(year=year, force=True,
+                                            melted=melted, snap=snap, ctx=ctx)),
+        ]
+        for f in futures:
+            f.result()
 
 # ---------------------------------------------------------------------------
 # 命令行
