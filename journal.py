@@ -806,7 +806,7 @@ IG_NAMES = {
     "ig_shipping_magnates": "航运巨头", "ig_powerbrokers": "政治掮客",
 }
 
-JOB_SATISFACTION_GUIDE = ("职业满意度为该POP对当前工作/薪水的满意程度："
+JOB_SATISFACTION_GUIDE = ("职业满意度为该人群对当前工作/薪水的满意程度："
                           "正值=满意，负值=不满，数值越大情绪越强烈。")
 
 def load_history(data, cfg, years_back=9):
@@ -870,11 +870,11 @@ def _leader_bg_phrase(home, religion, culture, data):
 
 SECTION_DEFS = [
     ("headline", "头版", "一句话导语，概括本年度最大事态；须点名国名与年份。"),
-    ("war", "战事专电", "报道去年（上一历年）发生的战事：对阵双方（玩家参战或列强参战，仅列主要参加者）、"
+    ("war", "战事专电", "报道去年（上一历年）发生的战事：对阵双方（本国参战或列强参战，仅列主要参加者）、"
      "死伤规模、耗资、是否已结束。传输的数据只有去年发生的战争，不含今年是否处于交战状态，"
      "不得推断或编造当前战况。"),
     ("diplo", "外交风云", "报道本国与列强的外交：同盟/敌对/禁运等条约关系、附庸国、世界八强态势。"),
-    ("econ", "经济要闻", "报道本国经济：GDP、人口、生活水平(SoL)、识字率。"),
+    ("econ", "经济要闻", "报道本国经济：生产总值、人口、生活水平、识字率。"),
     ("politics", "政界动态", "报道政体、统治者、当前执政利益集团（标注「执政」者即组阁集团，"
      "数据含其政治力量占比、首领姓名与首领个人意识形态）、主要利益集团力量格局、"
      "当前影响最大的政治运动，"
@@ -886,7 +886,7 @@ SECTION_DEFS = [
      "在其上扩写细节；该行缺失时头衔按政体与国名常识选用，"
      "可在不编造具体国名与数字的前提下合理演绎统治者行踪。"),
     ("society", "民族宗教与社会", "报道民族构成、宗教构成、移民动向、社会风尚。"),
-    ("family", "民生访谈", "记者在随机州随机建筑内，采访生活水平最低的人群，"
+    ("family", "民生访谈", "记者在样本州的一处建筑内，采访生活水平最低的人群，"
      "以访谈体写衣食住行、收入支出、受抚养人口与生活水平；须体现该人群政治倾向"
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
      "须基于给定数据，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
@@ -895,8 +895,8 @@ SECTION_DEFS = [
      "以同样的访谈体写其衣食住行与收支，并体现该人群政治倾向与参与比例最高的两个政治运动，"
      "须与民生访谈形成贫富对照，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
      "可融入叙事作风味，但不得改写成具体数字。"),
-    ("unemployed", "失业民生", "仅当随机州失业率>5%时发送：报道该州失业状况，"
-     "采访失业POP中人口最多的一群（同访谈体），必须体现给定失业率，并体现该人群政治倾向"
+    ("unemployed", "失业民生", "仅当样本州失业率超过5%时发送：报道该州失业状况，"
+     "采访失业人群中人口最多的一群（同访谈体），必须体现给定失业率，并体现该人群政治倾向"
      "与参与比例最高的两个政治运动，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
      "可融入叙事作风味，但不得改写成具体数字。"),
     ("comment", "本报评论", "编辑部评论，结合历年发展对照，评述国运与民生之变迁。"),
@@ -909,6 +909,8 @@ FACT_GUIDE = (
     "「执政利益集团」指当前组阁执政的利益集团（即数据中标注「执政」的集团），"
     "其政治力量为该集团在政坛的影响力占比；报道政界动态时应以执政集团为核心，"
     "结合其力量消长说明朝局与施政倾向，但不得虚构具体数字。"
+    "数据中给出的姓名（统治者、大臣、受访人等）一律原样使用，不得自行取名或改名；"
+    "未给出姓名的直接描写对象，一律用身份/职业代称，不得凭空命名。"
 )
 
 
@@ -1148,7 +1150,7 @@ def render_overview(data, history=None):
 def render_war(data, history=None):
     L = []
     # 只传去年发生的战争: 玩家参战或列强参战, 仅主要参加者; 不含当前交战状态
-    L.append("- 以下战事为去年（上一历年）发生的战争记录（玩家参战或列强参战，"
+    L.append("- 以下战事为去年（上一历年）发生的战争记录（本国参战或列强参战，"
              "仅列主要参加者）；数据不含今年是否处于交战状态，请勿推断今年战况。")
     wars = _merged_last_year_wars(data, history)
     if not wars:
@@ -1676,9 +1678,9 @@ def _render_vital_stats(obj):
     death = obj.get("death_rate_pct")
     if birth is not None and death is not None:
         if incorp is None or incorp < 1:
-            note = "结合生活水平、污染、荒废度与劳动条件的年化估算率，该州未完全并入本土，未计入卫生机构与相关法律"
+            note = "年化估算；该州未完全并入本土，卫生机构与相关法律覆盖有限"
         else:
-            note = "结合生活水平、污染、荒废度、卫生机构与相关法律修正的年化估算率"
+            note = "年化估算"
         L.append(f"- 出生率/死亡率（{note}）：约{birth:.2f}% / 约{death:.2f}%")
         le = _life_expectancy_hint(obj.get("sol"), death,
                                    obj.get("hazard_excess_pct"),
@@ -1785,11 +1787,27 @@ def _render_pop_igs(obj):
     return L
 
 
+def _newspaper_person_name(data, role, culture_key):
+    """确定性随机中文人名: 按 (年|国名|报纸板块|角色) 播种, 同年稳定。
+    女性概率按现行女权法律 (data["women_law"]) 调整; 法律缺失时维持合并池现行为。
+    无该文化姓名池时返回 None (此时要求模型用身份代称, 不得自行命名)。"""
+    if not culture_key:
+        return None
+    try:
+        from journal_save import culture_person_name, women_law_female_pct
+    except Exception:
+        return None
+    seed = f"{data.get('year')}|{data.get('player')}|newspaper|{role}"
+    return culture_person_name(
+        culture_key, seed=seed,
+        female_pct=women_law_female_pct(data.get("women_law")))
+
+
 def render_family(data, style=None):
     """民生访谈: 记者跟踪采访一个随机选取的平民家庭 (存档直读)。"""
     fi = data.get("family_interview")
     if not fi:
-        return "- (存档直读数据缺：本期未提供家庭采访样本)"
+        return "- (资料缺失：本期未提供家庭采访样本)"
     L = []
     region = fi.get("region_name") or "（州名数据缺）"
     pop_zh = POP_TYPE_NAMES.get(fi.get("pop_type"), fi.get("pop_type") or "平民")
@@ -1805,6 +1823,9 @@ def render_family(data, style=None):
         L.append(f"- 采访对象：{loc}的一户失业的{culture}人{rel_zh}{pop_zh}家庭")
     else:
         L.append(f"- 采访对象：{loc}的一户{culture}人{rel_zh}{pop_zh}家庭")
+    nm = _newspaper_person_name(data, "family", fi.get("culture_key"))
+    if nm:
+        L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
     own = fi.get("workplace_ownership")
     if own:
         L.append(f"- {own}")
@@ -1847,7 +1868,7 @@ def render_family(data, style=None):
     if cgoods:
         names = [g.get("name") for g in cgoods if g.get("name")]
         if names:
-            L.append("- 主要消费商品（按需求权重降序）：" + "、".join(names))
+            L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
         trends = []
         for g in cgoods:
             d = g.get("dev_pct")
@@ -1871,7 +1892,7 @@ def render_family(data, style=None):
                  + (f"（{band}）" if band else ""))
     literacy = fi.get("literacy_pct")
     if literacy is not None:
-        L.append(f"- 识字率：约{literacy:.2f}%（该POP识字人口占比）")
+        L.append(f"- 识字率：约{literacy:.2f}%（该人群识字人口占比）")
     acc_status = fi.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
@@ -1886,22 +1907,22 @@ def render_family(data, style=None):
     dependents = fi.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
     if dr is not None:
-        L.append(f"- 该POP人口构成：共约{pop_total}人（劳动力{workforce}人，"
+        L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
                  f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
-                 f"——以下收支为该POP全体居民合计，采访家庭为其代表")
+                 f"——以下收支为该人群全体居民合计，采访家庭为其代表")
     income = fi.get("income")
     expense = fi.get("expense")
     if income is not None and expense is not None:
         parts = fi.get("income_parts") or []
-        inc_line = f"- 每周收入(该POP合计)：约{income}英镑"
+        inc_line = f"- 每周收入（该人群合计）：约{income}英镑"
         if parts:
             inc_line += "（" + "、".join(parts) + "）"
         L.append(inc_line)
         exp_parts = fi.get("expense_parts") or []
         if exp_parts:
-            L.append(f"- 每周支出(该POP合计)：约{expense}英镑（" + "、".join(exp_parts) + "）")
+            L.append(f"- 每周支出（该人群合计）：约{expense}英镑（" + "、".join(exp_parts) + "）")
         else:
-            L.append(f"- 每周支出(该POP合计)：约{expense}英镑")
+            L.append(f"- 每周支出（该人群合计）：约{expense}英镑")
         L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
                  f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
                  if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
@@ -1917,7 +1938,7 @@ def render_peer(data, style=None):
     与 render_family 同风格渲染, 供模型写作贫富对照访谈。"""
     peer = data.get("top_sol_peer")
     if not peer:
-        return "- (存档直读数据缺：本期未提供邻里富户样本)"
+        return "- (资料缺失：本期未提供邻里富户样本)"
     L = []
     region = peer.get("region_name") or "（州名数据缺）"
     pop_zh = POP_TYPE_NAMES.get(peer.get("pop_type"), peer.get("pop_type") or "平民")
@@ -1940,6 +1961,9 @@ def render_peer(data, style=None):
             L.append(f"- 追踪对象：在{loc}的{workplace}工作的、生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
         else:
             L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
+    nm = _newspaper_person_name(data, "peer", peer.get("culture_key"))
+    if nm:
+        L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
     own = peer.get("workplace_ownership")
     if own and workplace:
         L.append(f"- {own}")
@@ -1982,7 +2006,7 @@ def render_peer(data, style=None):
     if cgoods:
         names = [g.get("name") for g in cgoods if g.get("name")]
         if names:
-            L.append("- 主要消费商品（按需求权重降序）：" + "、".join(names))
+            L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
         trends = []
         for g in cgoods:
             d = g.get("dev_pct")
@@ -2006,7 +2030,7 @@ def render_peer(data, style=None):
                  + (f"（{band}）" if band else ""))
     literacy = peer.get("literacy_pct")
     if literacy is not None:
-        L.append(f"- 识字率：约{literacy:.2f}%（该POP识字人口占比）")
+        L.append(f"- 识字率：约{literacy:.2f}%（该人群识字人口占比）")
     acc_status = peer.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
@@ -2021,22 +2045,22 @@ def render_peer(data, style=None):
     dependents = peer.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
     if dr is not None:
-        L.append(f"- 该POP人口构成：共约{pop_total}人（劳动力{workforce}人，"
+        L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
                  f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
-                 f"——以下收支为该POP全体居民合计，采访家庭为其代表")
+                 f"——以下收支为该人群全体居民合计，采访家庭为其代表")
     income = peer.get("income")
     expense = peer.get("expense")
     if income is not None and expense is not None:
         parts = peer.get("income_parts") or []
-        inc_line = f"- 每周收入(该POP合计)：约{income}英镑"
+        inc_line = f"- 每周收入（该人群合计）：约{income}英镑"
         if parts:
             inc_line += "（" + "、".join(parts) + "）"
         L.append(inc_line)
         exp_parts = peer.get("expense_parts") or []
         if exp_parts:
-            L.append(f"- 每周支出(该POP合计)：约{expense}英镑（" + "、".join(exp_parts) + "）")
+            L.append(f"- 每周支出（该人群合计）：约{expense}英镑（" + "、".join(exp_parts) + "）")
         else:
-            L.append(f"- 每周支出(该POP合计)：约{expense}英镑")
+            L.append(f"- 每周支出（该人群合计）：约{expense}英镑")
         L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
                  f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
                  if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
@@ -2064,6 +2088,9 @@ def render_unemployed(data, style=None):
     rate = uni.get("unemployment_rate_pct")
     rate_s = f"约{rate:.1f}%" if isinstance(rate, (int, float)) else "（数据缺）"
     L.append(f"- 追踪对象：{loc}的一群失业的{culture}人{rel_zh}{pop_zh}")
+    nm = _newspaper_person_name(data, "unemployed", uni.get("culture_key"))
+    if nm:
+        L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
     L.append(f"- 该州失业率（失业人口/该州总人口）：{rate_s}")
     own = uni.get("workplace_ownership")
     if own:
@@ -2095,7 +2122,7 @@ def render_unemployed(data, style=None):
     if cgoods:
         names = [g.get("name") for g in cgoods if g.get("name")]
         if names:
-            L.append("- 主要消费商品（按需求权重降序）：" + "、".join(names))
+            L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
         trends = []
         for g in cgoods:
             d = g.get("dev_pct")
@@ -2119,7 +2146,7 @@ def render_unemployed(data, style=None):
                  + (f"（{band}）" if band else ""))
     literacy = uni.get("literacy_pct")
     if literacy is not None:
-        L.append(f"- 识字率：约{literacy:.2f}%（该POP识字人口占比）")
+        L.append(f"- 识字率：约{literacy:.2f}%（该人群识字人口占比）")
     acc_status = uni.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
@@ -2134,22 +2161,22 @@ def render_unemployed(data, style=None):
     dependents = uni.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
     if dr is not None:
-        L.append(f"- 该POP人口构成：共约{pop_total}人（劳动力{workforce}人，"
+        L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
                  f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
-                 f"——以下收支为该POP全体居民合计，采访家庭为其代表")
+                 f"——以下收支为该人群全体居民合计，采访家庭为其代表")
     income = uni.get("income")
     expense = uni.get("expense")
     if income is not None and expense is not None:
         parts = uni.get("income_parts") or []
-        inc_line = f"- 每周收入(该POP合计)：约{income}英镑"
+        inc_line = f"- 每周收入（该人群合计）：约{income}英镑"
         if parts:
             inc_line += "（" + "、".join(parts) + "）"
         L.append(inc_line)
         exp_parts = uni.get("expense_parts") or []
         if exp_parts:
-            L.append(f"- 每周支出(该POP合计)：约{expense}英镑（" + "、".join(exp_parts) + "）")
+            L.append(f"- 每周支出（该人群合计）：约{expense}英镑（" + "、".join(exp_parts) + "）")
         else:
-            L.append(f"- 每周支出(该POP合计)：约{expense}英镑")
+            L.append(f"- 每周支出（该人群合计）：约{expense}英镑")
         L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
                  f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
                  if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
@@ -2266,9 +2293,9 @@ def render_ads(data, history=None):
     source = new_techs or techs
     picked = random.sample(source, min(3, len(source)))
     if new_techs:
-        note = "本年新研发（与上一年存档对比得出）"
+        note = "本年新研发（与上一年记录对比得出）"
     else:
-        note = "随机取自本国已研发科技（本年无新增或缺少上年存档）"
+        note = "取自本国已研发科技（本年无新增或缺少上一年记录）"
     return (f"- 广告创作素材：{note}。必须围绕其创作，可作“最新发明”“时代进步”等宣传：\n"
             f"  {'、'.join(picked)}\n"
             "- 形式不限：商品/工艺/铺面可作货品告白；制度、思潮类科技"

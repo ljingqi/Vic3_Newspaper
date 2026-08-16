@@ -12,5 +12,12 @@
   "newspaper_enabled": true,
   "magazine_enabled": true,
   "magazine_pool_size": 3,
-  "magazine_pool_override": null
+  "magazine_pool_override": null,
+  "female_pct_by_women_law": {
+    "law_no_womens_rights": 0.05,
+    "law_women_in_the_fields": 0.05,
+    "law_women_own_property": 0.15,
+    "law_women_in_the_workplace": 0.30,
+    "law_womens_suffrage": 0.45
+  }
 }

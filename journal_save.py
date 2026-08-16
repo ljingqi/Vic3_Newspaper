@@ -673,17 +673,14 @@ def _matching_brace(text, open_idx):
     return len(text)
 
 def _homeland_dirs():
-    """本土定义目录: 原版 + workshop mod + 用户 mod (mod 覆盖原版)。"""
+    """本土定义目录: 原版 + 当前 playset 已启用的 mod (mod 覆盖原版)。
+    只读取 content_load.json 的 enabledMods, 避免把已安装但未启用的 mod
+    (如 Divergences) 的本土定义混入, 导致与游戏内实际生效不一致。"""
     dirs = [HOMELAND_STATES_DIR]
-    for base in (WORKSHOP_DIR,
-                 os.path.join(os.path.expanduser("~"), "Documents",
-                              "Paradox Interactive", "Victoria 3", "mod")):
-        if not os.path.isdir(base):
-            continue
-        for d in sorted(os.listdir(base)):
-            p = os.path.join(base, d, "common", "history", "states")
-            if os.path.isdir(p):
-                dirs.append(p)
+    for base in _enabled_mod_dirs():
+        p = os.path.join(base, "common", "history", "states")
+        if os.path.isdir(p):
+            dirs.append(p)
     return dirs
 
 def build_homeland_map():
@@ -2159,26 +2156,51 @@ def _civil_war_progress(data, country_id):
         j = end
     return out
 
-def _localize_character_name(first, last, loc):
+# 中文语境下连写(不带分隔符)的姓前名后文化: 汉字名之间不加空格/中点 (如 李昪、伊藤博文)
+_CJK_JOIN_CULTURES = {
+    "han", "manchu", "zhuang", "shan", "yuanzhumin",
+    "japanese", "korean", "vietnamese",
+}
+
+
+def _is_cjk_text(s):
+    """是否含 CJK 汉字 (用于决定名/姓之间是否连写)。"""
+    return bool(s) and any("\u4e00" <= ch <= "\u9fff" for ch in s)
+
+
+def _localize_character_name(first, last, loc, culture_key=None):
     """角色名中文化: 存档存英文名, 游戏 names_l 本地化提供英文名→中文表。
-    优先整词匹配 (如 Karam_Singh→卡拉姆·辛格), 否则按空格/下划线拆词逐个查表,
-    查不到保留原文。存档姓氏里的连字符 (如 of_Saxe-Coburg-Gotha) 会先归一为
-    下划线再整词查表 (→萨克森‑科堡‑哥达); 本地化文件同时存在连字符与下划线
-    两种 key 形式, 故先试原始 key, 再试下划线归一 (如 d-Oilliamson→德·奥扬松)。"""
-    parts = []
-    for raw in (first, last):
+    优先整词匹配 (如 Karam_Singh→卡拉姆·辛格、Gyu-ho→奎镐), 否则按空格/下划线
+    拆词逐个查表, 查不到保留原文。本地化文件同时存在连字符与下划线两种 key 形式,
+    故先试原始 key, 再分别试连字符/下划线归一 (如 d-Oilliamson→德·奥扬松)。
+    姓前/名前文化 (东亚/匈牙利等) 按文化键值重排为 姓+名 (李昪、元奎镐);
+    汉字文化连写不带分隔符, 其余用「·」连接 (吉塔·巴尔加瓦、文卡特吉·辛迪亚)。"""
+    def _one(raw):
         if not raw:
-            continue
+            return None
         if raw in loc:
-            parts.append(loc[raw])
-            continue
+            return loc[raw]
         cand = raw.replace("-", "_")
         if cand in loc:
-            parts.append(loc[cand])
-            continue
-        for tok in re.split(r"[ _]+", raw):
-            parts.append(loc.get(tok, tok))
-    return " ".join(p for p in parts if p)
+            return loc[cand]
+        cand2 = raw.replace("_", "-")
+        if cand2 in loc:
+            return loc[cand2]
+        return "".join(loc.get(tok, tok) for tok in re.split(r"[ _]+", raw))
+
+    first_zh = _one(first)
+    last_zh = _one(last)
+    if culture_key in _SURNAME_FIRST_CULTURES:
+        a, b = last_zh, first_zh
+    else:
+        a, b = first_zh, last_zh
+    if not a:
+        return b or ""
+    if not b:
+        return a
+    if culture_key in _CJK_JOIN_CULTURES and _is_cjk_text(a) and _is_cjk_text(b):
+        return a + b
+    return a + "·" + b
 
 def _player_characters(data, country_id):
     """character_manager.database 该国角色 → {id: {"name"(中文), "ideology", "template",
@@ -2212,7 +2234,8 @@ def _player_characters(data, country_id):
             continue
         if isinstance(obj, dict) and obj.get("country") == country_id:
             nm = _localize_character_name(str(obj.get("first_name") or ""),
-                                          str(obj.get("last_name") or ""), loc)
+                                          str(obj.get("last_name") or ""), loc,
+                                          culture_id_to_key(obj.get("culture")))
             culture = obj.get("culture")
             religion = obj.get("religion")
             home_region = obj.get("home_region")
@@ -3264,16 +3287,19 @@ def _pops_by_state(data, state_ids, pops_index=None):
 
 
 def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price_map=None,
-                        cid=None, player_tag=None, max_tries=300,
+                        cid=None, player_tag=None,
                         preferred_state=None, ruler_visited=False,
                         pops_index=None, buildings_index=None,
                         forced_family=None, rnd=None, building_objs=None):
-    """随机选一个州 → 随机选该州一个建筑 → 取建筑内 SoL 最低与最高两个 POP(人口>10)
+    """随机选一个州 → 随机选该州一个建筑 → 取建筑内 SoL 最低与最高两个 POP
+    (劳动力>MIN_POP_WORKFORCE, 与杂志各文章池同一门槛)
     分别作为「民生访谈」与「邻里富户」数据块。
     preferred_state: 优先在该州取材 (统治者走访联动); ruler_visited=True 且确实用到
     该州时, 在民生访谈块上打 ruler_visited 标记, 供渲染时让受访者提及统治者到访。
     若该州失业率(失业POP劳动力/该州总人口)>5%, 再附加「失业民生」块:
-    该州人口最多的失业 POP + 失业率。建筑内合格 POP 不足 2 个时重新随机。
+    该州人口最多的失业 POP + 失业率。建筑内合格 POP 不足 2 个时的兜底逻辑:
+    同州内再找两次 (共试 3 栋建筑), 仍不满足则换一个新州再试 3 栋,
+    再不行返回兜底 (无采访样本, 渲染层输出兜底文本)。
     forced_family: 指定家庭采访 POP(统治者走访联动时使用), 不再随机选州/建筑。
     返回 {"family_interview", "top_sol_peer", "unemployed_interview"} (缺失为 None)。"""
     state_ids = set(state_ids or [])
@@ -3298,9 +3324,9 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
         for obj in pops_index.get(sid) or []:
             if obj.get("workplace") != bid:
                 continue
-            sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
-            if sz < 10:
+            if not _pool_workforce_ok(obj):
                 continue
+            sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
             sol = obj.get("previous_quality_of_life")
             if sol is None or not isinstance(sol, (int, float)):
                 continue
@@ -3311,36 +3337,58 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
         lowest = forced_family
         highest = cands[-1][2]
     else:
-        # 走访联动: 前几次尝试固定用统治者走访的州, 取材失败再退回随机州
-        try_states = []
-        if preferred_state is not None and preferred_state in state_ids:
-            try_states = [preferred_state] * min(5, max_tries)
-        for _ in range(max_tries):
-            if try_states:
-                sid = try_states.pop(0)
-            else:
-                sid = rnd.choice(state_order)
-            buildings = buildings_index.get(sid) or []
-            if not buildings:
-                continue
-            bid = rnd.choice(buildings)
+        # 兜底逻辑: 同州内最多试 3 栋建筑 (初次 + 同州再找两次);
+        # 全州不满足则换一个新州再试 3 栋 (换州再找三次);
+        # 仍不满足则返回兜底 (无采访样本, 渲染层输出兜底文本)。
+        # 走访联动: 统治者走访的州优先作为首个尝试州。
+
+        def _cands_in_building(sid, bid):
             cands = []
             for obj in pops_index.get(sid) or []:
                 if obj.get("workplace") != bid:
                     continue
-                sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
-                if sz < 10:
+                if not _pool_workforce_ok(obj):
                     continue
+                sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
                 sol = obj.get("previous_quality_of_life")
                 if sol is None or not isinstance(sol, (int, float)):
                     continue
                 cands.append((sol, sz, obj))
-            if len(cands) < 2:
-                continue
-            # SoL 升序; 同 SoL 时取人口较少者作最穷、人口较多者作最富
-            cands.sort(key=lambda x: (x[0], x[1]))
-            lowest, highest = cands[0][2], cands[-1][2]
-            break
+            return cands
+
+        def _try_state(sid, max_buildings):
+            """州内依次试 max_buildings 栋建筑;
+            返回 (bid, 最穷POP, 最富POP) 或 None。"""
+            buildings = list(buildings_index.get(sid) or [])
+            rnd.shuffle(buildings)
+            for bid in buildings[:max_buildings]:
+                cands = _cands_in_building(sid, bid)
+                if len(cands) < 2:
+                    continue
+                # SoL 升序; 同 SoL 时取人口较少者作最穷、人口较多者作最富
+                cands.sort(key=lambda x: (x[0], x[1]))
+                return bid, cands[0][2], cands[-1][2]
+            return None
+
+        state_pool = list(state_order)
+        rnd.shuffle(state_pool)
+        if preferred_state is not None and preferred_state in state_ids:
+            state_pool = [preferred_state] + [s for s in state_pool
+                                              if s != preferred_state]
+
+        sid = lowest = highest = None
+        if state_pool:
+            hit = _try_state(state_pool[0], 3)      # 首个州: 同州再找两次 (共 3 栋)
+            if hit:
+                bid, lowest, highest = hit
+                sid = state_pool[0]
+        if lowest is None and len(state_pool) > 1:
+            hit = _try_state(state_pool[1], 3)      # 换州再找三次 (新州试 3 栋)
+            if hit:
+                bid, lowest, highest = hit
+                sid = state_pool[1]
+        if lowest is None or highest is None:
+            return result
     if lowest is None or highest is None:
         return result
     # 州级上下文
@@ -3416,7 +3464,7 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
         if obj.get("workplace") is None:
             unemployed_work += wf
             sz = wf + dep
-            if sz >= 10 and sz > unemployed_big_sz:
+            if _pool_workforce_ok(obj) and sz > unemployed_big_sz:
                 unemployed_big_sz = sz
                 unemployed_big = obj
     rate = unemployed_work / total_pop if total_pop else 0.0
@@ -3869,6 +3917,7 @@ def _migration_records_zh(data, sobj):
         rec["target_name"] = _state_zh(data, r.get("target_state"))
         cid = r.get("culture_id")
         rec["culture_zh"] = culture_id_to_name(cid) if cid is not None else None
+        rec["culture_key"] = culture_id_to_key(cid) if cid is not None else None
         rec["religion_zh"] = _religion_zh(r.get("religion"))
         num = r.get("num")
         rec["num_people"] = (int(round(num * 10000))
@@ -3945,7 +3994,8 @@ def _character_index_scan(data, ids):
             j = nxt
             continue
         nm = _localize_character_name(str(obj.get("first_name") or ""),
-                                      str(obj.get("last_name") or ""), loc)
+                                      str(obj.get("last_name") or ""), loc,
+                                      culture_id_to_key(obj.get("culture")))
         hr = obj.get("home_region")
         ideo = obj.get("ideology")
         out[cid] = {
@@ -4433,6 +4483,7 @@ def parse_formations(data, country_ids=None):
             "origin": v.get("origin"),
             "current_location": v.get("current_location"),
             "flags": v.get("flags") or [],
+            "active_mobilization_options": v.get("active_mobilization_options") or [],
             "creation_date": v.get("creation_date"),
         })
     return out
@@ -4888,14 +4939,15 @@ class SaveContext:
 # 杂志文章池 (pool): 每期从候选文章随机抽取 3 篇
 # 候选: railway(帝国铁道纪行) / turmoil(在光辉以外的地方) /
 #       shelf(从货架里长出来的) / service(为人民服务) /
-#       voting(神圣庄严的权利) / price(餐桌上的价格) / letters(海外来信)
+#       voting(神圣庄严的权利) / price(餐桌上的价格) / letters(海外来信) /
+#       crime(罪案与法网)
 # 判定「数据可用性」后抽取 (种子=年份, 同年稳定), 只对选中的文章懒构建事实。
 # 数据不足时用兜底文章补位 (court/migration/war, 数据永远可用)。
 # ---------------------------------------------------------------------------
 
 MAGAZINE_POOL_KEYS = ("railway", "turmoil", "shelf", "service", "voting",
-                      "price", "letters", "war_family", "court_household",
-                      "migration_change")
+                      "price", "letters", "crime", "war_family",
+                      "court_household", "migration_change")
 
 MAGAZINE_POOL_FALLBACK = ("court_household", "migration_change", "war_family")
 
@@ -4928,6 +4980,38 @@ _POOL_DOP_LAWS = (
     "law_landed_voting", "law_wealth_voting", "law_census_voting",
     "law_universal_suffrage", "law_anarchy", "law_single_party_state",
 )
+# 不设普选的权力分配/治理法律: 独裁制、寡头制、酋邦(长老会议)
+_POOL_VOTE_EXCLUDED_LAWS = (
+    "law_autocracy", "law_oligarchy", "law_elder_council", "law_chiefdom",
+)
+
+# 罪案与法网: 警察机构(Policing)法律组 / 国内安全(Internal Security)法律组
+_POOL_POLICING_LAWS = (
+    "law_no_police", "law_local_police", "law_dedicated_police",
+    "law_militarized_police",
+)
+_POOL_INTERNAL_SECURITY_LAWS = (
+    "law_no_home_affairs", "law_national_guard", "law_secret_police",
+    "law_shinsengumi", "law_guaranteed_liberties",
+)
+
+# 机构投资等级(0~5) → 自然语言档位 (提示词不传 1级/2级 这类裸数字)
+INSTITUTION_LEVEL_ZH = {
+    0: "尚未设立",
+    1: "初具雏形",
+    2: "有限运转",
+    3: "全面铺开",
+    4: "高效有力",
+    5: "臻于完善",
+}
+
+
+def _institution_level_zh(level):
+    """机构投资等级 → 自然语言档位; 非法输入返回「未知」。"""
+    if not isinstance(level, (int, float)):
+        return "未知"
+    return INSTITUTION_LEVEL_ZH.get(int(level), f"第{int(level)}档")
+
 
 # 游戏文件解析失败时的选品兜底清单: 有生产链条 + pop 可直接消费的制成品
 _POOL_SHELF_FALLBACK_GOODS = {
@@ -5061,15 +5145,50 @@ def _pool_pop_class(obj):
     return v
 
 
-def _pool_pick_pops(pops, bid=None, classes=None, n=1, rnd=None, min_wf=1):
-    """按建筑/阶层过滤 POP 并随机抽 n 个; classes 为 social_class 值集合。"""
+# 所有「抽取 POP 作为文章样本」的统一最小劳动力门槛 (劳动力须 > 该值)。
+# 报纸访谈、杂志战争样本与各文章池一律从该常量读取, 避免各模块口径不一。
+MIN_POP_WORKFORCE = 10
+
+
+def _pool_workforce_ok(obj):
+    """POP 是否达到统一最小劳动力门槛 (workforce > MIN_POP_WORKFORCE)。"""
+    wf = obj.get("workforce")
+    return isinstance(wf, (int, float)) and wf > MIN_POP_WORKFORCE
+
+
+def dominant_acceptance_status(pops, weight_key=None):
+    """样本POP → 接受度众数; 可选按 weight_key (如 workforce) 加权。
+    无有效样本返回 None。"""
+    cnt = {}
+    for p in pops or []:
+        s = p.get("acceptance_status")
+        if not s:
+            continue
+        w = 1
+        if weight_key is not None:
+            v = p.get(weight_key)
+            if isinstance(v, (int, float)) and v > 0:
+                w = v
+        cnt[s] = cnt.get(s, 0) + w
+    if not cnt:
+        return None
+    return max(cnt.items(), key=lambda kv: kv[1])[0]
+
+
+def _pool_pick_pops(pops, bid=None, classes=None, n=1, rnd=None,
+                    min_workforce=None):
+    """按建筑/阶层过滤 POP 并随机抽 n 个; classes 为 social_class 值集合。
+    min_workforce 缺省取全局常量 MIN_POP_WORKFORCE (劳动力须 > 该值)。"""
+    if min_workforce is None:
+        min_workforce = MIN_POP_WORKFORCE
     cand = []
     for pid, obj in pops.items():
         if bid is not None and obj.get("workplace") != bid:
             continue
         if classes and _pool_pop_class(obj) not in classes:
             continue
-        if isinstance(obj.get("workforce"), (int, float)) and obj["workforce"] < min_wf:
+        wf = obj.get("workforce")
+        if not isinstance(wf, (int, float)) or wf <= min_workforce:
             continue
         cand.append((pid, obj))
     if not cand:
@@ -5118,26 +5237,43 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
     rural = rural[:2]
     rural_lines = []
     if rural:
-        rural_lines.append("本期随线走访两座乡村Hub：")
+        rural_lines.append("本期随线走访两座乡村聚落：")
         for b, o in rural:
             hub_cat = _hub_for_building(o.get("building"))
             hub_n = _hub_name_for(ctx.state_object(o.get("state")), hub_cat) \
                 if hub_cat in HUB_ORDER else None
             rural_lines.append(
-                f"【{hub_n or '乡村Hub'}】"
+                f"【{hub_n or '乡村聚落'}】"
                 + _pool_building_text(melted, ctx, cid, b, o, loc, gm, pops=pops))
     ups = _pool_pick_pops(pops, bid=rb, classes=("middle_class", "upper_class"),
                           n=1, rnd=rnd)
     low_rail = _pool_pick_pops(pops, bid=rb, classes=("lower_class",),
                                n=1, rnd=rnd)
     workers_lines = ["铁路车站与机车库里的人物样本："]
+    ups_ck = (
+        (culture_id_to_key(ups[0][1].get("culture"))
+         if ups and ups[0][1].get("culture") is not None
+         else (culture_id_to_key(low_rail[0][1].get("culture"))
+               if low_rail and low_rail[0][1].get("culture") is not None
+               else None)))
     if ups:
         workers_lines.append("- " + _pool_pop_text(ups[0][0], ups[0][1], ctx, loc))
     if low_rail:
         workers_lines.append("- " + _pool_pop_text(low_rail[0][0], low_rail[0][1], ctx, loc))
     if not ups and not low_rail:
-        workers_lines.append("（该铁路建筑当前无足量POP样本，请据雇佣与产出数据含蓄写作。）")
+        workers_lines.append("（该铁路建筑当前无足量人群样本，请据雇佣与产出情况含蓄写作。）")
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|railway",
+                              [("站台人物代表", ups_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        workers_lines.append(_blk)
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|railway",
+                              [("旅途人物代表", ups_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        lead.append(_blk)
     life_lines = []
+    life_ck = None
     if rural:
         rb2, robj2 = rural[0]
         lows = _pool_pick_pops(pops, bid=rb2, classes=("lower_class",),
@@ -5145,15 +5281,22 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
         life_lines.append("乡村建筑里的劳动者样本：")
         for pid, o in lows:
             life_lines.append("- " + _pool_pop_text(pid, o, ctx, loc))
+        if lows and lows[0][1].get("culture") is not None:
+            life_ck = culture_id_to_key(lows[0][1].get("culture"))
         if not lows:
-            life_lines.append("（该乡村建筑当前无足量POP样本，请据雇佣与产出含蓄写作。）")
+            life_lines.append("（该乡村建筑当前无足量人群样本，请据雇佣与产出情况含蓄写作。）")
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|railway",
+                              [("乡村劳动者代表", life_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        life_lines.append(_blk)
     return {"sections": {
         "lead": "\n".join(lead),
         "rural": ("\n".join(rural_lines) if rural_lines
-                  else "（本期无足量乡村Hub建筑样本，请据铁路沿线含蓄写作。）"),
+                  else "（本期无足量乡村聚落样本，请据铁路沿线含蓄写作。）"),
         "workers": "\n".join(workers_lines),
         "life": ("\n".join(life_lines) if life_lines
-                 else "（无乡村POP样本，请含蓄收束。）"),
+                 else "（无乡村人群样本，请含蓄收束。）"),
     }}
 
 
@@ -5181,7 +5324,7 @@ def _pool_turmoil_data(melted, snap, ctx, rnd, country, cid, data):
     st = next((s for s in states if s.get("id") == sid), {})
     state_zh = ctx.state_zh(sid) or st.get("name") or "未知州"
     lead = [
-        f"本期焦点州：{state_zh}（动乱指数按州内激进派占比估算，约{pct:.1f}%，"
+        f"本期焦点州：{state_zh}（激进派占比约{pct:.1f}%，"
         f"州总人口约{format(int(round(tot)), ',')}人，"
         f"其中激进派约{format(int(round(rad)), ',')}人）。",
     ]
@@ -5220,7 +5363,7 @@ def _pool_turmoil_data(melted, snap, ctx, rnd, country, cid, data):
             f"{top.get('ideology') or '未知思潮'}）。")
         if top.get("activism"):
             movement_lines.append(
-                f"运动处于「{top.get('activism')}」档位，"
+                f"运动当前处于「{top.get('activism')}」状态，"
                 f"激进指数{round(top.get('radicalism') or 0, 2)}。")
         if top.get("supporters"):
             movement_lines.append(
@@ -5249,20 +5392,38 @@ def _pool_turmoil_data(melted, snap, ctx, rnd, country, cid, data):
         law_lines.append("（相关法律数据不足。）")
     insts = _country_institution_levels(melted, cid)
     if insts:
-        law_lines.append("全国机构投资等级：" + "、".join(
-            f"{loc.get(k, k)}{v}" for k, v in sorted(insts.items())) + "。")
+        law_lines.append("全国机构投入：" + "；".join(
+            f"{loc.get(k, k)}：{_institution_level_zh(v)}"
+            for k, v in sorted(insts.items())) + "。")
+    else:
+        law_lines.append("（该国暂无机构投入记录，机构均按未设立处理。）")
     incorp = (ctx.state_object(sid) or {}).get("incorporation")
     if incorp is not None and incorp < 1:
         law_lines.append(f"该州尚未完全并入本土（并入进度约{round(incorp * 100)}%），机构覆盖有限。")
+    rep = next((obj for pid, obj in sorted(pops.items())
+                if obj.get("location") == sid
+                and obj.get("culture") is not None), None)
+    rep_ck = culture_id_to_key(rep.get("culture")) if rep is not None else None
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|turmoil",
+                              [("运动支持者代表", rep_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        movement_lines.append(_blk)
+    clash_lines = [
+        f"政府立场素材：本刊按现行政体（{snap.get('govt_zh') or '未知'}）"
+        f"与言论法报道；该州激进派占比约{pct:.1f}%，"
+        "执政集团需直面街头与议会的压力，冲突的尺度以给定运动与法律数据为限。"
+    ]
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|turmoil",
+                              [("街垒边的人", rep_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        clash_lines.append(_blk)
     return {"sections": {
         "lead": "\n".join(lead),
         "movement": "\n".join(movement_lines),
         "institutions": "\n".join(law_lines),
-        "clash": (
-            f"政府立场素材：本刊按现行政体（{snap.get('govt_zh') or '未知'}）"
-            f"与言论法报道；该州激进派占比约{pct:.1f}%，"
-            "执政集团需直面街头与议会的压力，冲突的尺度以给定运动与法律数据为限。"
-        ),
+        "clash": "\n".join(clash_lines),
     }}
 
 
@@ -5413,7 +5574,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     focus_zh = hub_zh or tstate_zh
     if source == "traded":
         active_line = (
-            f"该州交易的大宗商品按市价推定，最活跃商品为「{good['zh']}」"
+            f"该州交易的大宗商品中，最活跃商品为「{good['zh']}」"
             + (f"，市价约{round(good['price'], 2)}"
                if isinstance(good["price"], (int, float)) else "") + "。")
     else:
@@ -5426,12 +5587,12 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         dest = f"经我国贸易中心出口至{importer['country']}"
         extra = []
         if importer.get("state_zh"):
-            extra.append(f"该国市场中心州：{importer['state_zh']}")
+            extra.append(f"该国商埠：{importer['state_zh']}")
         if isinstance(importer.get("market_price"), (int, float)):
             extra.append(f"当地市价约{round(importer['market_price'], 2)}")
         export_line = dest + (f"（{'，'.join(extra)}）" if extra else "") + "。"
     else:
-        export_line = "（出口去向数据不足，本期按本地市场口径写作。）"
+        export_line = "（出口去向资料不足，本期按本地市场情况写作。）"
     lead = [
         f"本期货架焦点：{focus_zh}的贸易中心。",
         _pool_building_text(melted, ctx, cid, tb, tobj, loc, gm, pops=pops,
@@ -5446,22 +5607,32 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         export_line,
     ]
     workshop_lines = [f"生产「{good['zh']}」的本地建筑："]
+    wk_ck = None
     if producers:
         for b, o in producers[:2]:
             workshop_lines.append("- " + _pool_building_text(
                 melted, ctx, cid, b, o, loc, gm, pops=pops))
-            for pid, po in _pool_pick_pops(pops, bid=b,
-                                           classes=("lower_class", "middle_class"),
-                                           n=1, rnd=rnd):
+            picked = _pool_pick_pops(pops, bid=b,
+                                     classes=("lower_class", "middle_class"),
+                                     n=1, rnd=rnd)
+            for pid, po in picked:
                 workshop_lines.append("  工人样本：" + _pool_pop_text(pid, po, ctx, loc))
+                if wk_ck is None and po.get("culture") is not None:
+                    wk_ck = culture_id_to_key(po.get("culture"))
     else:
         workshop_lines.append(
             "（该商品本地无生产建筑样本；按产业链，此类商品通常由"
             + ("、".join(producers_zh[:3]) if producers_zh else "工业建筑")
             + (f"以{'、'.join(inputs_zh[:4])}为原料加工"
                if inputs_zh else "") + "，请据此写外地输入与商路。）")
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|shelf",
+                              [("车间工人代表", wk_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        workshop_lines.append(_blk)
     mine_lines = ["原材料链条："]
     up_chain = []
+    mn_ck = None
     for b, o in producers[:2]:
         ig = (o.get("input_goods") or {}).get("goods") or {}
         for kg, _kv in ig.items():
@@ -5484,17 +5655,27 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             up_label = {"mine": "矿工样本", "field": "农工样本",
                         "forest": "林工样本", "fishing": "渔工样本"}.get(
                 up_kind, "工人样本")
-            for pid, po in _pool_pick_pops(pops, bid=b2, classes=("lower_class",),
-                                           n=1, rnd=rnd):
+            picked = _pool_pick_pops(pops, bid=b2, classes=("lower_class",),
+                                     n=1, rnd=rnd)
+            for pid, po in picked:
                 mine_lines.append(f"  {up_label}：" + _pool_pop_text(pid, po, ctx, loc))
+                if mn_ck is None and po.get("culture") is not None:
+                    mn_ck = culture_id_to_key(po.get("culture"))
     else:
         mine_lines.append(
             ("（本地无上游生产建筑样本；该商品的主要原料为"
              + "、".join(inputs_zh[:4])
              + "，多依赖外地输入，行文须含蓄。）" if inputs_zh
              else "（本地无上游生产建筑样本，原料多依赖外地输入，行文须含蓄。）"))
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|shelf",
+                              [("上游工人代表", mn_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        mine_lines.append(_blk)
     cust_lines = ["目的地顾客样本："]
+    cu_ck = None
     if importer:
+        cu_ck = importer.get("pop_culture")
         tariff_txt = ""
         if importer.get("tariff"):
             if importer["tariff"] < 0:
@@ -5507,11 +5688,11 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             f"该商品被出口到{importer['country']}"
             f"{tariff_txt}{policy_txt}。")
         if importer.get("state_zh"):
-            cust_lines.append(f"该国市场中心州：{importer['state_zh']}。")
+            cust_lines.append(f"该国商埠：{importer['state_zh']}。")
         if importer.get("pop"):
             cust_lines.append("终端顾客样本：" + importer["pop"])
         else:
-            cust_lines.append("（该国市场中心州无足量POP样本，请含蓄写作。）")
+            cust_lines.append("（该国商埠无足量人群样本，请含蓄写作。）")
         # 终端花费 = 出厂价 + 出口关税 + 进口关税 (关税按出厂价计)。
         # 出厂价取贸易中心所在市场的当地市价, 与 render_unemployed 同源:
         # _market_price_map 读国家预算价格报告 (缺失回退市场拥有者报告);
@@ -5540,13 +5721,21 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                 bits.append(
                     f"进口补贴{-ir}%×（到岸价{round(import_base, 2)}）" if ir < 0
                     else f"进口关税{ir}%×（到岸价{round(import_base, 2)}）")
-            cust_lines.append(
-                f"该消费者购买时共花费约{round(total, 2)}英镑（" + "＋".join(bits) + "）。")
+        cust_lines.append(
+            f"该消费者购买时共花费约{round(total, 2)}英镑（" + "＋".join(bits) + "）。")
     else:
-        for pid, po in _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
-                                       n=2, rnd=rnd):
+        picked = _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
+                                 n=2, rnd=rnd)
+        for pid, po in picked:
             cust_lines.append("- " + _pool_pop_text(pid, po, ctx, loc))
-        cust_lines.append("（出口去向数据不足，按本地市场口径写目的地顾客。）")
+            if cu_ck is None and po.get("culture") is not None:
+                cu_ck = culture_id_to_key(po.get("culture"))
+        cust_lines.append("（出口去向资料不足，按本地市场情况写目的地顾客。）")
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|shelf",
+                              [("顾客家庭代表", cu_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        cust_lines.append(_blk)
     if not importer and isinstance(good["price"], (int, float)):
         cust_lines.append(
             f"「{good['zh']}」当前市价约{round(good['price'], 2)}，"
@@ -5595,8 +5784,12 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     health = next((l for l in _POOL_HEALTH_LAWS if l in laws), None)
     state_ids = _pool_state_ids(snap)
     states = snap.get("states") or []
-    lead = ["国家机构投资等级：" + "、".join(
-        f"{loc.get(k, k)}{v}" for k, v in sorted(insts.items())) + "。"]
+    if insts:
+        lead = ["国家机构投入：" + "；".join(
+            f"{loc.get(k, k)}：{_institution_level_zh(v)}"
+            for k, v in sorted(insts.items())) + "。"]
+    else:
+        lead = ["（该国暂无机构投入记录，机构均按未设立处理。）"]
     if edu:
         lead.append(f"教育法律为{loc.get(edu, edu)}。")
     if health:
@@ -5617,7 +5810,7 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     classroom = [f"样本州：{st_zh}。"]
     if wf_tot > 0:
         classroom.append(f"该州识字率约{min(100, int(round(lit_tot / wf_tot * 100)))}%"
-                         "（按POP样本估算）。")
+                         "（按人口统计）。")
     gov_wf = (ctx.state_object(sid) or {}).get("pop_statistics") or {}
     g = gov_wf.get("population_government_workforce")
     if g is not None:
@@ -5632,6 +5825,13 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
         classroom.append("基层公职/教员样本：")
         for pid, o in staff:
             classroom.append("- " + _pool_pop_text(pid, o, ctx, loc))
+    st_ck = (culture_id_to_key(staff[0][1].get("culture"))
+             if staff and staff[0][1].get("culture") is not None else None)
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|service",
+                              [("基层公职/教员代表", st_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        classroom.append(_blk)
     grassroots_pop = (_pool_pick_pops(state_pool, classes=("lower_class",),
                                       n=1, rnd=rnd)
                       or _pool_pick_pops(pops, classes=("lower_class",),
@@ -5641,7 +5841,15 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
         pid, o = grassroots_pop[0]
         grassroots.append(_pool_pop_text(pid, o, ctx, loc))
     else:
-        grassroots.append("（无足量基层POP样本，请含蓄写作。）")
+        grassroots.append("（无足量基层人群样本，请含蓄写作。）")
+    gr_ck = (culture_id_to_key(grassroots_pop[0][1].get("culture"))
+             if grassroots_pop and grassroots_pop[0][1].get("culture") is not None
+             else None)
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|service",
+                              [("基层民众代表", gr_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        grassroots.append(_blk)
     lights = []
     if snap.get("literacy"):
         lights.append(f"全国识字率约{snap.get('literacy')}。")
@@ -5675,34 +5883,52 @@ _POOL_VOTE_RULES = {
 }
 
 
-def _pool_vote_verdict(pop, dop, citizenship):
+def _pool_discrimination_reason(pop, citizenship, church, state_religion):
+    """接受度低于二等公民时, 按现行公民权法/教会法推断排除维度。
+    公民权法决定文化维度 (族裔/民族), 教会法决定宗教维度;
+    两者同时成立时文化优先 (公民权是政治参与的主要门槛)。"""
+    culture_cause = citizenship in ("law_ethnostate", "law_national_supremacy",
+                                    "law_racial_segregation")
+    rel = pop.get("religion")
+    religion_cause = bool(church == "law_state_religion" and rel and state_religion
+                          and rel != state_religion)
+    if culture_cause:
+        return "文化"
+    if religion_cause:
+        return "宗教"
+    return "文化"
+
+
+def _pool_vote_verdict(pop, dop, citizenship, church=None, state_religion=None):
     """按权力分配法/公民权法近似检定 POP 是否拥有投票权。
+
     存档无逐 POP 选民标记, 此为程序口径: 文化宗教接纳性 (acceptance) +
-    社会阶层 (social_class) + 职业类型。"""
+    社会阶层 (social_class) + 职业类型。接受度在二等公民以下
+    (公开歧视/暴力敌视/文化抹除) 一律无投票权, 二等公民及以上保留资格。
+    拒绝理由直接给出具体维度, 优先级: 文化/宗教(受歧视) > 财富(财产/资格) >
+    职业(地产阶层)。"""
     acc = (pop.get("acceptance_data") or {}).get("acceptance_status") or ""
-    excluded_by_culture = (
-        acc in ("open_prejudice", "cultural_erasure")
-        and citizenship in ("law_ethnostate", "law_national_supremacy",
-                            "law_racial_segregation"))
+    if acc in ("open_prejudice", "violent_hostility", "cultural_erasure"):
+        reason = _pool_discrimination_reason(pop, citizenship, church,
+                                             state_religion)
+        return False, f"该人群因为{reason}不拥有投票权"
     if dop == "law_universal_suffrage":
-        if excluded_by_culture:
-            return False, "虽为普选制，但该POP因文化/宗教不被接纳，被排除在选民之外"
-        return True, "普选制下全体成年公民均可投票"
+        return True, "该人群拥有投票权——普选制下全体成年公民均可投票"
     if dop in ("law_census_voting", "law_wealth_voting"):
-        if excluded_by_culture:
-            return False, "该POP因文化/宗教不被接纳，被排除在选民之外"
         ok = _pool_pop_class(pop) in ("middle_class", "upper_class")
-        return ok, ("达到财产/资格门槛" if ok else "未达到财产或资格门槛")
+        if ok:
+            return True, "该人群拥有投票权——达到财产/资格门槛"
+        return False, "该人群因为财富不拥有投票权"
     if dop == "law_landed_voting":
-        if excluded_by_culture:
-            return False, "该POP因文化/宗教不被接纳，被排除在选民之外"
         ok = pop.get("type") in ("aristocrats", "capitalists", "clergymen",
                                  "officers")
-        return ok, ("属于地产投票认可的显贵阶层" if ok else "地产投票制下无投票权")
+        if ok:
+            return True, "该人群拥有投票权——属于地产投票认可的显贵阶层"
+        return False, "该人群因为职业不拥有投票权"
     rule = _POOL_VOTE_RULES.get(dop)
     if rule:
-        return False, rule[1]
-    return False, "现行权力分配法未提供普选程序"
+        return False, f"该人群不拥有投票权——{rule[1]}"
+    return False, "该人群不拥有投票权——现行权力分配法未提供普选程序"
 
 
 def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
@@ -5717,6 +5943,8 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
     pops = ctx.player_pops(state_ids)
     state_pops = {}
     for pid, obj in pops.items():
+        if not _pool_workforce_ok(obj):
+            continue
         state_pops.setdefault(obj.get("location"), []).append((pid, obj))
     cand = [s for s in states if state_pops.get(s.get("id"))]
     st = rnd.choice(cand) if cand else (states[0] if states else {})
@@ -5730,13 +5958,12 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
     if rule:
         lead.append(rule[1] + "。")
     if citizenship:
-        lead.append(f"公民权法律为{loc.get(citizenship, citizenship)}，"
-                    "文化/宗教接纳与否直接影响投票资格。")
+        lead.append(f"公民权法律为{loc.get(citizenship, citizenship)}。")
     if church:
         lead.append(f"教会与国家关系法律为{loc.get(church, church)}。")
     gate = [f"样本州：{st_zh}。"]
     if isinstance(ev, (int, float)):
-        gate.append(f"该州合格选民占政治参与人口约{round(ev * 100, 1)}%。")
+        gate.append(f"该州合格选民约{round(ev * 100, 1)}%（按政治活跃人口计）。")
     if isinstance(parts, (int, float)):
         gate.append(f"政治参与人口约{format(int(round(parts)), ',')}人。")
     sps = state_pops.get(sid) or []
@@ -5744,12 +5971,24 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
     if sps:
         pid, pop = rnd.choice(sps)
         ballot.append(_pool_pop_text(pid, pop, ctx, loc))
-        ok, reason = _pool_vote_verdict(pop, dop, citizenship)
-        ballot.append(f"程序检定：该POP{'拥有' if ok else '不拥有'}投票权——{reason}。")
-        ballot.append("请严格按检定结果描写投票日场景：拥有则写他履行权利的过程；"
-                      "不拥有则写他被拦在门外的情景，不得反转检定结果。")
+        bl_ck = (culture_id_to_key(pop.get("culture"))
+                 if pop.get("culture") is not None else None)
+        # 投票文章例外: 未施行妇女选举权时, 合格选民必然为男性
+        women_suffrage = snap.get("women_law") == "law_womens_suffrage"
+        _blk = person_names_block(f"{snap.get('year')}|{cid}|voting",
+                                  [("选民（主角）", bl_ck)],
+                                  female_pct=women_law_female_pct(snap.get("women_law")),
+                                  genders=({"选民（主角）": "male"}
+                                           if not women_suffrage else None))
+        if _blk:
+            ballot.append(_blk)
+        ok, reason = _pool_vote_verdict(pop, dop, citizenship, church=church,
+                                        state_religion=snap.get("religion"))
+        ballot.append(f"判定结果：{reason}。")
+        ballot.append("请严格按判定结果描写投票日场景：拥有则写他履行权利的过程；"
+                      "不拥有则写他被拦在门外的情景，不得反转。")
     else:
-        ballot.append("（该州无POP样本。）")
+        ballot.append("（该州无人群样本。）")
     future = []
     movs = snap.get("political_movements") or []
     if movs:
@@ -5822,6 +6061,14 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
     if lows:
         pid, o = lows[0]
         household.append("餐桌上的主妇/劳工样本：" + _pool_pop_text(pid, o, ctx, loc))
+        hh_ck = (culture_id_to_key(o.get("culture"))
+                 if o.get("culture") is not None else None)
+        _blk = person_names_block(f"{snap.get('year')}|{cid}|price",
+                                  [("餐桌主妇（家庭主妇/劳工）", hh_ck)],
+                                  female_pct=women_law_female_pct(snap.get("women_law")),
+                                  genders={"餐桌主妇（家庭主妇/劳工）": "female"})
+        if _blk:
+            household.append(_blk)
         sobj = ctx.state_object(sid)
         pn = (sobj or {}).get("pop_needs") or {}
         entry = None
@@ -5831,9 +6078,8 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
             try:
                 prof = _consumption_profile(entry, o.get("previous_quality_of_life"))
                 if prof and prof.get("goods"):
-                    household.append("家庭消费画像（按需求权重估算）：" + "、".join(
-                        f"{g.get('name')}（权重{g.get('weight')}）"
-                        for g in prof["goods"][:4]) + "。")
+                    household.append("家庭消费画像（按消费轻重排列）：" + "、".join(
+                        g.get("name") for g in prof["goods"][:4]) + "。")
                 if prof and prof.get("engel") is not None:
                     household.append(f"恩格尔系数约{prof['engel']}%。")
             except Exception:
@@ -5846,6 +6092,13 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
         street.append(f"{st_zh}平均周薪约{round(wage, 1)}，可作家庭支出参照。")
     street.append("物价涨落与工资、识字率、阶层结构共同构成百姓餐桌的底色，"
                   "行文以给定数字为准，不得编造。")
+    hh_ck = (culture_id_to_key(lows[0][1].get("culture"))
+             if lows and lows[0][1].get("culture") is not None else None)
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|price",
+                              [("街市百姓代表", hh_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        street.append(_blk)
     return {"sections": {
         "lead": "\n".join(lead),
         "household": "\n".join(household),
@@ -5862,6 +6115,8 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
     pops = ctx.player_pops(state_ids)
     state_pops = {}
     for pid, obj in pops.items():
+        if not _pool_workforce_ok(obj):
+            continue
         state_pops.setdefault(obj.get("location"), []).append((pid, obj))
     colonies = []
     for s in states:
@@ -5906,21 +6161,632 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
             str(gm["zh"].get(k, k)) for k in traded[:8]) + "。")
     island = ["属地居民样本："]
     sps = state_pops.get(sid) or []
+    isl_ck = None
     if sps:
-        for pid, o in rnd.sample(sps, min(2, len(sps))):
+        sampled = rnd.sample(sps, min(2, len(sps)))
+        for pid, o in sampled:
             island.append("- " + _pool_pop_text(pid, o, ctx, loc))
+        if sampled and sampled[0][1].get("culture") is not None:
+            isl_ck = culture_id_to_key(sampled[0][1].get("culture"))
     else:
-        island.append("（无POP样本。）")
+        island.append("（无人群样本。）")
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|letters",
+                              [("海外写信人", isl_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        island.append(_blk)
     home = [f"本土对照：首都{snap.get('capital') or '未知'}。"]
     cap_pops = [(pid, o) for pid, o in pops.items()
-                if o.get("location") == snap.get("capital_id")]
+                if o.get("location") == snap.get("capital_id")
+                and _pool_workforce_ok(o)]
+    home_ck = None
     if cap_pops:
         home.append("本土家庭样本：" + _pool_pop_text(cap_pops[0][0], cap_pops[0][1], ctx, loc))
+        if cap_pops[0][1].get("culture") is not None:
+            home_ck = culture_id_to_key(cap_pops[0][1].get("culture"))
+    _blk = person_names_block(f"{snap.get('year')}|{cid}|letters",
+                              [("故乡回信人", home_ck)],
+                              female_pct=women_law_female_pct(snap.get("women_law")))
+    if _blk:
+        home.append(_blk)
     return {"sections": {
         "lead": "\n".join(lead),
         "harbor": "\n".join(harbor) if harbor else "（该属地港口数据不足。）",
         "island": "\n".join(island),
         "home": "\n".join(home),
+    }}
+
+
+# ---------------------------------------------------------------------------
+# 罪案与法网: 每期一桩案件 (受害者/凶手/证人 3 POP) + 法律与机构
+# ---------------------------------------------------------------------------
+
+CRIME_TYPES = (
+    "murder", "arson", "assault", "blackmail", "robbery", "theft",
+    "terrorism",
+)
+CRIME_TYPE_ZH = {
+    "murder": "凶杀",
+    "arson": "纵火",
+    "assault": "故意伤害",
+    "blackmail": "勒索",
+    "robbery": "抢劫",
+    "theft": "盗窃",
+    "terrorism": "恐怖主义（激进派）",
+}
+CRIME_SCENES_ZH = ("受害者工作建筑内", "路上", "受害者家中")
+
+# Hub 类别 → 中文语境用词 (提示词不出现 Hub 这类元词汇)
+_HUB_CATEGORY_ZH = {
+    "city": "城邑",
+    "port": "港埠",
+    "farm": "村落",
+    "mine": "矿镇",
+    "wood": "林场",
+}
+
+# 姓在前、名在后的文化 (按文化键值判定; 东亚/匈牙利等传统姓氏在前)
+_SURNAME_FIRST_CULTURES = {
+    "han", "manchu", "zhuang", "shan", "yuanzhumin",
+    "japanese", "korean", "vietnamese", "hungarian",
+}
+
+# 政治动机的「政府直属建筑」: 存档中无所有权记录、由国家直接拥有 (政府行政/大学/艺术学院等)
+_GOVERNMENT_BUILDING_TYPES = (
+    "building_government_administration",
+    "building_university",
+    "building_skyscraper",
+    "building_art_academy",
+    "building_arts_academy",
+)
+
+# 接受度状态 → 等级 (数值越大越差): 完全接纳 < 公开歧视 < 二等公民 < 文化抹除 < 暴力敌视
+_CRIME_ACCEPTANCE_RANK = {
+    "full_acceptance": 0,
+    "open_prejudice": 1,
+    "second_rate_citizen": 2,
+    "cultural_erasure": 3,
+    "violent_hostility": 4,
+}
+
+
+def _crime_acceptance_rank(pop):
+    """接受度状态 → 等级(越大越差); 缺失返回 None。"""
+    acc = (pop.get("acceptance_data") or {}).get("acceptance_status")
+    return _CRIME_ACCEPTANCE_RANK.get(acc)
+
+
+# ---------------------------------------------------------------------------
+# 女权法律 → 女性人物概率: 依据现行 lawgroup_rights_of_women 法律, 调整报纸/杂志
+# 随机人名的男女名池抽取概率 (士兵文章除外, 军人/军官角色强制男名池)。
+# 档位仅作默认值, 可在 config.json 用 female_pct_by_women_law 覆盖。
+# ---------------------------------------------------------------------------
+WOMEN_LAW_ORDER = (
+    "law_no_womens_rights",        # 法定监护
+    "law_women_in_the_fields",     # 女性耕作 (黑山专属)
+    "law_women_own_property",      # 有产妇女
+    "law_women_in_the_workplace",  # 女性工作
+    "law_womens_suffrage",         # 妇女选举权
+)
+DEFAULT_WOMEN_LAW_FEMALE_PCT = {
+    "law_no_womens_rights": 0.05,
+    "law_women_in_the_fields": 0.05,
+    "law_women_own_property": 0.15,
+    "law_women_in_the_workplace": 0.30,
+    "law_womens_suffrage": 0.45,
+}
+_WOMEN_PCT_OVERRIDE = None
+
+
+def _women_pct_override():
+    """config.json 的 female_pct_by_women_law 覆盖表 (一次性读取并缓存)。"""
+    global _WOMEN_PCT_OVERRIDE
+    if _WOMEN_PCT_OVERRIDE is None:
+        override = {}
+        try:
+            path = os.path.join(SCRIPT_DIR, "config.json")
+            with open(path, encoding="utf-8") as fp:
+                cfg = json.load(fp)
+            override = dict(cfg.get("female_pct_by_women_law") or {})
+        except Exception:
+            override = {}
+        _WOMEN_PCT_OVERRIDE = override
+    return _WOMEN_PCT_OVERRIDE
+
+
+def women_law_female_pct(law_key):
+    """女权法律 key → 女性人物概率 (0~1); 法律未知/缺失返回 None (维持合并池现行为)。"""
+    if not law_key:
+        return None
+    pct = _women_pct_override().get(law_key)
+    if pct is None:
+        pct = DEFAULT_WOMEN_LAW_FEMALE_PCT.get(law_key)
+    if pct is None:
+        return None
+    try:
+        pct = float(pct)
+    except (TypeError, ValueError):
+        return None
+    return min(1.0, max(0.0, pct))
+
+
+_CULTURE_NAMES = None
+
+
+def build_culture_names():
+    """culture key → {first: [合并名池], male: [男名池], female: [女名池], last: [姓池]}。
+    解析 game/common/cultures/*.txt 中每个文化内联的
+    male/female_common_first_names 与 common/noble_last_names (一次性缓存)。
+    token 保留原始下划线/连字符形式 (如 Hari_Singh、Ch_ok), 供本地化整词查表;
+    解析失败返回空 dict (调用方不命名)。"""
+    global _CULTURE_NAMES
+    if _CULTURE_NAMES is not None:
+        return _CULTURE_NAMES
+    out = {}
+    try:
+        import glob
+        for fn in sorted(glob.glob(os.path.join(CULTURE_FILES, "*.txt"))):
+            with open(fn, encoding="utf-8-sig", errors="replace") as fp:
+                text = fp.read()
+            for m in re.finditer(r"(?m)^([a-z_]+)\s*=\s*\{", text):
+                key = m.group(1)
+                body = text[m.end():]
+                nxt = re.search(r"(?m)^[a-z_]+\s*=\s*\{", body)
+                block = body[:nxt.start()] if nxt else body
+                male_first = []
+                female_first = []
+                for lm in re.finditer(
+                        r"\bmale_common_first_names\s*=\s*\{(.*?)\}",
+                        block, re.S):
+                    male_first += [t for t in lm.group(1).split()
+                                   if re.fullmatch(r"[A-Za-z][A-Za-z'\-_]*", t)]
+                for lm in re.finditer(
+                        r"female_common_first_names\s*=\s*\{(.*?)\}",
+                        block, re.S):
+                    female_first += [t for t in lm.group(1).split()
+                                     if re.fullmatch(r"[A-Za-z][A-Za-z'\-_]*", t)]
+                male_first = list(dict.fromkeys(male_first))
+                female_first = list(dict.fromkeys(female_first))
+                # 合并池保持 男→女 的原文顺序, 未指定性别时行为与旧版完全一致
+                first = list(dict.fromkeys(male_first + female_first))
+                last = []
+                for lm in re.finditer(
+                        r"(?:common|noble)_last_names\s*=\s*\{(.*?)\}",
+                        block, re.S):
+                    last += [t for t in lm.group(1).split()
+                             if re.fullmatch(r"[A-Za-z][A-Za-z'\-_]*", t)]
+                first = list(dict.fromkeys(first))
+                last = list(dict.fromkeys(last))
+                if first and last:
+                    out[key] = {
+                        "first": first,
+                        "last": last,
+                        "male": male_first or first,
+                        "female": female_first or first,
+                    }
+    except Exception:
+        out = {}
+    _CULTURE_NAMES = out
+    return out
+
+
+def _crime_make_name(culture_key, rnd, gender=None):
+    """按文化随机组合 姓+名 → (拉丁原名, 中译名); 姓前/名前由文化键值判定;
+    gender 为 "male"/"female" 时从对应名池取, None 用合并池 (现行为);
+    无该文化姓名数据返回 (None, None)。拉丁名仅用于内部身份/唯一性判断,
+    对外一律用中译名 (经 names_l 本地化查表)。"""
+    if not culture_key:
+        return None, None
+    data = build_culture_names().get(culture_key)
+    if not data:
+        return None, None
+    if gender in ("male", "female"):
+        first = rnd.choice(data.get(gender) or data["first"])
+    else:
+        first = rnd.choice(data["first"])
+    last = rnd.choice(data["last"])
+    if culture_key in _SURNAME_FIRST_CULTURES:
+        latin = f"{last} {first}"
+    else:
+        latin = f"{first} {last}"
+    # 展示用拉丁名把下划线还原为空格 (如 Ch_ok→Ch ok)
+    latin = " ".join(p.replace("_", " ") for p in latin.split())
+    zh = _localize_character_name(first, last, _load_loc_all(), culture_key)
+    return latin, (zh or None)
+
+
+def _crime_role_names(case, rnd, female_pct=None):
+    """受害者/凶手/证人三人姓名 → {role: (拉丁名, 中译名)}。
+    按各自文化生成; 三人拉丁名、中译名与「名」均互不相同。
+    female_pct 给出时三人各自按该概率先掷性别再取名; 性别在重试循环外一次性
+    掷定, 保证同一角色重试时性别不变。"""
+    roles = (("受害者", case["victim"][1]),
+             ("凶手", case["murderer"][1]),
+             ("证人", case["witness"][1]))
+    genders = {}
+    if female_pct is not None:
+        for role, _pop in roles:
+            genders[role] = "female" if rnd.random() < female_pct else "male"
+
+    def _given_part(culture_key, name):
+        if not name:
+            return None
+        parts = name.split()
+        if culture_key in _SURNAME_FIRST_CULTURES:
+            return parts[-1]
+        return parts[0]
+
+    names = {}
+    for _ in range(20):
+        names = {role: _crime_make_name(
+                     culture_id_to_key(pop.get("culture")), rnd,
+                     gender=genders.get(role))
+                 for role, pop in roles}
+        latins = [n[0] for n in names.values() if n[0]]
+        zhs = [n[1] for n in names.values() if n[1]]
+        givens = [_given_part(culture_id_to_key(case[k][1].get("culture")), n[0])
+                  for k, n in (("victim", names["受害者"]),
+                               ("murderer", names["凶手"]),
+                               ("witness", names["证人"]))]
+        givens = [g for g in givens if g]
+        if (len(set(latins)) == len(latins)
+                and len(set(zhs)) == len(zhs)
+                and len(set(givens)) == len(givens)):
+            break
+    return names
+
+
+def culture_person_name(culture_key, seed=None, gender=None, female_pct=None):
+    """按文化生成一个确定性中文人名 (经 names_l 本地化查表)。
+    seed 推荐用 f"{year}|{country}|{article}|{section}|{role}" 保证同年稳定;
+    gender 显式指定男/女名池; 未指定且 female_pct 给出时, 先按该概率掷性别再
+    取名 (同一 seed 结果稳定); 两者皆无时维持合并池现行为。
+    无该文化姓名池或查不到译名时返回 None (调用方不得自行命名)。"""
+    if not culture_key:
+        return None
+    rnd = random.Random(seed) if seed is not None else random.Random()
+    if gender is None and female_pct is not None:
+        gender = "female" if rnd.random() < female_pct else "male"
+    _latin, zh = _crime_make_name(culture_key, rnd, gender=gender)
+    return zh or None
+
+
+def person_names(seed, roles, female_pct=None, genders=None):
+    """roles: [(角色名, culture_key|None), ...] → {角色: 中文名}。
+    各角色姓名互不相同; 文化无名池的角色不出现在结果里。
+    genders: {角色: "male"/"female"} 显式强制性别; 其余角色在 female_pct 给出时
+    按该概率各自掷性别, 否则维持合并池现行为。"""
+    out = {}
+    used = set()
+    genders = genders or {}
+    for i, (role, ck) in enumerate(roles):
+        nm = None
+        if ck:
+            for _ in range(20):
+                g = genders.get(role)
+                nm = culture_person_name(
+                    ck, seed=f"{seed}|{i}|{role}|{_}",
+                    gender=g,
+                    female_pct=None if g else female_pct)
+                if nm and nm not in used:
+                    break
+        if nm:
+            out[role] = nm
+            used.add(nm)
+    return out
+
+
+def person_names_block(seed, roles, female_pct=None, genders=None):
+    """人名名单提示块: 姓名已由数据给定, 全文必须原样使用。无姓名返回空串。"""
+    names = person_names(seed, roles, female_pct=female_pct, genders=genders)
+    if not names:
+        return ""
+    lines = ["人物名单（姓名已由数据给定，全文必须原样使用，不得自行取名或改名）："]
+    for role, _ck in roles:
+        if role in names:
+            lines.append(f"- {role}：{names[role]}")
+    return "\n".join(lines)
+
+
+_ZH_CULTURE_INDEX = None
+
+
+def culture_key_from_zh(zh_name):
+    """中文文化名 → culture key (本地化反向查表); 找不到返回 None。"""
+    global _ZH_CULTURE_INDEX
+    if not zh_name:
+        return None
+    if _ZH_CULTURE_INDEX is None:
+        idx = {}
+        for k, v in (build_culture_map().get("_zh") or {}).items():
+            idx.setdefault(v, k)
+        _ZH_CULTURE_INDEX = idx
+    return _ZH_CULTURE_INDEX.get(zh_name)
+
+
+def _crime_hub_label(cat):
+    """Hub 类别 → 中文语境用词; 未知类别回退「聚落」。"""
+    return _HUB_CATEGORY_ZH.get(cat, "聚落")
+
+
+def _crime_state_owned(melted, cid, bid, obj):
+    """建筑是否由国家(政府)直接拥有:
+    1) 所有权记录中份额最大者为国有 (identity.country == 本国);
+    2) 政府直属建筑无所有权记录 (政府行政机构/大学/艺术学院等) 直接视为国有。"""
+    owners = obj.get("owners") or []
+    if not owners:
+        return (obj.get("building") or "") in _GOVERNMENT_BUILDING_TYPES
+    try:
+        dist, total = _building_ownership(melted, bid, cid, building_obj=obj)
+    except Exception:
+        return False
+    if not total or not dist.get("state"):
+        return False
+    top = max(dist, key=lambda k: (dist[k], _OWNERSHIP_ORDER.index(k)))
+    return top == "state"
+
+
+def _crime_workplace_ctx(ctx, obj):
+    """工作建筑对象 → (建筑中文名, 聚落名, 州中文名, 聚落类别)。"""
+    loc = _load_loc_all()
+    btype = obj.get("building") or ""
+    bzh = loc.get(btype, btype) or "未知建筑"
+    state = ctx.state_zh(obj.get("state")) or "未知州"
+    hub = None
+    cat = _hub_for_building(btype)
+    if cat:
+        sobj = ctx.state_object(obj.get("state")) if obj.get("state") is not None else None
+        if sobj:
+            hub = _hub_name_for(sobj, cat)
+    return bzh, hub, state, cat
+
+
+def _crime_candidates(pops, objs, require_workplace=False, classes=None):
+    """可作案件角色的 POP: 劳动力超过统一最小门槛、阶层可识别、
+    (可选)工作建筑在本国州内。"""
+    out = []
+    for pid, obj in pops.items():
+        if not _pool_workforce_ok(obj):
+            continue
+        cls = _pool_pop_class(obj)
+        if cls not in ("lower_class", "middle_class", "upper_class"):
+            continue
+        if classes and cls not in classes:
+            continue
+        if require_workplace and obj.get("workplace") not in objs:
+            continue
+        out.append((pid, obj))
+    return out
+
+
+def _crime_motive(melted, cid, victim, murderer, objs):
+    """按数据判定动机: 经济(受害者SoL更高) > 文化(受害者接受度更差) > 政治(政府建筑)。
+    返回 (key, 自然语言说明) 或 None。"""
+    from journal import sol_band
+    v_sol = victim.get("previous_quality_of_life")
+    m_sol = murderer.get("previous_quality_of_life")
+    if isinstance(v_sol, (int, float)) and isinstance(m_sol, (int, float)) and v_sol > m_sol:
+        vb = sol_band(v_sol) or f"约{v_sol}"
+        mb = sol_band(m_sol) or f"约{m_sol}"
+        return "economic", f"经济动机：受害者生活水平（{vb}）高于凶手（{mb}）。"
+    v_acc = _crime_acceptance_rank(victim)
+    m_acc = _crime_acceptance_rank(murderer)
+    if v_acc is not None and m_acc is not None and v_acc > m_acc:
+        return "cultural", "文化动机：受害者在当地受到的接受度低于凶手（更受歧视）。"
+    bid = victim.get("workplace")
+    if bid in objs and _crime_state_owned(melted, cid, bid, objs[bid]):
+        return "political", "政治动机：受害者工作于国家（政府）所有的建筑。"
+    return None
+
+
+def _crime_pick_case(melted, snap, ctx, rnd, cid, pops, objs):
+    """抽取一桩案件: 随机案件类型 → 按类型约束选受害者/凶手 → 判定动机 → 补证人。
+    返回 dict 或 None (数据不足以成案时让兜底文章补位)。"""
+    mov_info = {mv.get("id"): mv for mv in (snap.get("political_movements") or [])}
+    protest_mids = {mid for mid, mv in mov_info.items()
+                    if mv.get("activism") in ("抗议", "武斗")}
+    all_cand = _crime_candidates(pops, objs)
+    victims = _crime_candidates(pops, objs, require_workplace=True)
+    if len(all_cand) < 3 or not victims:
+        return None
+    cls_of = {"lower_class": 0, "middle_class": 1, "upper_class": 2}
+    for _ in range(40):
+        crime_type = rnd.choice(CRIME_TYPES)
+        if crime_type in ("robbery", "theft"):
+            # 抢劫/盗窃: 受害者阶层恰好比凶手高一级
+            mrank = rnd.choice((0, 1))
+            mcls = ("lower_class", "middle_class")[mrank]
+            vcls = ("middle_class", "upper_class")[mrank]
+            mpool = [x for x in all_cand if _pool_pop_class(x[1]) == mcls]
+            vpool = [x for x in victims if _pool_pop_class(x[1]) == vcls]
+            if not mpool or not vpool:
+                continue
+            murderer = rnd.choice(mpool)
+            vpool = [x for x in vpool if x[0] != murderer[0]]
+            if not vpool:
+                continue
+            victim = rnd.choice(vpool)
+        elif crime_type == "terrorism":
+            # 恐怖主义: 凶手参与某个人已进入抗议(抗议/武斗)的政治运动
+            mpool = [
+                x for x in all_cand
+                if any(v > 0 and _safe_int(mid) in protest_mids
+                       for mid, v in (x[1].get("political_movement_support") or {}).items())
+            ]
+            if not mpool:
+                continue
+            murderer = rnd.choice(mpool)
+            vpool = [x for x in victims if x[0] != murderer[0]]
+            if not vpool:
+                continue
+            victim = rnd.choice(vpool)
+        else:
+            victim = rnd.choice(victims)
+            mpool = [x for x in all_cand if x[0] != victim[0]]
+            if not mpool:
+                continue
+            murderer = rnd.choice(mpool)
+        motive = _crime_motive(melted, cid, victim[1], murderer[1], objs)
+        if not motive:
+            continue
+        rest = [x for x in all_cand if x[0] not in (victim[0], murderer[0])]
+        same_state = [x for x in rest
+                      if x[1].get("location") == victim[1].get("location")]
+        same_bld = [x for x in rest
+                    if x[1].get("workplace") == victim[1].get("workplace")]
+        if same_state:
+            witness = rnd.choice(same_state)
+        elif same_bld:
+            witness = rnd.choice(same_bld)
+        elif rest:
+            witness = rnd.choice(rest)
+        else:
+            continue
+        movement = None
+        if crime_type == "terrorism":
+            for mid, v in (murderer[1].get("political_movement_support") or {}).items():
+                mv = mov_info.get(_safe_int(mid))
+                if mv and mv.get("activism") in ("抗议", "武斗") and v > 0:
+                    movement = mv
+                    break
+        return {"victim": victim, "murderer": murderer, "witness": witness,
+                "crime_type": crime_type, "scene": rnd.choice(CRIME_SCENES_ZH),
+                "motive": motive[0], "motive_text": motive[1],
+                "movement": movement}
+    return None
+
+
+def _safe_int(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
+    """罪案与法网: 每期一桩案件 + 3个居民(受害者/凶手/证人) + 法律机构。
+    案件类型: 凶杀/纵火/故意伤害/勒索/抢劫/盗窃/恐怖主义(激进派);
+    案发地为受害者工作建筑所在聚落; 法律与机构等级一律自然语言。"""
+    if not cid:
+        return None
+    from journal import law_zh
+    # 案件类型与角色按 (年|crime|国家) 播种: 同年稳定, 且不同国家案件各不相同
+    rnd = random.Random(f"{snap.get('year') or 0}|crime|{cid}")
+    loc = _load_loc_all()
+    state_ids = _pool_state_ids(snap)
+    pops = ctx.player_pops(state_ids)
+    _bs, _bmap, objs = ctx.buildings_index(state_ids)
+    case = _crime_pick_case(melted, snap, ctx, rnd, cid, pops, objs)
+    if not case:
+        return None
+    victim, murderer, witness = (case["victim"], case["murderer"],
+                                 case["witness"])
+    vbid = victim[1].get("workplace")
+    vobj = objs.get(vbid) or {}
+    bzh, vhub, vstate, vcat = (_crime_workplace_ctx(ctx, vobj) if vbid in objs
+                               else ("未知建筑", None,
+                                     ctx.state_zh(victim[1].get("location")),
+                                     None))
+    place = vhub or vstate or "未知地点"
+    hub_label = _crime_hub_label(vcat)
+    crime_zh = CRIME_TYPE_ZH.get(case["crime_type"], case["crime_type"])
+    scene = case["scene"]
+    names = _crime_role_names(
+        case, rnd,
+        female_pct=women_law_female_pct(snap.get("women_law")))
+    mov_line = ""
+    mv = case.get("movement")
+    if mv:
+        mov_line = (
+            f"凶手参与的抗议政治运动：{mv.get('name') or '未知'}（"
+            f"{mv.get('ideology') or '未知思潮'}），当前处于「{mv.get('activism')}」"
+            f"状态，激进指数{round(mv.get('radicalism') or 0, 2)}。"
+        )
+    # 法律与机构 (需求: Policing / Internal Security 法律 + 两机构自然语言等级)
+    laws = query_laws(melted, cid)
+    policing = next((l for l in _POOL_POLICING_LAWS if l in laws), None)
+    internal = next((l for l in _POOL_INTERNAL_SECURITY_LAWS if l in laws), None)
+    insts = _country_institution_levels(melted, cid) or {}
+    # 存档无该机构条目即未投入, 按 0 级「尚未设立」处理
+    police_lv = _institution_level_zh(insts.get("institution_police", 0))
+    home_lv = _institution_level_zh(insts.get("institution_home_affairs", 0))
+
+    def _role_line(pop, role):
+        txt = _pool_pop_text(pop[0], pop[1], ctx, loc)
+        nm = (names.get(role) or (None, None))[1]
+        return f"- 【{role}】{nm}，{txt}" if nm else f"- 【{role}】{txt}"
+
+    # 案件概要: 每个板块都重述案件类型/案发地/场景, 避免后续板块只看摘要而写串
+    case_head = (
+        f"本期罪案特稿：一桩{crime_zh}案。"
+        f"案发地：{place}（受害者工作建筑所在的{hub_label}）；案发现场为{scene}。"
+        "案件类型、案发地与案发现场全篇不得改变，非暴力案件不得写成杀伤。"
+    )
+    if all((names.get(r) or (None, None))[1]
+           for r in ("受害者", "凶手", "证人")):
+        name_rule = ("三人中文姓名已由资料给定，全篇必须原样使用（译法固定），"
+                     "不得另行取名、改名或回写拉丁原名。")
+    else:
+        name_rule = ("不得虚构人物姓名，一律以「受害者」「凶手」「证人」"
+                     "及职业身份代称。")
+    # 三角色全表: 每个板块都原样附带, 防止模型在分板块写作时互换角色
+    role_table = (
+        "全篇三角色身份固定，不得互换、合并或改写（身份/职业/文化/宗教/人数/"
+        f"生活水平一律以资料为准；{name_rule}）：\n"
+        + _role_line(victim, "受害者") + "\n"
+        + _role_line(murderer, "凶手") + "\n"
+        + _role_line(witness, "证人")
+    )
+    case_lines = [
+        case_head,
+        f"受害者工作建筑：{bzh}（位于{place}）。",
+        role_table,
+        f"动机：{case['motive_text']}",
+    ]
+    if mov_line:
+        case_lines.append(mov_line)
+    case_lines.append(
+        f"开篇请立起案发地（{hub_label}）的场景与人物，可按案件类型还原案发经过，"
+        "但不得虚构资料之外的具体伤亡数字与日期。"
+    )
+    victim_lines = [
+        case_head,
+        role_table,
+        f"受害者工作建筑：{bzh}（位于{place}）。",
+        "本板块只写【受害者】与【证人】两位（凶手不得在此出场或换角）："
+        "从他们的视角写案发前后的生活、现场与听闻，"
+        "以资料中的职业/文化/宗教/生活水平塑造人物。",
+    ]
+    perp_lines = [
+        case_head,
+        role_table,
+        f"动机：{case['motive_text']}",
+    ]
+    if mov_line:
+        perp_lines.append(mov_line)
+    perp_lines.append(
+        "本板块只写【凶手】一位（受害者与证人不得换角）："
+        "写凶手的处境与动机如何从资料中生长出来：经济落差/文化隔阂/"
+        "政治怨愤以给定动机为准；恐怖主义案件须写其政治运动背景，"
+        "不得虚构运动领袖姓名与具体行动细节。"
+    )
+    justice_lines = [
+        case_head,
+        role_table,
+        "现行警察机构法律（Policing）："
+        + (law_zh(policing) if policing else "（资料缺失）") + "。",
+        "现行国内安全法律（Internal Security）："
+        + (law_zh(internal) if internal else "（资料缺失）") + "。",
+        f"执法机构（Policing）投入：{police_lv}。",
+        f"内务机构（Internal Security）投入：{home_lv}。",
+        "本板块请写案件进入法网后的后续——侦办、缉凶、庭审或悬案收束，"
+        "尺度以给定法律与机构为限，不得虚构具体判决与刑期。",
+    ]
+    return {"sections": {
+        "case": "\n".join(case_lines),
+        "victim": "\n".join(victim_lines),
+        "perpetrator": "\n".join(perp_lines),
+        "justice": "\n".join(justice_lines),
     }}
 
 
@@ -6228,16 +7094,20 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
     need_sol = need[1] if need else None
     pop_text = None
     sol_note = None
+    pop_culture = None
     if tsid is not None:
         pops = ctx.player_pops([tsid])
         loc = _load_loc_all()
         if need_sol:
             qualified = [(pid, o) for pid, o in pops.items()
                          if isinstance(o.get("previous_quality_of_life"), (int, float))
-                         and o["previous_quality_of_life"] >= need_sol]
+                         and o["previous_quality_of_life"] >= need_sol
+                         and _pool_workforce_ok(o)]
             if qualified:
                 pid, o = rnd.choice(qualified)
                 pop_text = _pool_pop_text(pid, o, ctx, loc)
+                pop_culture = (culture_id_to_key(o.get("culture"))
+                               if o.get("culture") is not None else None)
                 sol_note = (f"该商品属{need_name}需求，通常由生活水平{need_sol}及以上"
                             "的家庭消费，本样本满足门槛。")
             else:
@@ -6248,10 +7118,13 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
                         best = v
                 top = [(pid, o) for pid, o in pops.items()
                        if isinstance(o.get("previous_quality_of_life"), (int, float))
-                       and o["previous_quality_of_life"] == best]
+                       and o["previous_quality_of_life"] == best
+                       and _pool_workforce_ok(o)]
                 if top:
                     pid, o = rnd.choice(top)
                     pop_text = _pool_pop_text(pid, o, ctx, loc)
+                    pop_culture = (culture_id_to_key(o.get("culture"))
+                                   if o.get("culture") is not None else None)
                 sol_note = (
                     f"该商品属{need_name}需求，通常由生活水平{need_sol}及以上的家庭消费；"
                     + (f"该州生活水平最高的样本约{best}，略低于门槛，请据样本含蓄写作。"
@@ -6261,6 +7134,8 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
                                      n=1, rnd=rnd)
             if picked:
                 pop_text = _pool_pop_text(picked[0][0], picked[0][1], ctx, loc)
+                pop_culture = (culture_id_to_key(picked[0][1].get("culture"))
+                               if picked[0][1].get("culture") is not None else None)
     total_w = sum(r["weight"] for r in rows)
     return {
         "country": cname,
@@ -6271,6 +7146,7 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
         "tariff": pick["tariff"],
         "policy": pick["policy"],
         "pop": pop_text,
+        "pop_culture": pop_culture,
         "need": need_name,
         "need_sol": need_sol,
         "sol_note": sol_note,
@@ -6279,7 +7155,7 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
 
 
 def _magazine_pool_eligibility(melted, snap, ctx, country):
-    """便宜判定 7 篇文章的数据可用性 (复用 ctx 缓存, 不新增整文件扫描)。"""
+    """便宜判定 8 篇文章的数据可用性 (复用 ctx 缓存, 不新增整文件扫描)。"""
     state_ids = _pool_state_ids(snap)
     states = snap.get("states") or []
     by_state, btype_map, objs = ctx.buildings_index(state_ids)
@@ -6314,14 +7190,21 @@ def _magazine_pool_eligibility(melted, snap, ctx, country):
     prices = False
     if country is not None:
         prices = bool(_market_price_map(melted, country))
+    # 罪案与法网: 有 POP 在国家建筑中工作即可 (成案细节构建期再判定, 失败走兜底)
+    crime = any(obj.get("workplace") in objs
+                for obj in pops.values())
+    # 独裁 / 寡头 / 酋邦(长老会议) 不设普选, 神圣庄严的权利不得入池
+    laws = query_laws(melted, snap.get("country_id"))
+    voting = not any(l in _POOL_VOTE_EXCLUDED_LAWS for l in laws)
     return {
         "railway": railway,
         "turmoil": turmoil,
         "shelf": shelf,
         "service": True,
-        "voting": True,
+        "voting": voting,
         "price": prices,
         "letters": letters,
+        "crime": crime,
         "war_family": True,
         "court_household": True,
         "migration_change": True,
@@ -6364,6 +7247,7 @@ _POOL_BUILDERS = {
     "voting": _pool_voting_data,
     "price": _pool_price_data,
     "letters": _pool_letters_data,
+    "crime": _pool_crime_data,
 }
 
 
@@ -6508,6 +7392,8 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
         p["old_state_name"] = ctx.state_zh(p.get("old_state"))
         p["culture_zh"] = (culture_id_to_name(p.get("culture"))
                            if p.get("culture") is not None else None)
+        p["culture_key"] = (culture_id_to_key(p.get("culture"))
+                            if p.get("culture") is not None else None)
         p["religion_zh"] = _religion_zh(p.get("religion"))
         p["type_zh"] = p.get("new_type")
         p["old_type_zh"] = p.get("old_type")
@@ -6516,6 +7402,8 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
         p["old_state_name"] = ctx.state_zh(p.get("old_state"))
         p["culture_zh"] = (culture_id_to_name(p.get("culture"))
                            if p.get("culture") is not None else None)
+        p["culture_key"] = (culture_id_to_key(p.get("culture"))
+                            if p.get("culture") is not None else None)
         p["religion_zh"] = _religion_zh(p.get("religion"))
     data["promotions"] = promotions
     data["pop_migrations"] = pop_migrations
@@ -6523,6 +7411,8 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
     soldiers, elites, civilians, convs = [], [], [], []
     civ_by_state = {}
     for pid, obj in pops.items():
+        if not _pool_workforce_ok(obj):
+            continue
         t = obj.get("type")
         if t in ("soldiers", "officers"):
             soldiers.append((pid, obj))
@@ -6538,6 +7428,58 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
     soldiers.sort(key=lambda x: x[1].get("location") in battle_state_ids, reverse=True)
     civilians.sort(key=lambda x: x[1].get("location") in battle_state_ids, reverse=True)
 
+    # 驻军州: 军团/舰队当前驻地 (current_location); 无则回退士兵样本所在州。
+    # 不采用单位 building_state——那是兵营/驻地建筑所在州, 可能是本土征兵点而非现驻地。
+    garrison_state_ids = set()
+    for f in data.get("formations") or []:
+        loc = f.get("current_location") or {}
+        if isinstance(loc, dict) and loc.get("type") == "state":
+            ident = loc.get("identity")
+            if ident is not None:
+                garrison_state_ids.add(ident)
+    if not garrison_state_ids:
+        garrison_state_ids = {obj.get("location") for _pid, obj in soldiers
+                              if obj.get("location") is not None}
+
+    # 驻地军民关系基调: 逐驻军州直接读取游戏文件定义的本土文化
+    # (common/history/states/*.txt 的 add_homeland), 取这些文化在该州的
+    # POP 按劳动力加权的接受度众数; 州内无本土文化样本时回退该州全体平民
+    # 加权众数; 跨州再取「最差」档——本土大州人口不会淹没殖民地驻地的
+    # 敌意, 也不美化任何存在暴力敌视的驻军州 (士兵自身不参与)。
+    # 供 magazine.py 的驻地板块提示词使用。
+    def _tone_flat(obj):
+        acc = obj.get("acceptance_data") or {}
+        return {"acceptance_status": acc.get("acceptance_status"),
+                "workforce": obj.get("workforce")}
+
+    hm = build_homeland_map()
+    state_statuses = []
+    for sid in garrison_state_ids:
+        rk = ctx.state_region_key(sid)
+        home_cults = (hm.get(rk) or set()) if rk else set()
+        pool = []
+        if home_cults:
+            pool = [_tone_flat(obj) for _pid, obj in pops.items()
+                    if (obj.get("location") == sid
+                        and _pool_workforce_ok(obj)
+                        and culture_id_to_key(obj.get("culture")) in home_cults)]
+        if not pool:
+            pool = [_tone_flat(obj) for _pid, obj in civilians
+                    if obj.get("location") == sid and _pool_workforce_ok(obj)]
+        st = dominant_acceptance_status(pool, weight_key="workforce")
+        if st:
+            state_statuses.append(st)
+    if state_statuses:
+        # 档位顺序与罪案接受度一致: 完全接纳 < 公开歧视 < 二等公民 < 文化抹除 < 暴力敌视
+        data["garrison_tone_status"] = max(
+            state_statuses,
+            key=lambda s: _CRIME_ACCEPTANCE_RANK.get(s, 0))
+    else:
+        data["garrison_tone_status"] = dominant_acceptance_status(
+            [_tone_flat(obj) for _pid, obj in civilians
+             if _pool_workforce_ok(obj)],
+            weight_key="workforce")
+
     def _pick(lst, n):
         if not lst:
             return []
@@ -6552,6 +7494,8 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
             "type": obj.get("type"),
             "culture": (culture_id_to_name(obj.get("culture"))
                         if obj.get("culture") is not None else None),
+            "culture_key": (culture_id_to_key(obj.get("culture"))
+                            if obj.get("culture") is not None else None),
             "religion": _religion_zh(obj.get("religion")),
             "workforce": obj.get("workforce"),
             "sol": obj.get("previous_quality_of_life"),
@@ -6567,7 +7511,10 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
     soldier_samples = _pick(soldiers, 6)
     data["soldiers"] = [_info(pid, obj) for pid, obj in soldier_samples]
     data["elites"] = [_info(pid, obj) for pid, obj in _pick(elites, 6)]
-    data["civilians"] = [_info(pid, obj) for pid, obj in _pick(civilians, 6)]
+    # 当地平民样本优先驻军州, 保证「驻军所在州居民」名副其实
+    civ_pool = [x for x in civilians if x[1].get("location") in garrison_state_ids]
+    data["civilians"] = [_info(pid, obj) for pid, obj
+                         in _pick(civ_pool or civilians, 6)]
 
     fam = []
     for pid, obj in soldier_samples:
@@ -7046,7 +7993,8 @@ def _pick_visit_pop(snap, capital_id, pops_index=None):
         for other in pops:
             if other is obj or other.get("workplace") != bid:
                 continue
-            if _size(other) < 10 or not isinstance(other.get("previous_quality_of_life"), (int, float)):
+            if (not _pool_workforce_ok(other)
+                    or not isinstance(other.get("previous_quality_of_life"), (int, float))):
                 continue
             return True
         return False
@@ -7059,7 +8007,7 @@ def _pick_visit_pop(snap, capital_id, pops_index=None):
             o.get("previous_quality_of_life")
             for o in pops
             if o.get("workplace") == bid
-            and _size(o) >= 10
+            and _pool_workforce_ok(o)
             and isinstance(o.get("previous_quality_of_life"), (int, float))
         ]
         if not sols:
@@ -7070,7 +8018,7 @@ def _pick_visit_pop(snap, capital_id, pops_index=None):
         o for o in pops
         if o.get("workplace") is not None
         and o.get("type") != "slaves"
-        and _size(o) >= 10
+        and _pool_workforce_ok(o)
         and _culture_name(o) == top_culture
         and o.get("religion") == state_religion
     ]
@@ -7231,6 +8179,7 @@ def build_journal_data(snap):
     data["free_speech_law"] = snap.get("free_speech_law")
     data["dop_law"] = snap.get("dop_law")
     data["govt_law"] = snap.get("govt_law")
+    data["women_law"] = snap.get("women_law")
     data["techs"] = snap.get("techs") or []
     data["tech_keys"] = snap.get("tech_keys") or []
     data["powers"] = snap.get("powers") or []
@@ -7298,6 +8247,8 @@ def extract_full_snapshot(melted, cid=None, ctx=None):
         (l for l in active_laws if l in DOP_LAWS), None)
     snap["govt_law"] = next(
         (l for l in active_laws if l in GOVT_LAWS), None)
+    snap["women_law"] = next(
+        (l for l in WOMEN_LAW_ORDER if l in active_laws), None)
     # 立法进行中: 法律 + 当前阶段(政体专属本地化) + 提交日期
     laws_ip = query_laws_in_progress(melted, cid)
     phase_names = _enactment_phase_names_zh(_enactment_phase_suffix(active_laws))
@@ -8252,7 +9203,7 @@ def _extract_interest_groups(data, player_id, chars=None):
 # 快照缓存 (阶段2: 落盘缓存, 重复生成报纸/杂志时跳过熔化+提取)
 # ---------------------------------------------------------------------------
 
-SNAPSHOT_CACHE_VERSION = 3
+SNAPSHOT_CACHE_VERSION = 4
 # 快照缓存写入锁: 报纸/杂志并行生成时两者会各自落盘同一 snapshot_<year>.json
 # (内容相同), 加锁避免并发写同一文件交错。
 _SNAP_CACHE_LOCK = threading.Lock()

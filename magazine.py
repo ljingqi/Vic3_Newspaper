@@ -58,9 +58,9 @@ ARTICLES = [
                 "key": "soldier",
                 "title": "士兵与营",
                 "req": (
-                    "以我方某营的步兵POP为主角(数据给出职业/文化/宗教/所在州/人数), "
-                    "敌军同逻辑取一个营, 再加上当地平民POP, 写出战场三方处境对照。"
-                    "营的番号与军队名可演绎, 但POP所在州、职业、人数等给定事实不得改动。"
+                    "以我方某营的步兵为主角(数据给出其职业/文化/宗教/所在州/人数), "
+                    "敌军同逻辑取一个营, 再加上当地平民, 写出战场三方处境对照。"
+                    "营的番号与军队名可演绎, 但人物的所在州、职业、人数等给定事实不得改动。"
                 ),
                 "facts": "soldier",
             },
@@ -68,7 +68,7 @@ ARTICLES = [
                 "key": "homefront",
                 "title": "后方家书",
                 "req": (
-                    "写士兵家乡(数据给出州名)的家人: 用给定的后方家庭POP(职业/文化/生活水平) "
+                    "写士兵家乡(数据给出州名)的家人: 用给定的后方家庭样本(职业/文化/生活水平) "
                     "塑造人物, 以家书或邻居口述体呈现战争对后方家庭的影响。"
                 ),
                 "facts": "homefront",
@@ -111,7 +111,7 @@ ARTICLES = [
                 "key": "household",
                 "title": "大臣之家",
                 "req": (
-                    "写大臣家族的生活: 用给定首都或家乡州的上层POP(贵族/资本家/官僚) "
+                    "写大臣家族的生活: 用给定首都或家乡州的上层人群(贵族/资本家/官僚) "
                     "塑造其家庭、府邸与门庭日常, 反映大人物身后的家庭世界。"
                 ),
                 "facts": "household",
@@ -137,7 +137,7 @@ ARTICLES = [
                 "title": "移民群像",
                 "req": (
                     "报道真实迁移记录: 从哪个州到哪个州、人数、文化、宗教(数据给出)。"
-                    "以具体POP为人物原型塑造移民离乡与抵达的故事。"
+                    "以数据中的具体人群为原型塑造移民离乡与抵达的故事。"
                 ),
                 "facts": "migrants",
             },
@@ -145,7 +145,7 @@ ARTICLES = [
                 "key": "transformed",
                 "title": "蜕变者",
                 "req": (
-                    "从跨年指纹中取一个真实发生职业转变的POP(数据给出旧职业、新职业、人数、所在州), "
+                    "从档案记录中取一个真实发生职业转变的人群(数据给出旧职业、新职业、人数、所在州), "
                     "写其个人与家庭层面的转变故事。"
                 ),
                 "facts": "transformed",
@@ -154,7 +154,7 @@ ARTICLES = [
                 "key": "assimilation",
                 "title": "同化与改信",
                 "req": (
-                    "报道正在改信(给定目标宗教)或同化(给定目标文化)的真实POP, "
+                    "报道正在改信(给定目标宗教)或同化(给定目标文化)的真实人群, "
                     "结合文化/宗教相关法律, 写信仰与身份在时代洪流中的变迁。"
                 ),
                 "facts": "assimilation",
@@ -210,11 +210,11 @@ POOL = {
         "theme": "动乱州的运动、衙门与街垒",
         "sections": [
             {"key": "lead", "title": "阴影下的州", "req": (
-                "报道动乱指数（按州内激进派占比估算）超过25%的州：总人口、激进派规模、"
-                "阶层构成与全国对比，立起全篇的冲突氛围；口径以数据为准。"
+                "报道激进派占比超过25%的动乱州：总人口、激进派规模、"
+                "阶层构成与全国对比，立起全篇的冲突氛围；一切以资料为准。"
             )},
             {"key": "movement", "title": "旗帜与人群", "req": (
-                "聚焦该州支持度最高的政治运动：名称、思潮、激进档位、支持者规模与构成，"
+                "聚焦该州支持度最高的政治运动：名称、思潮、激进程度、支持者规模与构成，"
                 "写运动在街头的面貌，不虚构运动领袖姓名。"
             )},
             {"key": "institutions", "title": "衙门与法律", "req": (
@@ -233,7 +233,7 @@ POOL = {
         "sections": [
             {"key": "lead", "title": "货架上的商品", "req": (
                 "从贸易中心交易的大宗商品中取最活跃者（仅限我国境内有生产建筑的制成品，"
-                "按市价推定，不得编造出口量），"
+                "不得编造出口量），"
                 "写它如何摆上货架：贸易中心等级、生产方法、所有权以数据为准。"
             )},
             {"key": "workshop", "title": "车间里的手", "req": (
@@ -255,7 +255,7 @@ POOL = {
         "theme": "教育医疗与国家触角",
         "sections": [
             {"key": "lead", "title": "国家的触角", "req": (
-                "报道教育/卫生/执法机构的投资等级与相关法律，写国家力量如何自上而下延伸"
+                "报道教育/卫生/执法等机构的投入档位（自然语言）与相关法律，写国家力量如何自上而下延伸"
                 "到州县；机构与法律以数据为准。"
             )},
             {"key": "classroom", "title": "课堂与诊室", "req": (
@@ -263,7 +263,7 @@ POOL = {
                 "不虚构机构名称。"
             )},
             {"key": "grassroots", "title": "最基层的一天", "req": (
-                "以随机州随机下层民众为主角，写国家服务覆盖到最基层的一日：识字、收支、"
+                "以样本州的下层民众为主角，写国家服务覆盖到最基层的一日：识字、收支、"
                 "接受度以数据为准，写课堂、诊室或衙门中的具体场景。"
             )},
             {"key": "lights", "title": "灯火与课本", "req": (
@@ -284,8 +284,8 @@ POOL = {
                 "普选/文化宗教排除），写门槛内外的人群。"
             )},
             {"key": "ballot", "title": "投票日", "req": (
-                "以随机州随机POP为主角：程序已检定其是否拥有投票权，严格按检定结果写"
-                "投票日履行权利或站在门外的场景，不得反转检定结果。"
+                "以样本州某一人群为主角：资料已明确其投票资格，严格按资料写"
+                "投票日履行权利或站在门外的场景，不得反转。"
             )},
             {"key": "future", "title": "来年的潮水", "req": (
                 "以政治运动与立法动态收束，展望选举与权利的未来，不虚构立法结果。"
@@ -317,7 +317,7 @@ POOL = {
         "theme": "海外属地的家书",
         "sections": [
             {"key": "lead", "title": "海外的来信", "req": (
-                "报道玩家未并入本土的海外属地：位置、城市名、主要文化、并入进度，"
+                "报道我国未并入本土的海外属地：位置、城市名、主要文化、并入进度，"
                 "立起一封家书的背景，不虚构地名。"
             )},
             {"key": "harbor", "title": "港口的抵达", "req": (
@@ -330,6 +330,38 @@ POOL = {
             )},
             {"key": "home", "title": "故乡的回信", "req": (
                 "以首都本土家庭对照，写回信与乡愁：本土家庭样本数据为据，收束全篇。"
+            )},
+        ],
+    },
+    "crime": {
+        "default_title": "罪案与法网",
+        "theme": "一桩案件的社会与法",
+        "sections": [
+            {"key": "case", "title": "案件卷宗", "req": (
+                "报道本年度发生的一桩案件：案件类型为资料给定的凶杀/纵火/故意伤害/"
+                "勒索/抢劫/盗窃/恐怖主义（激进派）之一；案发地为受害者工作建筑所在"
+                "城邑、村落等聚落（案发现场可能是工作建筑内/路上/家中三处之一）；"
+                "受害者、凶手、证人三角色与动机一律以资料为准，三人姓名已给定、"
+                "全篇不得改名。案件经过可按资料合情演绎，但不得改动给定身份、地点、"
+                "职业与数字，不得虚构具体伤亡数。"
+            )},
+            {"key": "victim", "title": "受害者与证人", "req": (
+                "只写资料中的【受害者】与【证人】两位（凶手不得在此出场或换角）："
+                "职业、文化、宗教、生活水平、接受度等资料不得改动，"
+                "写案发前后他们在同一聚落的生活与现场见闻，与开篇《案件卷宗》呼应。"
+                "案件类型与案发经过必须与开篇一致（盗窃/勒索等非暴力案件"
+                "不得写成杀伤）。"
+            )},
+            {"key": "perpetrator", "title": "凶手与动机", "req": (
+                "只写资料中的【凶手】（加害人）一位（受害者与证人不得换角）："
+                "经济落差/文化隔阂/政治怨愤以资料给定的动机为准；恐怖主义案件"
+                "须写其参与的抗议政治运动背景，不得虚构运动领袖姓名与具体行动细节。"
+            )},
+            {"key": "justice", "title": "法网与衙门", "req": (
+                "三角色身份必须与全篇一致（资料原样，不得互换），报道现行警察机构"
+                "法律（Policing）与国内安全法律（Internal Security）、执法与内务"
+                "两机构投入的自然语言档位，写案件进入法网后的后续——侦办、缉凶、"
+                "庭审或悬案收束，尺度以给定法律与机构为限，不虚构具体判决与刑期。"
             )},
         ],
     },
@@ -361,16 +393,38 @@ ACCEPTANCE_GARRISON_TONES = {
 }
 
 
-def _dominant_acceptance(pops):
-    """样本POP → 出现次数最多的接受度状态; 无样本返回 None。"""
+def _dominant_acceptance(pops, weight_key=None):
+    """样本POP → 出现次数最多(可加权)的接受度状态; 无样本返回 None。"""
+    try:
+        from journal_save import dominant_acceptance_status
+    except Exception:
+        dominant_acceptance_status = None
+    if dominant_acceptance_status is not None:
+        return dominant_acceptance_status(pops, weight_key=weight_key)
     cnt = {}
     for p in pops or []:
         s = p.get("acceptance_status")
         if s:
-            cnt[s] = cnt.get(s, 0) + 1
+            w = 1
+            if weight_key is not None:
+                v = p.get(weight_key)
+                if isinstance(v, (int, float)) and v > 0:
+                    w = v
+            cnt[s] = cnt.get(s, 0) + w
     if not cnt:
         return None
     return max(cnt.items(), key=lambda kv: kv[1])[0]
+
+
+def _garrison_tone(m):
+    """驻地军民关系基调: 优先数据层算好的 garrison_tone_status
+    (逐驻军州按游戏文件 add_homeland 本土文化的接受度加权众数后取最差档);
+    旧缓存数据回退为平民加权众数。"""
+    st = (m or {}).get("garrison_tone_status")
+    if st:
+        return st
+    return _dominant_acceptance((m or {}).get("civilians"),
+                                weight_key="workforce")
 
 
 def _acceptance_zh(status):
@@ -389,11 +443,34 @@ def _war_article_variant(data):
     if at_war is None:
         at_war = m.get("player_at_war")
     if at_war:
-        return dict(ARTICLES[0])
+        a = dict(ARTICLES[0])
+        battles = m.get("battles") or []
+        wars = m.get("player_wars")
+        if wars is None:
+            wars = data.get("player_wars") or []
+        if battles:
+            front_req = ARTICLES[0]["sections"][0]["req"]
+        elif wars:
+            front_req = (
+                "本刊资料未保留我方战役细节，本板块依战争记录写战局态势："
+                "只依据给定的参战方、起止时间与战争目的写态势，"
+                "绝不虚构战役地点、将领、日期、兵力等数字。"
+            )
+        else:
+            front_req = (
+                "本年数据无战事记录，本板块写和平景象下的国内风貌："
+                "以给定的州、人口与民生数据为据，收束于安宁的日常，"
+                "绝不虚构战役地点、将领、日期、兵力等数字。"
+            )
+        secs = [dict(s) for s in ARTICLES[0]["sections"]]
+        for s in secs:
+            if s["key"] == "front":
+                s["req"] = front_req
+        a["sections"] = secs
+        return a
     a = dict(ARTICLES[0])
     a["title"] = "军营与家园"
-    local_pops = (m.get("soldiers") or []) + (m.get("civilians") or [])
-    dom_acc = _dominant_acceptance(local_pops)
+    dom_acc = _garrison_tone(m)
     tone_name, tone_req = ACCEPTANCE_GARRISON_TONES.get(
         dom_acc, ("军民日常相处", "写军队与当地居民的日常相处。"))
     secs = []
@@ -404,22 +481,22 @@ def _war_article_variant(data):
             s2["title"] = "驻地与训练"
             s2["facts"] = "garrison"
             s2["req"] = (
-                "报道我国军队的驻地生活: 数据给出军团/营的番号、兵员与驻地, 士兵POP的"
+                "报道我国军队的驻地生活: 数据给出军团/营的番号、兵员与驻地, 士兵群体的"
                 "职业/文化/宗教/所在州/人数。写军队在驻地操演训练、整饬营务，与当地人"
                 "相处。驻地军民关系基调: " + tone_name + "。" + tone_req
             )
             secs.append(s2)
         elif s["key"] == "soldier":
             s2["req"] = (
-                "以我方某营的步兵POP为主角(数据给出职业/文化/宗教/所在州/人数), "
-                "结合当地平民POP, 写出驻军士兵的群像、营中日常与军民相处。驻地军民关系基调: "
+                "以我方某营的步兵为主角(数据给出其职业/文化/宗教/所在州/人数), "
+                "结合当地平民, 写出驻军士兵的群像、营中日常与军民相处。驻地军民关系基调: "
                 + tone_name + "。" + tone_req +
                 "当前我国无战事、亦无敌军资料, 请据驻军生活展开。"
             )
             secs.append(s2)
         elif s["key"] == "homefront":
             s2["req"] = (
-                "写士兵家乡(数据给出州名)的家人: 用给定的后方家庭POP(职业/文化/生活水平) "
+                "写士兵家乡(数据给出州名)的家人: 用给定的后方家庭样本(职业/文化/生活水平) "
                 "塑造人物, 以家书或邻居口述体呈现和平时期军属家庭的日常与牵挂。"
             )
             secs.append(s2)
@@ -427,7 +504,7 @@ def _war_article_variant(data):
             if m.get("war_states"):
                 s2["title"] = "营区与驻地民生"
                 s2["req"] = (
-                    "报道驻军所在地的民生状况: 给定州的荒废度/污染档位、主要文化, "
+                    "报道驻军所在地的民生状况: 给定州的荒废度/污染程度、主要文化, "
                     "写驻军与当地民众共同生活的面貌与地方恢复建设。驻地军民关系基调: "
                     + tone_name + "。" + tone_req
                 )
@@ -441,11 +518,13 @@ def _war_article_variant(data):
 NONFICTION_RULE = (
     "「非虚构文学」铁律: 给定的国家名、人名、地名、日期、数字、职业、文化、宗教必须原样使用, "
     "不得改动或替换; 人物的心理、对话、场景、信函等细节允许作家合情演绎; "
-    "数据缺失的内容应简写或略去, 不得编造具体数字或国家/人名来填空。"
+    "数据缺失的内容应简写或略去, 不得编造具体数字或国家/人名来填空; "
+    "凡数据给出姓名的人物一律原样使用该姓名, 未给出姓名的直接描写对象"
+    "一律用身份/职业代称, 不得自行取名或改名。"
 )
 
 WORLD_FRAME_RULE = (
-    "「平行世界规则」: 本刊报道的世界由程序提供的存档数据构成, 与任何真实历史无关。"
+    "「平行世界规则」: 本刊报道的世界完全由本刊资料构成, 与任何真实历史无关。"
     "所有国家、战争、边界、统治者、人物、日期、数字一律以本提示词给出的数据为准; "
     "数据未提供的即视为不存在或未知, 不得调用真实历史事件/人物/战役(如巴拉圭战争、"
     "真实将领)或常识补写, 不得虚构国家名、战役名、将领名与具体数字。宁可写得含蓄, 也不可编造。"
@@ -549,6 +628,68 @@ def _unit_manpower(mp):
     return f"（兵员{_fmt_int(mp)}人）"
 
 
+# 动员选项: 补给类只保留已启用中的最高档 (基础 < 额外 < 奢侈)。
+MOBILIZATION_SUPPLIES_TIER = (
+    "mobilization_option_basic_supplies",
+    "mobilization_option_extra_supplies",
+    "mobilization_option_luxurious_supplies",
+)
+MOBILIZATION_OPTION_ZH = {
+    "mobilization_option_basic_supplies": "基础补给",
+    "mobilization_option_extra_supplies": "额外补给",
+    "mobilization_option_luxurious_supplies": "奢侈补给",
+    "mobilization_option_chocolate": "巧克力",
+    "mobilization_option_tobacco": "烟草",
+    "mobilization_option_liquor": "烈酒",
+    "mobilization_option_opium": "鸦片",
+    "mobilization_option_narcotics_supplies": "麻醉品供给",
+    "mobilization_option_forced_march": "强行军",
+    "mobilization_option_truck_transport": "卡车运输",
+    "mobilization_option_rail_transport": "铁路运输",
+    "mobilization_option_machinegunners": "机枪手",
+    "mobilization_option_chemical_weapons": "化学武器",
+    "mobilization_option_flamethrowers": "火焰喷射器",
+    "mobilization_option_motorized_recon": "摩托化侦察",
+    "mobilization_option_balloon_recon": "气球侦察",
+    "mobilization_option_aerial_recon": "空中侦察",
+    "mobilization_option_first_aid": "急救",
+    "mobilization_option_field_hospitals": "战地医院",
+}
+
+
+def _mobilization_options_zh(keys):
+    """动员选项 key 列表 → 中文名; 补给类只保留最高档, 未知 key 原样保留。"""
+    keys = list(keys or [])
+    best = None
+    for k in MOBILIZATION_SUPPLIES_TIER:
+        if k in keys:
+            best = k
+    kept = []
+    for k in keys:
+        if k in MOBILIZATION_SUPPLIES_TIER:
+            if k == best:
+                kept.append(k)
+        else:
+            kept.append(k)
+    return [MOBILIZATION_OPTION_ZH.get(k, k) for k in kept]
+
+
+def _formation_status_bits(f):
+    """军团 → 动员状态/动员选项自然语言片段 (空列表表示无信息)。"""
+    bits = []
+    flags = set(f.get("flags") or [])
+    if "is_mobilized" in flags:
+        bits.append("已动员")
+    else:
+        bits.append("未动员")
+    if "has_raised_conscripts" in flags:
+        bits.append("已征召后备兵")
+    opts = _mobilization_options_zh(f.get("active_mobilization_options"))
+    if opts:
+        bits.append("动员选项：" + "、".join(opts))
+    return bits
+
+
 def _fmt_battle(b):
     atk, dfd = b.get("attacker") or {}, b.get("defender") or {}
     btype = BATTLE_TYPE_ZH.get(b.get("type"), b.get("type") or "未知")
@@ -640,7 +781,7 @@ def _facts_front(m, data):
                 for g in wg[:5]:
                     lines.append(f"- {g.get('nl') or '未知'}")
     if not battles and wars:
-        lines.append("存档未保留我方战役细节，依战争记录报道：")
+        lines.append("本刊资料未保留我方战役细节，依战争记录报道：")
         for w in wars[:2]:
             ps = [p.get("name") for p in (w.get("participants") or []) if p.get("name")]
             status = "已结束" if w.get("ended") else "仍在进行"
@@ -668,8 +809,7 @@ def _facts_soldier(m, data, peacetime=False):
     lines = []
     if peacetime:
         lines.append("当前我国无战事记录，亦无敌军资料。")
-        local_pops = (m.get("soldiers") or []) + (m.get("civilians") or [])
-        dom = _dominant_acceptance(local_pops)
+        dom = _garrison_tone(m)
         tone_name, _tone_req = ACCEPTANCE_GARRISON_TONES.get(dom, (None, None))
         if dom and tone_name:
             lines.append(f"驻地军民关系基调：{tone_name}（当地接受度为{_acceptance_zh(dom)}）。")
@@ -685,12 +825,24 @@ def _facts_soldier(m, data, peacetime=False):
                 unames = "、".join(
                     f"{u.get('name')}{_unit_manpower(u.get('manpower'))}"
                     for u in uu[:4])
-                lines.append(f"- {fname}：{unames}" + ("等" if len(uu) > 4 else ""))
+                line = f"- {fname}：{unames}" + ("等" if len(uu) > 4 else "")
             else:
-                lines.append(f"- {fname}")
-    lines.append("我方士兵/军官POP（兵源样本）：")
-    for p in soldiers[:3]:
-        lines.append("- " + _fmt_pop(p))
+                line = f"- {fname}"
+            sbits = _formation_status_bits(f)
+            if sbits:
+                line += "（" + "；".join(sbits) + "）"
+            lines.append(line)
+    lines.append("我方士兵与军官（兵源样本）：")
+    if soldiers:
+        for p in soldiers[:3]:
+            lines.append("- " + _fmt_pop(p))
+    else:
+        lines.append("（无足量士兵样本，请据军团与营的番号含蓄写作。）")
+    ck = next((s.get("culture_key") for s in soldiers if s.get("culture_key")), None)
+    blk = _mag_person_names(data, "war_family", [("士兵（主角）", ck)],
+                            soldier=True)
+    if blk:
+        lines.append(blk)
     battles = m.get("battles") or []
     if not peacetime and battles:
         b = battles[0]
@@ -746,9 +898,12 @@ def _facts_soldier(m, data, peacetime=False):
             if names:
                 lines.append("- " + cname + "：" + "、".join(names)
                              + ("等" if len(ss) > 5 else ""))
-    lines.append("当地平民POP（" + ("驻军所在州" if peacetime else "战场/驻军所在州") + "居民）：")
-    for p in civilians[:2]:
-        lines.append("- " + _fmt_pop(p))
+    lines.append("当地平民（" + ("驻军所在州" if peacetime else "战场/驻军所在州") + "居民）：")
+    if civilians:
+        for p in civilians[:2]:
+            lines.append("- " + _fmt_pop(p))
+    else:
+        lines.append("（无足量平民样本，请据驻地数据含蓄写作。）")
     return "\n".join(lines)
 
 
@@ -757,10 +912,33 @@ def _facts_garrison(m, data):
     return _facts_soldier(m, data, peacetime=True)
 
 
-def _facts_homefront(m):
+def _mag_person_names(data, article_key, roles, soldier=False, genders=None):
+    """生成「人物名单（姓名已给定）」提示块。
+    roles: [(角色名, culture_key|None)]; 种子按 (年|国名|文章|角色) 播种,
+    同一角色在同年各板块间姓名一致, 保证跨板块连续性。
+    soldier=True: 士兵文章, 军人/军官角色强制男名池, 其余角色不应用法律概率
+    (维持合并池现行为); 否则女性概率按现行女权法律 (data["women_law"]) 调整。
+    genders: {角色: "male"/"female"} 显式强制性别 (如 长子/幼女 等自带性别的角色)。"""
+    try:
+        from journal_save import person_names_block, women_law_female_pct
+    except Exception:
+        return ""
+    seed = f"{data.get('year')}|{data.get('player')}|magazine|{article_key}"
+    female_pct = None
+    genders = dict(genders or {})
+    if soldier:
+        for role, _ck in roles:
+            if "士兵" in role or "军官" in role:
+                genders.setdefault(role, "male")
+    else:
+        female_pct = women_law_female_pct(data.get("women_law"))
+    return person_names_block(seed, roles, female_pct=female_pct, genders=genders)
+
+
+def _facts_homefront(m, data):
     fam = m.get("families") or []
     soldiers = m.get("soldiers") or []
-    lines = ["后方家庭POP（士兵同州的平民）："]
+    lines = ["后方家庭（士兵同州的平民）："]
     if fam:
         for p in fam[:3]:
             lines.append("- " + _fmt_pop(p))
@@ -772,14 +950,19 @@ def _facts_homefront(m):
             for s in soldiers[:3] if s.get("state_name") or s.get("state")))
         if st:
             lines.append("士兵所在州：" + "、".join(st) + "。")
+    ck = next((p.get("culture_key") for p in fam if p.get("culture_key")), None)
+    blk = _mag_person_names(data, "war_family", [("军属（留守家人）", ck)],
+                            soldier=True)
+    if blk:
+        lines.append(blk)
     return "\n".join(lines)
 
 
-def _facts_aftermath(m):
+def _facts_aftermath(m, data):
     ws = m.get("war_states") or []
     lines = []
     if ws:
-        lines.append("受战争影响或驻军所在地的州（荒废度/污染为档位）：")
+        lines.append("受战争影响或驻军所在地的州（荒废度/污染程度）：")
         for s in ws[:4]:
             bits = [f"{s.get('name') or '未知州'}"]
             dev = s.get("devastation")
@@ -792,7 +975,7 @@ def _facts_aftermath(m):
                 bits.append(f"主要文化为{s['top_culture']}")
             lines.append("- " + "，".join(bits) + "。")
     else:
-        lines.append("（无荒废度>0的玩家州）")
+        lines.append("（无荒废度>0的本国州份）")
     wars = m.get("_player_wars") or []
     if wars:
         for w in wars[:2]:
@@ -821,6 +1004,12 @@ def _facts_aftermath(m):
                 if md:
                     bits.append("守方" + md)
                 lines.append(f"- {b.get('place') or '地点未知'}一役，" + "，".join(bits) + "。")
+    civ = m.get("civilians") or []
+    ck = next((c.get("culture_key") for c in civ if c.get("culture_key")), None)
+    blk = _mag_person_names(data, "war_family", [("战区平民代表", ck)],
+                            soldier=True)
+    if blk:
+        lines.append(blk)
     return "\n".join(lines)
 
 
@@ -894,6 +1083,13 @@ def _facts_household(m, data):
     lines = [f"首都/上层社会样本（大臣之家素材，首都 {cap}）："]
     for p in elites[:3]:
         lines.append("- " + _fmt_pop(p))
+    ck = next((p.get("culture_key") for p in elites if p.get("culture_key")), None)
+    blk = _mag_person_names(data, "court_household",
+                            [("府中长子", ck), ("府中次子", ck), ("府中幼女", ck)],
+                            genders={"府中长子": "male", "府中次子": "male",
+                                     "府中幼女": "female"})
+    if blk:
+        lines.append(blk)
     return "\n".join(lines)
 
 
@@ -932,11 +1128,11 @@ def _facts_regime(m, data):
     return "\n".join(lines)
 
 
-def _facts_migrants(m):
+def _facts_migrants(m, data):
     migs = m.get("migrations") or []
     if not migs:
-        return "本年无玩家州迁出记录（可据人口与文化构成写平静的一年）。"
-    lines = ["玩家州迁出记录（人数已按存档口径换算）："]
+        return "本年无本国州份迁出记录（可据人口与文化构成写平静的一年）。"
+    lines = ["本国各州迁出记录（人数为档案记录）："]
     for r in migs[:3]:
         origin = r.get("origin_state") or "未知州"
         target = r.get("target_name") or r.get("target_state") or "未知州"
@@ -958,10 +1154,14 @@ def _facts_migrants(m):
         else:
             acc_txt = "，在新家园接受度未知"
         lines.append(f"- 从{origin}迁入{target}{who}，共{n_txt}{acc_txt}。")
+    ck = next((r.get("culture_key") for r in migs if r.get("culture_key")), None)
+    blk = _mag_person_names(data, "migration_change", [("移民代表", ck)])
+    if blk:
+        lines.append(blk)
     return "\n".join(lines)
 
 
-def _facts_transformed(m):
+def _facts_transformed(m, data):
     pros = m.get("promotions") or []
     if not pros:
         return "本年无跨年可比的职业转变样本（首次生成年无上年指纹，或无人转变）。"
@@ -978,6 +1178,10 @@ def _facts_transformed(m):
         wf = p.get("workforce")
         wf_txt = f"{_fmt_int(wf)}名劳动力" if wf is not None else "部分劳动力"
         lines.append(f"- {state}的{who}{wf_txt}由{old}转为{new}。")
+    ck = next((p.get("culture_key") for p in pros if p.get("culture_key")), None)
+    blk = _mag_person_names(data, "migration_change", [("职业转变者代表", ck)])
+    if blk:
+        lines.append(blk)
     return "\n".join(lines)
 
 
@@ -1004,7 +1208,7 @@ def _facts_assimilation(m, data):
     convs = m.get("conversions") or []
     lines = []
     if convs:
-        lines.append("正在改信/同化的真实POP：")
+        lines.append("正在改信/同化的真实人群：")
         for c in convs[:3]:
             extra = []
             if c.get("converting_to_religion"):
@@ -1025,6 +1229,10 @@ def _facts_assimilation(m, data):
             cult_laws.append(zh)
     if cult_laws:
         lines.append("相关法律变动：" + "、".join(cult_laws) + "。")
+    ck = next((c.get("culture_key") for c in convs if c.get("culture_key")), None)
+    blk = _mag_person_names(data, "migration_change", [("改信者代表", ck)])
+    if blk:
+        lines.append(blk)
     return "\n".join(lines)
 
 
@@ -1042,6 +1250,10 @@ def _facts_newhome(m, data):
     migs = m.get("migrations") or []
     if migs:
         lines.append(f"本期移民样本共{len(migs)}条（见移民群像板块）。")
+    ck = next((r.get("culture_key") for r in migs if r.get("culture_key")), None)
+    blk = _mag_person_names(data, "migration_change", [("移民代表", ck)])
+    if blk:
+        lines.append(blk)
     return "\n".join(lines)
 
 
@@ -1059,14 +1271,14 @@ def render_facts(article_key, section_key, data):
         "garrison": lambda: _facts_garrison(m, data),
         "soldier": lambda: _facts_soldier(
             m, data, peacetime=not bool(m.get("_player_at_war"))),
-        "homefront": lambda: _facts_homefront(m),
-        "aftermath": lambda: _facts_aftermath(m),
+        "homefront": lambda: _facts_homefront(m, data),
+        "aftermath": lambda: _facts_aftermath(m, data),
         "minister": lambda: _facts_minister(m),
         "decrees": lambda: _facts_decrees(m, data),
         "household": lambda: _facts_household(m, data),
         "regime": lambda: _facts_regime(m, data),
-        "migrants": lambda: _facts_migrants(m),
-        "transformed": lambda: _facts_transformed(m),
+        "migrants": lambda: _facts_migrants(m, data),
+        "transformed": lambda: _facts_transformed(m, data),
         "assimilation": lambda: _facts_assimilation(m, data),
         "newhome": lambda: _facts_newhome(m, data),
     }[section_key]
@@ -1144,10 +1356,10 @@ def _intro_framework(data):
     pool_keys |= set((m.get("pool") or {}).get("fallback") or [])
     migs = m.get("migrations") or []
     if migs and "migration_change" in pool_keys:
-        lines.append(f"本年度玩家州有{len(migs)}条人口迁移记录（见《迁徙与蜕变》）。")
+        lines.append(f"本年度本国各州有{len(migs)}条人口迁移记录（见《迁徙与蜕变》）。")
     convs = m.get("conversions") or []
     if convs and "migration_change" in pool_keys:
-        lines.append(f"档案有{len(convs)}个正在改信/同化的POP样本（见《迁徙与蜕变》）。")
+        lines.append(f"档案有{len(convs)}个正在改信/同化的人群样本（见《迁徙与蜕变》）。")
     return "\n".join(lines) or "（无额外数据）"
 
 
@@ -1205,7 +1417,7 @@ def build_intro_messages(data):
         )
     user_msg = (
         f"本期杂志: 【国名】{country}, 【都城】{capital}, 【政体】{govt_zh}, 【年份】{year}。"
-        "\n\n本期数据框架（程序提供，一切事实以此为准，不得另行发挥或套用真实历史）：\n"
+        "\n\n本期数据框架（以下资料为唯一事实依据，不得另行发挥或套用真实历史）：\n"
         f"{_intro_framework(data)}\n\n"
         "请据上述变量与数据框架拟定刊名并撰写导言。"
     )
@@ -1274,7 +1486,7 @@ def build_section_messages(article, section, data, intro, lead_text,
     )
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
-        f"本文开篇板块《{article['sections'][0]['title']}》内容摘要（程序截取，全文较长）:\n"
+        f"本文开篇板块《{article['sections'][0]['title']}》内容摘要（以下为摘要，全文较长）:\n"
         f"{_lead_digest(lead_text)}\n\n"
         f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据(国名请用【国名】={country}):\n"
         f"{facts}\n\n请直接输出板块正文(Markdown)。"
