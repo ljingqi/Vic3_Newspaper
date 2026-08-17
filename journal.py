@@ -48,6 +48,27 @@ except Exception:
 
 from style import (DEFAULT_STYLE, FREE_SPEECH_FLAVOR, NEWSPAPER_STYLES,
                    resolve_newspaper_style)
+from currency import currency_unit
+
+# 周 → 月折算 (与 crime 板块罚金基准线同口径: 52周/12月)
+_WEEKS_PER_MONTH = 52 / 12
+
+
+def _monthly(v):
+    """周口径数值 → 月口径。"""
+    return v * _WEEKS_PER_MONTH
+
+
+def _monthly_parts(parts):
+    """收支分量字符串 (周值, 如「工资 573.70」) → 月值。"""
+    out = []
+    for p in parts or []:
+        m = re.match(r"^(.*?)\s+([+-]?\d+\.?\d*)$", p)
+        if m:
+            out.append(f"{m.group(1)} {_monthly(float(m.group(2))):.2f}")
+        else:
+            out.append(p)
+    return out
 
 # ---------------------------------------------------------------------------
 # 配置
@@ -531,6 +552,104 @@ GOVT_NAMES = {
     "chiefdom": "酋邦制",
     "other": "其他政体",
 }
+
+# ---------------------------------------------------------------------------
+# 正式国名拼接: 政体 + 国名 → 大清帝国 / 法兰西第三共和国
+# ---------------------------------------------------------------------------
+# 设计原则 (调研结论, 详见 docs/正式国名拼接规则.md):
+#   - 政体名只取「国体后缀」(帝国/王国/共和国/哈里发国/摄政国/幕府/教廷…),
+#     剥掉「专制/立宪/封建/民主/议会/总统/委员会」等通用修饰语;
+#   - 「第二/第三/第四共和国」是正式国名的一部分 (法兰西第三共和国), 整段保留;
+#   - 游戏本地化的「君主国」按中文国名惯例写作「王国」(普鲁士王国而非普鲁士君主国),
+#     「凯撒国/沙皇国」按惯例作「帝国」(奥地利帝国/俄罗斯帝国);
+#   - 军事独裁政府/英王陛下政府/临时政府等不算国名后缀, 不拼接, 保留原国名;
+#   - 国名已以「国」结尾 (美利坚合众国/法兰西共和国/教宗国) 视为已完成, 直接豁免;
+#   - 国名已含后缀 (德川幕府+幕府) 不重复拼接。
+
+# 旧存档/旧数据遗留的英文政体键 → 中文政体名 (与游戏本地化同口径的兜底)
+_LEGACY_GOVT_ZH = {
+    "monarchy": "君主国",
+    "presidential_republic": "共和国",
+    "parliamentary_republic": "共和国",
+    "council_republic": "委员会共和国",
+    "social_monarchy": "社会君主国",
+    "theocracy": "神权国",
+    "chiefdom": "酋邦",
+    "gov_presidential_democracy": "共和国",
+    "gov_parliamentary_democracy": "共和国",
+    "gov_autocracy": "独裁国",
+    "french_2nd_republic_parliamentary": "第二共和国",
+    "french_3rd_republic_parliamentary": "第三共和国",
+    "french_4th_republic_parliamentary": "第四共和国",
+}
+
+# journal.py 旧口径的政体中文名 (带「制」等) → 规范政体名, 便于取后缀
+_GOVT_ZH_ALIAS = {
+    "君主制": "君主国",
+    "神权制": "神权国",
+    "酋邦制": "酋邦",
+    "社会君主立宪制": "社会君主国",
+    "其他政体": "",
+}
+
+# 国体后缀候选, 按长度降序匹配 (取最长命中, 避免「共和国」吃掉「第三共和国」)
+_POLITY_TAILS = (
+    "第二共和国", "第三共和国", "第四共和国",
+    "摩诃罗阇国", "马拉地罗阇国", "伊儿汗国",
+    "哈里发国", "赫迪夫国", "卡尔萨国", "联合王国",
+    "埃米尔国", "苏丹国", "苏南国", "凯撒国", "沙皇国",
+    "摄政国", "贝伊国", "达耶国", "哈基姆国", "伊玛目国",
+    "沙阿国", "谢赫国", "谢里夫国", "马利克国", "纳瓦卜国",
+    "尼扎姆国", "罗阇国", "拉瓦尔国", "独裁国", "神权国",
+    "君主国", "大公国", "共和国", "合众国", "帝国", "王国",
+    "公国", "伯国", "汗国", "酋邦", "土邦", "教廷", "幕府",
+    "联邦", "邦联", "自由市",
+)
+
+# 匹配到的后缀 → 正式国名写法 (君主国按惯例作王国; 凯撒国/沙皇国作帝国)
+_POLITY_TAIL_STD = {
+    "君主国": "王国",
+    "二元君主国": "王国",
+    "三元君主国": "王国",
+    "社会君主国": "王国",
+    "凯撒国": "帝国",
+    "沙皇国": "帝国",
+}
+
+
+def _polity_suffix(govt):
+    """政体名 → 拼入国名的正式后缀; 查不到(军事独裁政府等)返回 None。"""
+    if not govt:
+        return None
+    g = _LEGACY_GOVT_ZH.get(govt) or _GOVT_ZH_ALIAS.get(govt, govt)
+    g = g.strip()
+    if not g:
+        return None
+    for tail in _POLITY_TAILS:
+        if g.endswith(tail):
+            return _POLITY_TAIL_STD.get(tail, tail)
+    return None
+
+
+def full_country_name(country, govt):
+    """把「国名 + 政体」拼成正式国名, 如 大清+专制帝国→大清帝国。
+
+    - 国名已以「国」结尾 (美利坚合众国等) → 豁免, 原样返回;
+    - 政体名查不到国体后缀 (军事独裁政府等) → 不拼接, 原样返回;
+    - 国名已以该后缀结尾 (德川幕府+幕府) → 不重复拼接。
+    """
+    country = (country or "").strip()
+    if not country or country == "未知":
+        return country
+    if country.endswith("国"):
+        return country
+    suffix = _polity_suffix(govt)
+    if not suffix:
+        return country
+    if country.endswith(suffix):
+        return country
+    return country + suffix
+
 
 RELIGION_NAMES = {
     "catholic": "天主教", "protestant": "新教", "orthodox": "东正教",
@@ -1083,8 +1202,10 @@ def render_overview(data, history=None):
     L = []
     capital = data.get('capital', '') or '（数据缺失，请根据国名常识补填该国的广为人知的都城名）'
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
-    L.append(f"【国家】{data.get('player', '未知')}  【都城】{capital}  【政体】{govt_zh}  【年份】{data.get('year', '?')}（{data.get('date', '')}）")
-    L.append(f"- GDP：{data.get('gdp', '未知')}英镑；人口：{data.get('pop', '未知')}；生活水平：{data.get('sol', '未知')};识字率：{data.get('literacy', '未知')}")
+    full = full_country_name(data.get('player', '未知'), govt_zh)
+    L.append(f"【国家】{full}  【都城】{capital}  【政体】{govt_zh}  【年份】{data.get('year', '?')}（{data.get('date', '')}）")
+    unit = data.get("currency") or "英镑"
+    L.append(f"- GDP：{data.get('gdp', '未知')}{unit}；人口：{data.get('pop', '未知')}；生活水平：{data.get('sol', '未知')};识字率：{data.get('literacy', '未知')}")
     L.append(f"- 恶名：{_infamy_band(data.get('infamy'))}")
     if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
         L.append(f"- 政治倾向：激进派占人口约{data.get('radicals_pct', '?')}%，"
@@ -1155,6 +1276,7 @@ def render_war(data, history=None):
     wars = _merged_last_year_wars(data, history)
     if not wars:
         L.append("  (去年无相关战事记录)")
+    unit = data.get("currency") or "英镑"
     # 战争目的: 按战争 id 分组, 格式与杂志 _facts_front 一致
     by_war = {}
     for g in (data.get("war_goals") or []):
@@ -1183,7 +1305,7 @@ def render_war(data, history=None):
                 people = int(round(cas * 100000))
                 bits.append(f"死伤约{people}人")
             if cost is not None:
-                bits.append(f"耗资约{cost:.0f}英镑")
+                bits.append(f"耗资约{cost:.0f}{unit}")
             if bits:
                 side_parts.append(side_label + "，".join(bits))
         if side_parts:
@@ -1196,7 +1318,7 @@ def render_war(data, history=None):
                 people = int(round(cas * 100000))
                 bits.append(f"双方死伤约{people}人")
             if cost:
-                bits.append(f"耗资约{cost:.0f}英镑")
+                bits.append(f"耗资约{cost:.0f}{unit}")
             if bits:
                 tail.append("，".join(bits))
         support = []
@@ -1391,7 +1513,8 @@ def render_econ(data, history=None):
     L = []
     prev = (history[-1] or {}) if history else {}
     gdp = data.get('gdp', '未知')
-    gdp_line = f"- GDP：{gdp}英镑"
+    unit = data.get("currency") or "英镑"
+    gdp_line = f"- GDP：{gdp}{unit}"
     gdp_pct = _yoy_pct(prev.get("gdp"), gdp if isinstance(gdp, (int, float)) else None)
     if gdp_pct is not None:
         gdp_line += f"（比去年同期{'增长' if gdp_pct >= 0 else '减少'}{abs(gdp_pct):.1f}%）"
@@ -1803,6 +1926,253 @@ def _newspaper_person_name(data, role, culture_key):
         female_pct=women_law_female_pct(data.get("women_law")))
 
 
+def _family_roster(data, fi, role):
+    """受访家庭名单: 受访人 + 配偶 + 子女 (子女随受访人同姓)。
+    性别与姓名全部确定性播种 (同年稳定); 无姓名池时返回 None。"""
+    try:
+        from journal_save import (culture_person_name, surname_from_name,
+                                  women_law_female_pct, spouse_surname_policy)
+    except Exception:
+        return None
+    ck = fi.get("culture_key")
+    if not ck:
+        return None
+    seed = f"{data.get('year')}|{data.get('player')}|newspaper|{role}"
+    pct = women_law_female_pct(data.get("women_law"))
+    if pct is not None:
+        gender = "female" if random.Random(seed).random() < pct else "male"
+    else:
+        gender = None
+    nm = culture_person_name(ck, seed=seed, gender=gender)
+    if not nm:
+        return None
+    used = {nm}
+    surname = surname_from_name(nm, ck)
+    spouse_gender = "male" if gender == "female" else "female"
+    policy = spouse_surname_policy(ck)
+    spouse = None
+    if policy == "double" and surname:
+        # 双姓: 妻保留本姓, 再加夫姓 (名·妻姓·夫姓)
+        for k in range(20):
+            own = culture_person_name(ck, seed=f"{seed}|spouse|own|{k}",
+                                      gender=spouse_gender, fixed_last=None)
+            if not own or own in used:
+                continue
+            maiden = surname_from_name(own, ck)
+            if maiden and own.endswith(maiden):
+                given = own[: -len(maiden)].rstrip("·")
+                spouse = f"{given}·{maiden}·{surname}"
+            else:
+                spouse = own
+            if spouse:
+                break
+    else:
+        for k in range(20):
+            spouse = culture_person_name(
+                ck, seed=f"{seed}|spouse|{k}", gender=spouse_gender,
+                fixed_last=(None if policy == "own" else surname))
+            if spouse and spouse not in used:
+                break
+    if spouse:
+        used.add(spouse)
+    n = int(fi.get("children_count") or 0)
+    children = []
+    son_i = daughter_i = 0
+    _ord = {3: "三", 4: "四", 5: "五", 6: "六", 7: "七", 8: "八", 9: "九"}
+    for i in range(n):
+        cs = f"{seed}|child|{i}"
+        g = "female" if random.Random(cs).random() < 0.5 else "male"
+        cnm = None
+        for k in range(20):
+            cnm = culture_person_name(ck, seed=f"{cs}|{g}|{k}", gender=g,
+                                      fixed_last=surname)
+            if cnm and cnm not in used:
+                break
+        if not cnm or cnm in used:
+            continue
+        used.add(cnm)
+        if g == "male":
+            son_i += 1
+            label = {1: "长子", 2: "次子"}.get(
+                son_i, f"{_ord.get(son_i, son_i)}子")
+        else:
+            daughter_i += 1
+            label = {1: "长女", 2: "次女"}.get(
+                daughter_i, f"{_ord.get(daughter_i, daughter_i)}女")
+        children.append({"label": label, "name": cnm, "gender": g})
+    return {"interviewee": {"name": nm, "gender": gender},
+            "spouse": {"name": spouse, "gender": spouse_gender},
+            "spouse_policy": policy,
+            "children": children}
+
+
+def _family_budget_lines(fi, unit):
+    """受访家庭账本 (新口径): 人均率 × 家庭构成。
+    户主 1 劳动力; 配偶是否计入劳动力由女权法律决定 (默认受抚养);
+    子女 N 计入受抚养。妇女默认属受抚养人口, 故受抚养数 = 子女 + (妻不工作)。
+    只列出该家庭实际存在的收入/支出分项 (零值不显示);
+    分项人数已在群体规模/家庭构成行说明, 这里不再重复;
+    支出按「劳动力人数」口径, 唯人头税按总人口 (实采校验)。"""
+    r = fi.get("budget_rates") or {}
+    if not r:
+        return []
+    n = int(fi.get("children_count") or 0)
+    wife_works = bool(fi.get("wife_works"))
+    workers = 1 + (1 if wife_works else 0)
+    deps = n + (0 if wife_works else 1)
+    pop = workers + deps
+
+    def _amt(key, denom):
+        return (r.get(key) or 0) * denom
+
+    inc_items = []
+    wage = _amt("wage", workers)
+    if wage > 1e-9:
+        inc_items.append(f"工资约{wage:.2f}")
+    dep_inc = _amt("dependent", deps)
+    if dep_inc > 1e-9:
+        inc_items.append(f"受抚养收入约{dep_inc:.2f}")
+    welf = _amt("welfare", workers)
+    if welf > 1e-9:
+        inc_items.append(f"福利救济约{welf:.2f}")
+    inv = _amt("dividends", workers)
+    if inv > 1e-9:
+        inc_items.append(f"分红/投资约{inv:.2f}")
+    sub = _amt("subsistence", workers)
+    if sub > 1e-9:
+        inc_items.append(f"自给收入约{sub:.2f}")
+    oth = _amt("other", workers)
+    if oth > 1e-9:
+        inc_items.append(f"其他收入约{oth:.2f}")
+    tr = _amt("transfers", workers)
+    if tr > 1e-9:
+        inc_items.append(f"政府转移支付约{tr:.2f}")
+    total_inc = wage + dep_inc + welf + inv + sub + oth + tr
+    L = []
+    if inc_items:
+        L.append(f"- 家庭月收入：约{total_inc:.2f}{unit}"
+                 "（" + "、".join(inc_items) + "）")
+    else:
+        L.append(f"- 家庭月收入：约{total_inc:.2f}{unit}")
+
+    exp_items = []
+    goods = _amt("goods", workers)
+    if goods > 1e-9:
+        exp_items.append(f"商品消费约{goods:.2f}")
+    itax = _amt("income_tax", workers)
+    if itax > 1e-9:
+        exp_items.append(f"所得税约{itax:.2f}")
+    ctax = _amt("consumption_tax", workers)
+    if ctax > 1e-9:
+        exp_items.append(f"消费税约{ctax:.2f}")
+    dtax = _amt("dividend_tax", workers)
+    if dtax > 1e-9:
+        exp_items.append(f"红利税约{dtax:.2f}")
+    ptax = _amt("poll_tax", pop)
+    if ptax > 1e-9:
+        exp_items.append(f"人头税约{ptax:.2f}")
+    total_exp = goods + itax + ctax + dtax + ptax
+    if exp_items:
+        L.append(f"- 家庭月支出：约{total_exp:.2f}{unit}"
+                 "（" + "、".join(exp_items) + "）")
+    else:
+        L.append(f"- 家庭月支出：约{total_exp:.2f}{unit}")
+    L.append(f"- 月度结余：约{total_inc - total_exp:+.2f}{unit}")
+    return L
+
+
+def _family_scale_lines(fi):
+    """群体规模背景 + 受访家庭构成 (劳动力/受抚养人数只在此说明一次)。"""
+    workforce = fi.get("workforce")
+    dependents = fi.get("dependents")
+    pop_total = (workforce or 0) + (dependents or 0)
+    n = int(fi.get("children_count") or 0)
+    wife_works = bool(fi.get("wife_works"))
+    workers = 1 + (1 if wife_works else 0)
+    deps = n + (0 if wife_works else 1)
+    kids = f"＋子女{n}人" if n else ""
+    return [
+        f"- 该群体规模约{pop_total}人（劳动力{workforce}人、"
+        f"受抚养人口{dependents}人）",
+        f"- 受访家庭：户主夫妇{kids}（劳动力{workers}人、受抚养{deps}人），"
+        "以下为其月账本：",
+    ]
+
+
+def _legacy_budget_lines(fi, unit):
+    """旧快照兜底: 群体合计口径 (无 budget_rates 字段时使用)。"""
+    income = fi.get("income")
+    expense = fi.get("expense")
+    if income is None or expense is None:
+        return []
+    workforce = fi.get("workforce")
+    dependents = fi.get("dependents")
+    pop_total = (workforce or 0) + (dependents or 0)
+    parts = _monthly_parts(fi.get("income_parts") or [])
+    inc_line = f"- 每月收入（该人群合计）：约{_monthly(income):.2f}{unit}"
+    if parts:
+        inc_line += "（" + "、".join(parts) + "）"
+    L = [inc_line]
+    exp_parts = _monthly_parts(fi.get("expense_parts") or [])
+    if exp_parts:
+        L.append(f"- 每月支出（该人群合计）：约{_monthly(expense):.2f}{unit}"
+                 "（" + "、".join(exp_parts) + "）")
+    else:
+        L.append(f"- 每月支出（该人群合计）：约{_monthly(expense):.2f}{unit}")
+    bal = _monthly(income) - _monthly(expense)
+    L.append(f"- 月度结余：约{bal:+.2f}{unit}/月"
+             f"（人均约{_monthly(income) / pop_total:.4f}{unit}收入 / "
+             f"{_monthly(expense) / pop_total:.4f}{unit}支出，按月计）"
+             if pop_total else f"- 月度结余：约{bal:+.2f}{unit}/月")
+    return L
+
+
+def _ownership_lines(own):
+    """workplace_ownership (旧字符串或新结构化 dict) → 提示行。
+
+    新格式: {"summary": 一句话, "holders": [持有人明细]}。
+    """
+    if not own:
+        return []
+    if isinstance(own, str):
+        return [f"- {own}"]
+    L = []
+    summary = own.get("summary")
+    if summary:
+        L.append(f"- 工作场所所有权：{summary}")
+    for h in own.get("holders") or []:
+        seg = [h.get("zh") or h.get("kind") or "未知持有人"]
+        pct = h.get("pct")
+        if isinstance(pct, (int, float)):
+            seg.append(f"约{pct:.0f}%")
+        lv = h.get("levels")
+        if isinstance(lv, (int, float)) and lv:
+            seg.append(f"{int(round(lv))}级")
+        extras = []
+        wf = h.get("workforce") or []
+        if wf:
+            names = "、".join(
+                f"{x.get('zh') or x.get('pop_type')}约{x.get('pct', 0):.0f}%"
+                for x in wf[:3])
+            extras.append("从业职业：" + names)
+        ow = h.get("owner")
+        if ow:
+            place = "的".join(x for x in (ow.get("state_zh"),
+                                          ow.get("building_zh")) if x)
+            if place:
+                extras.append("持有者：" + place)
+            owf = ow.get("workforce") or []
+            if owf:
+                names = "、".join(
+                    f"{x.get('zh') or x.get('pop_type')}约{x.get('pct', 0):.0f}%"
+                    for x in owf[:3])
+                extras.append("持有者从业职业：" + names)
+        if extras:
+            seg.append("；".join(extras))
+        L.append("- 所有权明细：" + "，".join(seg))
+    return L
+
+
 def render_family(data, style=None):
     """民生访谈: 记者跟踪采访一个随机选取的平民家庭 (存档直读)。"""
     fi = data.get("family_interview")
@@ -1823,12 +2193,29 @@ def render_family(data, style=None):
         L.append(f"- 采访对象：{loc}的一户失业的{culture}人{rel_zh}{pop_zh}家庭")
     else:
         L.append(f"- 采访对象：{loc}的一户{culture}人{rel_zh}{pop_zh}家庭")
-    nm = _newspaper_person_name(data, "family", fi.get("culture_key"))
+    roster = None
+    if fi.get("budget_rates"):
+        roster = _family_roster(data, fi, "family")
+        nm = roster["interviewee"]["name"] if roster else None
+    else:
+        nm = _newspaper_person_name(data, "family", fi.get("culture_key"))
     if nm:
         L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
-    own = fi.get("workplace_ownership")
-    if own:
-        L.append(f"- {own}")
+    if roster:
+        if roster["spouse"]["name"]:
+            _note = {"double": "双姓（本姓+夫姓）",
+                     "own": "保留女方本姓",
+                     "husband": "与受访人同姓"}.get(
+                roster.get("spouse_policy"), "与受访人同姓")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}"
+                     f"（{_note}，姓名已给定，不得改动）")
+        if roster["children"]:
+            L.append("- 子女：" + "、".join(
+                f"{c['label']} {c['name']}" for c in roster["children"])
+                + "（随父姓，姓名已给定，不得改动）")
+        else:
+            L.append("- 子女：膝下无子")
+    L.extend(_ownership_lines(fi.get("workplace_ownership")))
     pms_zh = fi.get("workplace_pms_zh") or []
     if pms_zh and not fi.get("unemployed"):
         L.append("- 工作场所生产方式：该建筑目前采用" + "、".join(pms_zh))
@@ -1906,26 +2293,16 @@ def render_family(data, style=None):
     workforce = fi.get("workforce")
     dependents = fi.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
-    if dr is not None:
-        L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
-                 f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
-                 f"——以下收支为该人群全体居民合计，采访家庭为其代表")
-    income = fi.get("income")
-    expense = fi.get("expense")
-    if income is not None and expense is not None:
-        parts = fi.get("income_parts") or []
-        inc_line = f"- 每周收入（该人群合计）：约{income}英镑"
-        if parts:
-            inc_line += "（" + "、".join(parts) + "）"
-        L.append(inc_line)
-        exp_parts = fi.get("expense_parts") or []
-        if exp_parts:
-            L.append(f"- 每周支出（该人群合计）：约{expense}英镑（" + "、".join(exp_parts) + "）")
-        else:
-            L.append(f"- 每周支出（该人群合计）：约{expense}英镑")
-        L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
-                 f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
-                 if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
+    unit = data.get("currency") or "英镑"
+    if fi.get("budget_rates"):
+        L.extend(_family_scale_lines(fi))
+        L.extend(_family_budget_lines(fi, unit))
+    else:
+        if dr is not None:
+            L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
+                     f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
+                     f"——以下收支为该人群全体居民合计，采访家庭为其代表")
+        L.extend(_legacy_budget_lines(fi, unit))
     L.extend(_render_pop_politics(fi, data))
     fs = fi.get("food_security")
     if fs:
@@ -1961,12 +2338,30 @@ def render_peer(data, style=None):
             L.append(f"- 追踪对象：在{loc}的{workplace}工作的、生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
         else:
             L.append(f"- 追踪对象：{loc}中生活水平最高的一群{culture}人{rel_zh}{pop_zh}")
-    nm = _newspaper_person_name(data, "peer", peer.get("culture_key"))
+    roster = None
+    if peer.get("budget_rates"):
+        roster = _family_roster(data, peer, "peer")
+        nm = roster["interviewee"]["name"] if roster else None
+    else:
+        nm = _newspaper_person_name(data, "peer", peer.get("culture_key"))
     if nm:
         L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
-    own = peer.get("workplace_ownership")
-    if own and workplace:
-        L.append(f"- {own}")
+    if roster:
+        if roster["spouse"]["name"]:
+            _note = {"double": "双姓（本姓+夫姓）",
+                     "own": "保留女方本姓",
+                     "husband": "与受访人同姓"}.get(
+                roster.get("spouse_policy"), "与受访人同姓")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}"
+                     f"（{_note}，姓名已给定，不得改动）")
+        if roster["children"]:
+            L.append("- 子女：" + "、".join(
+                f"{c['label']} {c['name']}" for c in roster["children"])
+                + "（随父姓，姓名已给定，不得改动）")
+        else:
+            L.append("- 子女：膝下无子")
+    if workplace:
+        L.extend(_ownership_lines(peer.get("workplace_ownership")))
     pms_zh = peer.get("workplace_pms_zh") or []
     if pms_zh and workplace:
         L.append("- 工作场所生产方式：该建筑目前采用" + "、".join(pms_zh))
@@ -2044,26 +2439,16 @@ def render_peer(data, style=None):
     workforce = peer.get("workforce")
     dependents = peer.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
-    if dr is not None:
-        L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
-                 f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
-                 f"——以下收支为该人群全体居民合计，采访家庭为其代表")
-    income = peer.get("income")
-    expense = peer.get("expense")
-    if income is not None and expense is not None:
-        parts = peer.get("income_parts") or []
-        inc_line = f"- 每周收入（该人群合计）：约{income}英镑"
-        if parts:
-            inc_line += "（" + "、".join(parts) + "）"
-        L.append(inc_line)
-        exp_parts = peer.get("expense_parts") or []
-        if exp_parts:
-            L.append(f"- 每周支出（该人群合计）：约{expense}英镑（" + "、".join(exp_parts) + "）")
-        else:
-            L.append(f"- 每周支出（该人群合计）：约{expense}英镑")
-        L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
-                 f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
-                 if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
+    unit = data.get("currency") or "英镑"
+    if peer.get("budget_rates"):
+        L.extend(_family_scale_lines(peer))
+        L.extend(_family_budget_lines(peer, unit))
+    else:
+        if dr is not None:
+            L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
+                     f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
+                     f"——以下收支为该人群全体居民合计，采访家庭为其代表")
+        L.extend(_legacy_budget_lines(peer, unit))
     L.extend(_render_pop_politics(peer, data))
     fs = peer.get("food_security")
     if fs:
@@ -2088,13 +2473,30 @@ def render_unemployed(data, style=None):
     rate = uni.get("unemployment_rate_pct")
     rate_s = f"约{rate:.1f}%" if isinstance(rate, (int, float)) else "（数据缺）"
     L.append(f"- 追踪对象：{loc}的一群失业的{culture}人{rel_zh}{pop_zh}")
-    nm = _newspaper_person_name(data, "unemployed", uni.get("culture_key"))
+    roster = None
+    if uni.get("budget_rates"):
+        roster = _family_roster(data, uni, "unemployed")
+        nm = roster["interviewee"]["name"] if roster else None
+    else:
+        nm = _newspaper_person_name(data, "unemployed", uni.get("culture_key"))
     if nm:
         L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
+    if roster:
+        if roster["spouse"]["name"]:
+            _note = {"double": "双姓（本姓+夫姓）",
+                     "own": "保留女方本姓",
+                     "husband": "与受访人同姓"}.get(
+                roster.get("spouse_policy"), "与受访人同姓")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}"
+                     f"（{_note}，姓名已给定，不得改动）")
+        if roster["children"]:
+            L.append("- 子女：" + "、".join(
+                f"{c['label']} {c['name']}" for c in roster["children"])
+                + "（随父姓，姓名已给定，不得改动）")
+        else:
+            L.append("- 子女：膝下无子")
     L.append(f"- 该州失业率（失业人口/该州总人口）：{rate_s}")
-    own = uni.get("workplace_ownership")
-    if own:
-        L.append(f"- {own}")
+    L.extend(_ownership_lines(uni.get("workplace_ownership")))
     homeland = uni.get("is_homeland")
     if homeland is not None:
         if homeland:
@@ -2160,26 +2562,16 @@ def render_unemployed(data, style=None):
     workforce = uni.get("workforce")
     dependents = uni.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
-    if dr is not None:
-        L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
-                 f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
-                 f"——以下收支为该人群全体居民合计，采访家庭为其代表")
-    income = uni.get("income")
-    expense = uni.get("expense")
-    if income is not None and expense is not None:
-        parts = uni.get("income_parts") or []
-        inc_line = f"- 每周收入（该人群合计）：约{income}英镑"
-        if parts:
-            inc_line += "（" + "、".join(parts) + "）"
-        L.append(inc_line)
-        exp_parts = uni.get("expense_parts") or []
-        if exp_parts:
-            L.append(f"- 每周支出（该人群合计）：约{expense}英镑（" + "、".join(exp_parts) + "）")
-        else:
-            L.append(f"- 每周支出（该人群合计）：约{expense}英镑")
-        L.append(f"- 收支结余：约{income - expense:+.2f}英镑/周"
-                 f"（人均约{income / pop_total:.4f}镑收入 / {expense / pop_total:.4f}镑支出，按周计）"
-                 if pop_total else f"- 收支结余：约{income - expense:+.2f}英镑/周")
+    unit = data.get("currency") or "英镑"
+    if uni.get("budget_rates"):
+        L.extend(_family_scale_lines(uni))
+        L.extend(_family_budget_lines(uni, unit))
+    else:
+        if dr is not None:
+            L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
+                     f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
+                     f"——以下收支为该人群全体居民合计，采访家庭为其代表")
+        L.extend(_legacy_budget_lines(uni, unit))
     L.extend(_render_pop_politics(uni, data))
     fs = uni.get("food_security")
     if fs:
@@ -2358,21 +2750,25 @@ def build_masthead_messages(data, style=DEFAULT_STYLE):
     # 若首都缺失, 提示模型据国名常识选用该国广为人知的都城名
     capital = data.get("capital", "")
     cap_note = capital if capital else "（数据缺失，请根据国名常识选用该国广为人知的都城名）"
+    # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国); 政体字段随之从抬头移除
+    full = full_country_name(country, govt_zh)
     sys_msg = (
-        f"你是这份{st['name']}报纸的总编辑。本期报纸的关键变量如下，抬头必须**原样保留**国名：\n"
-        f"【国名】{country}\n"
+        f"你是这份{st['name']}报纸的总编辑。本期报纸的关键变量如下，抬头中的国名必须**原样保留**正式国名：\n"
+        f"【国名】{country}（合并政体后的正式国名：{full}）\n"
         f"【都城】{cap_note}\n"
         f"【政体】{govt_zh}\n"
         f"【年份】{year}\n\n"
         f"{st['masthead']}\n\n"
         "请据此取报名并撰写抬头。要求：\n"
-        "1. 国名**一字不改**地写入抬头（不得自创、不得替换）。\n"
+        "1. 抬头中的国名必须按正式国名**一字不改**写入（不得自创、不得替换、不得省略）。\n"
         "2. 都城若缺失，请用该国广为人知的都城名。\n"
-        f"3. 只输出 Markdown 抬头，格式：\n# 《报名》\n国名：{country}｜都城：{cap_note}｜政体：{govt_zh}｜年份：{year}"
+        f"3. 只输出 Markdown 抬头，格式：\n# 《报名》\n国名：{full}｜都城：{cap_note}｜年份：{year}"
     )
     user_msg = (
-        f"本期报纸：【国名】={country}，【都城】={cap_note}，【政体】={govt_zh}，【年份】={year}。"
-        "请据此撰写抬头（国名必须原样出现；都城若缺失，请根据常识补填该国广为人知的都城名）。"
+        f"本期报纸：【国名】={country}（正式国名 {full}），【都城】={cap_note}，"
+        f"【政体】={govt_zh}，【年份】={year}。"
+        f"请据此撰写抬头（抬头中的国名须按正式国名「{full}」一字不改写入；"
+        "都城若缺失，请根据常识补填该国广为人知的都城名）。"
     )
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
@@ -2387,6 +2783,7 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     title = st["section_titles"].get(key, spec[1])
     country = data.get("player", "未知")
     capital = data.get("capital", "未知")
+    unit = data.get("currency") or "英镑"
     req = spec[2]
     if key == "peer":
         family_title = _section_title(style, "family", "民生访谈")
@@ -2402,7 +2799,7 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     if key == "econ":
         econ_guide = st.get("econ_guide")
         if econ_guide:
-            req = f"{req}\n{econ_guide}"
+            req = f"{req}\n{econ_guide.replace('{CURRENCY}', unit)}"
     elif key == "ads":
         ads_guide = st.get("ads_guide")
         if ads_guide:
@@ -2410,7 +2807,7 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     parts = [st["voice"], FACT_GUIDE]
     num_guide = st.get("number_guide")
     if num_guide:
-        parts.append(f"数字格式要求：{num_guide}")
+        parts.append(f"数字格式要求：{num_guide.replace('{CURRENCY}', unit)}")
     parts.append(f"本期报纸：【国名】={country}，【都城】={capital}。抬头如下，行文须与之呼应：\n{masthead}\n\n"
                  f"请撰写「{title}」板块。要求：{req}")
     sys_msg = "\n\n".join(parts)
@@ -2419,7 +2816,8 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
 _MASTHEAD_ECHO_RE = re.compile(r"^#\s*《.+》\s*$")
-_HEADER_INFO_RE = re.compile(r"^\*{0,2}国名：.+｜都城：.+｜政体：.+｜年份：\d{4}\*{0,2}\s*$")
+_HEADER_INFO_RE = re.compile(
+    r"^\*{0,2}国名：.+｜都城：.+｜(?:政体：.+｜)?年份：\d{4}\*{0,2}\s*$")
 _HEAD_RE = re.compile(r"^#{1,6}\s+")
 
 def _normalize_section_text(text, title, use_separators=False, paper_name=None):

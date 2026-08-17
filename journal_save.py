@@ -36,6 +36,8 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
+from currency import currency_unit
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TOOLS_DIR = os.path.join(SCRIPT_DIR, "tools")
 RAKALY = os.path.join(TOOLS_DIR, "rakaly.exe")
@@ -1486,11 +1488,16 @@ def _aggregate_pops(data, state_ids, pops=None):
 # 家庭采访: 随机选一个玩家州的一个 POP, 提取其生活水平/收支/消费结构
 # ---------------------------------------------------------------------------
 
-# weekly_budget 13 分量的经验含义 (存档引擎内部顺序):
-#   收入: 0=工资, 2=被抚养者收入, 4=分红/投资收入, 5=自给/其他收入, 6=政府转移支付
-#   支出: 7=商品消费, 9=所得税, 10=消费税, 11=红利税, 12=人头税(农民/自耕农按土地税)
-_FAMILY_INCOME_SLOTS = ((0, "工资"), (2, "被抚养者收入"), (4, "分红/投资收入"),
-                        (5, "自给/其他收入"), (6, "政府转移支付"))
+# weekly_budget 13 分量的经验含义 (存档引擎内部顺序, 2026-08-17 实采校准):
+#   收入: 0=工资, 1=自给产出(农民为主), 2=被抚养者收入,
+#         3=福利救济 (Social Security: 工资低于门槛者的政府补贴),
+#         4=分红/投资收入, 5=杂项收入, 6=政府转移支付
+#   支出: 7=商品消费, 8=(未用), 9=所得税, 10=消费税, 11=红利税, 12=人头税
+#   人头税按总人口征收 (law_per_capita_based_taxation, 中档费率0.7;
+#   实采校验: 税额/劳动力最高 1.79>0.7 不可能, 税额/总人口最高 0.46<0.7 吻合)。
+_FAMILY_INCOME_SLOTS = ((0, "工资"), (1, "自给收入"), (2, "被抚养者收入"),
+                        (3, "福利救济"), (4, "分红/投资收入"),
+                        (5, "杂项收入"), (6, "政府转移支付"))
 _FAMILY_EXPENSE_SLOTS = ((7, "商品消费"), (9, "所得税"), (10, "消费税"),
                          (11, "红利税"), (12, "人头税"))
 
@@ -2717,11 +2724,29 @@ def _country_technologies(data, country_id):
         j = end
     return list(dict.fromkeys(techs))
 
+
+def _family_children_count(rng, birth_rate_pct=None):
+    """按出生率分档随机生成受访家庭的存活子女数 (0~7)。
+    19 世纪人口结构下高生育高夭折, 存活子女以 2~5 为众数;
+    birth_rate_pct 为游戏年化出生率 (%), 越高子女分布越右移。"""
+    br = birth_rate_pct if isinstance(birth_rate_pct, (int, float)) else None
+    if br is None:
+        weights = [0.04, 0.12, 0.20, 0.26, 0.20, 0.12, 0.05, 0.01]
+    elif br < 2.0:
+        weights = [0.10, 0.20, 0.28, 0.22, 0.12, 0.06, 0.02, 0.00]
+    elif br < 4.0:
+        weights = [0.04, 0.12, 0.20, 0.26, 0.20, 0.12, 0.05, 0.01]
+    else:
+        weights = [0.01, 0.05, 0.12, 0.22, 0.26, 0.20, 0.10, 0.04]
+    return rng.choices(range(8), weights=weights)[0]
+
+
 def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
                      building_map=None, incorporation=None, harvest_conditions=None,
                      pop_needs=None, hub_names=None, price_map=None, vital=None,
                      movement_names=None, workplace_ownership=None,
-                     state_obj=None, building_ctx=None):
+                     state_obj=None, building_ctx=None,
+                     children_seed=None, wife_works=False):
     """把单个 pop 对象整理成「家庭采访」数据块。"""
     wf = pop.get("workforce") or 0
     dep = pop.get("dependents") or 0
@@ -2768,6 +2793,44 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
             mov_list.append({"id": mid, "name": nm or f"运动{mid}",
                              "pct": _grp_pct(v * 100000)})
     food = pop.get("food_security") or {}
+    # 家庭子女数: 按 (年|国家|板块|建筑) 播种, 同年稳定; 出生率高则子女偏多
+    n_child = 0
+    if children_seed:
+        br = birth_pct if isinstance(birth_pct, (int, float)) else None
+        n_child = _family_children_count(
+            random.Random(children_seed), birth_rate_pct=br)
+    # 家庭收支人均率 (月): 工资/劳动力, 受抚养收入/受抚养人口,
+    # 分红/投资/自给/补贴与全部支出分项均按劳动力均摊 (家庭账本口径:
+    # 「支出除以劳动力人数」); 唯人头税按总人口征收 (实采校验)。游戏中妇女
+    # 默认计入受抚养人口, 是否计入劳动力由女权法律决定 (wife_works 由上层判定)。
+    wf_f = float(wf) if wf else 0.0
+    dep_f = float(dep) if dep else 0.0
+    pop_f = wf_f + dep_f
+    _m = 52 / 12
+
+    def _slot_rate(idx, denom):
+        v = wb[idx] if idx < len(wb) and isinstance(wb[idx], (int, float)) else 0.0
+        return v / denom * _m if denom > 0 else 0.0
+
+    def _exp_rate(idx, denom):
+        v = wb[idx] if idx < len(wb) and isinstance(wb[idx], (int, float)) else 0.0
+        return abs(v) / denom * _m if denom > 0 else 0.0
+
+    budget_rates = {
+        "wage": _slot_rate(0, wf_f),
+        "subsistence": _slot_rate(1, wf_f),
+        "dependent": _slot_rate(2, dep_f),
+        "welfare": _slot_rate(3, wf_f),
+        "dividends": _slot_rate(4, wf_f),
+        "other": _slot_rate(5, wf_f),
+        "transfers": _slot_rate(6, wf_f),
+        "goods": _exp_rate(7, wf_f),
+        "income_tax": _exp_rate(9, wf_f),
+        "consumption_tax": _exp_rate(10, wf_f),
+        "dividend_tax": _exp_rate(11, wf_f),
+        "poll_tax": _exp_rate(12, pop_f),
+    }
+    budget_rates = {k: round(v, 4) for k, v in budget_rates.items()}
     culture = culture_id_to_name(pop.get("culture")) if pop.get("culture") is not None else None
     # 本土判定: 该 pop 所在州域是否是其 culture 的 add_homeland
     culture_key = culture_id_to_key(pop.get("culture"))
@@ -2883,6 +2946,9 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "expense": round(expense, 2),
         "income_parts": income_parts,
         "expense_parts": expense_parts,
+        "children_count": int(n_child),
+        "wife_works": bool(wife_works),
+        "budget_rates": budget_rates,
         "loyalists_and_radicals": round(lr, 4) if isinstance(lr, (int, float)) else None,
         "loyalists": loy_n or None,
         "radicals": rad_n or None,
@@ -3124,7 +3190,17 @@ def _buildings_index(data, state_ids):
 # ---------------------------------------------------------------------------
 # 建筑物所有权解析 (存档 building_ownership_manager)
 # 分类与游戏一致: 国有 / 外国投资(外国政府+外国私人) / 公司所有 / 外国公司持有
-# / 私有 / 当地劳动力。混合时只取份额前三生成文案。
+# / 私有 / 当地劳动力。
+#
+# 性能: building_ownership_manager.database 每次熔化只做一次整体解析 (约 0.2s),
+# 之后按建筑/条目内存查找, 避免旧实现逐条 data.find 的 O(n) 扫描。
+#
+# 自持份额 (identity.building == 自身) 的语义按建筑类型区分:
+# - 庄园宅邸/金融区/贸易中心/城镇中心/铁路等「资本/服务类建筑」的自持份额 =
+#   本楼从业者 (庄园→贵族/教士, 金融区→资本家), 明细用 kind=workforce;
+# - 普通生产建筑的自持份额 = 合作社所有制下的当地劳动力, kind=laborer;
+# - 公司建筑的自持份额 = 公司自身持有, kind=company。
+# 三类在六类统计口径中同属 laborer/company 桶, 仅文案与明细不同。
 # ---------------------------------------------------------------------------
 
 _OWNERSHIP_ZH = {
@@ -3142,9 +3218,67 @@ _OWNERSHIP_HOLDER = {
     "foreign_company": "外国公司",
     "private": "私人",
     "laborer": "当地劳动力",
+    "workforce": "本楼从业者",
 }
 _OWNERSHIP_ORDER = ("state", "foreign", "company", "foreign_company",
                     "private", "laborer")
+_OWNERSHIP_ORDER_ALL = ("state", "foreign", "company", "foreign_company",
+                        "private", "workforce", "laborer")
+
+# 自持份额视为「本楼从业者」(而非合作社劳工) 的资本/服务类建筑
+_WORKFORCE_SELF_OWNED_TYPES = frozenset((
+    "building_manor_house", "building_financial_district",
+    "building_trade_center", "building_urban_center", "building_railway",
+    "building_art_academy",
+))
+_WORKFORCE_SELF_OWNED_PREFIXES = ("building_subsistence_",)
+
+_STATE_FIELDS_CACHE = {}   # id(data) -> (data, {sid: {"country","region"}})
+_STATE_ZH_CACHE = {}       # id(data) -> (data, {sid: 中文州名})
+
+
+def _state_fields(data, sid):
+    """州 id → 轻量字段 {country, region} (按熔化 bytes 惰性缓存, 只存所需字段)。"""
+    key = id(data)
+    m = _STATE_FIELDS_CACHE.get(key)
+    if m is None or m[0] is not data:
+        m = _STATE_FIELDS_CACHE[key] = (data, {})
+    hit = m[1].get(sid)
+    if hit is not None:
+        return hit
+    obj = _state_object(data, sid)
+    hit = {"country": (obj or {}).get("country"),
+           "region": (obj or {}).get("region")}
+    m[1][sid] = hit
+    return hit
+
+
+def _state_fields_seed(data, sid, obj):
+    """把已解析的州对象同步进轻量字段缓存, 避免所有权解析重复整对象解析。"""
+    if not isinstance(obj, dict):
+        return
+    key = id(data)
+    m = _STATE_FIELDS_CACHE.get(key)
+    if m is None or m[0] is not data:
+        m = _STATE_FIELDS_CACHE[key] = (data, {})
+    m[1].setdefault(sid, {"country": obj.get("country"),
+                          "region": obj.get("region")})
+
+
+def _state_zh_cached(data, sid):
+    """州 id → 中文州名 (本地化, 按熔化 bytes 惰性缓存)。"""
+    key = id(data)
+    m = _STATE_ZH_CACHE.get(key)
+    if m is None or m[0] is not data:
+        m = _STATE_ZH_CACHE[key] = (data, {})
+    hit = m[1].get(sid)
+    if hit is not None:
+        return hit
+    rk = _state_fields(data, sid).get("region")
+    zh = _load_loc_all().get(rk) if rk else None
+    m[1][sid] = zh
+    return zh
+
 
 _BUILDING_MANAGER_BOUNDS = {}
 
@@ -3219,7 +3353,7 @@ def _building_object(data, bid):
 
 
 _OWNERSHIP_DB_BOUNDS = {}
-_OWNERSHIP_DB_CACHE = {}
+_OWNERSHIP_INDEX_CACHE = {}  # id(data) -> (data, {"by_oid","by_building"})
 
 
 def _ownership_db_bounds(data):
@@ -3245,35 +3379,50 @@ def _ownership_db_bounds(data):
     return _OWNERSHIP_DB_BOUNDS[key]
 
 
-def _ownership_entry(data, oid):
-    """按需读取单条所有权实体 {levels, identity, building}; 带缓存。"""
-    cache = _OWNERSHIP_DB_CACHE.get(id(data))
-    if cache is None:
-        cache = _OWNERSHIP_DB_CACHE[id(data)] = {}
-    hit = cache.get(oid)
-    if hit is not None:
-        return hit
+def _ownership_index(data):
+    """一次性解析 building_ownership_manager.database (按熔化 bytes 缓存)。
+
+    返回 {"by_oid": {oid: 条目}, "by_building": {owned_building_id: [条目]}}。
+    条目字段: building / employed_levels / identity / levels / privatization。
+    """
+    key = id(data)
+    m = _OWNERSHIP_INDEX_CACHE.get(key)
+    if m is not None and m[0] is data:
+        return m[1]
+    by_oid = {}
+    by_building = {}
     db, db_end = _ownership_db_bounds(data)
-    if db_end <= db:
-        return None
-    pat = ('"' + str(oid) + '":{').encode()
-    i = data.find(pat, db, db_end)
-    if i < 0:
-        cache[oid] = None
-        return None
-    ob2 = i + len(pat) - 1
-    raw, _end = extract_json_object(data, ob2)
-    if not raw:
-        cache[oid] = None
-        return None
-    try:
-        obj = json.loads(raw)
-    except Exception:
-        cache[oid] = None
-        return None
-    obj = obj if isinstance(obj, dict) else None
-    cache[oid] = obj
-    return obj
+    if db_end > db:
+        _IDOBJ = re.compile(rb'"(\d+)":\{')
+        j = db
+        while True:
+            mm = _IDOBJ.search(data, j, db_end - 1)
+            if not mm:
+                break
+            ob2 = mm.start() + len(mm.group(0)) - 1
+            raw, end = extract_json_object(data, ob2)
+            if not raw:
+                break
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                j = end
+                continue
+            if isinstance(obj, dict):
+                oid = int(mm.group(1))
+                by_oid[oid] = obj
+                b = obj.get("building")
+                if b is not None:
+                    by_building.setdefault(b, []).append(obj)
+            j = end
+    out = {"by_oid": by_oid, "by_building": by_building}
+    _OWNERSHIP_INDEX_CACHE[key] = (data, out)
+    return out
+
+
+def _ownership_entry(data, oid):
+    """读取单条所有权实体 {levels, identity, building}; 走一次性索引。"""
+    return _ownership_index(data)["by_oid"].get(oid)
 
 
 def _building_ownership(data, bid, player_id=None, building_obj=None):
@@ -3295,12 +3444,13 @@ def _building_ownership(data, bid, player_id=None, building_obj=None):
     st = building_obj.get("state")
     owner_ctry = None
     if st is not None and player_id is None:
-        sobj = _state_object(data, st)
-        owner_ctry = (sobj or {}).get("country")
+        owner_ctry = _state_fields(data, st).get("country")
     if owner_ctry is None:
         owner_ctry = player_id
+    btype = building_obj.get("building")
+    idx = _ownership_index(data)
     for oid in owners:
-        oe = _ownership_entry(data, oid)
+        oe = idx["by_oid"].get(oid)
         if not oe:
             continue
         lv = oe.get("levels") or 0
@@ -3311,13 +3461,15 @@ def _building_ownership(data, bid, player_id=None, building_obj=None):
             continue
         ob = ident.get("building")
         if ob == bid:
-            dist["laborer"] += lv
+            if btype and btype.startswith("building_company_"):
+                dist["company"] += lv
+            else:
+                dist["laborer"] += lv
             continue
         ob_bt, ob_st = _building_head(data, ob)
         octry = None
         if ob_st is not None:
-            osb = _state_object(data, ob_st)
-            octry = (osb or {}).get("country")
+            octry = _state_fields(data, ob_st).get("country")
         if ob_bt and ob_bt.startswith("building_company_"):
             if octry is not None and octry != owner_ctry:
                 dist["foreign_company"] += lv
@@ -3331,24 +3483,213 @@ def _building_ownership(data, bid, player_id=None, building_obj=None):
     return dist, total
 
 
-def _ownership_sentence(dist, total):
-    """按游戏文本生成一句话; 混合时只列份额前三。无数据返回 None。"""
-    if not total or not any(dist.values()):
+def _self_owned_kind(btype):
+    """自持份额 (identity==自身) 按建筑类型的持有人语义。"""
+    if not btype:
+        return "laborer", "当地劳动力"
+    if btype.startswith("building_company_"):
+        return "company", "公司"
+    if (btype in _WORKFORCE_SELF_OWNED_TYPES
+            or btype.startswith(_WORKFORCE_SELF_OWNED_PREFIXES)):
+        return "workforce", "本楼从业者"
+    return "laborer", "当地劳动力"
+
+
+def _workforce_by_building(pops):
+    """POP 集合 → {building_id: {pop_type: 劳动力}}。
+
+    pops 可为 {pid: pop对象} (SaveContext.player_pops) 或
+    {state_id: [pop对象,...]} (pops_by_state), 仅统计有 workplace 的从业 POP。
+    """
+    out = {}
+    if isinstance(pops, dict):
+        if not pops:
+            return out
+        first = next(iter(pops.values()))
+        if isinstance(first, list):
+            objs = (o for lst in pops.values() for o in lst)
+        else:
+            objs = pops.values()
+    else:
+        objs = pops or []
+    for obj in objs:
+        if not isinstance(obj, dict):
+            continue
+        w = obj.get("workplace")
+        if w is None:
+            continue
+        wf = obj.get("workforce")
+        if not isinstance(wf, (int, float)) or wf <= 0:
+            continue
+        t = obj.get("type")
+        d = out.setdefault(w, {})
+        d[t] = d.get(t, 0) + wf
+    return out
+
+
+def _workforce_summary(workforce_map, bid, limit=3):
+    """建筑 id → 从业职业摘要 [{pop_type, zh, workforce, pct}] (按劳动力降序)。"""
+    wf = (workforce_map or {}).get(bid)
+    if not wf:
+        return []
+    try:
+        from journal import POP_TYPE_NAMES
+    except Exception:
+        POP_TYPE_NAMES = {}
+    total = float(sum(wf.values())) or 1.0
+    out = []
+    for pt, n in sorted(wf.items(), key=lambda kv: -kv[1])[:limit]:
+        out.append({"pop_type": pt,
+                    "zh": POP_TYPE_NAMES.get(pt, pt),
+                    "workforce": int(round(n)),
+                    "pct": round(n / total * 100, 1)})
+    return out
+
+
+def _owner_building_info(data, ob, objs=None, workforce=None):
+    """私有/公司份额的持有建筑信息 (含从业职业摘要); 找不到返回 None。"""
+    if objs is not None and ob in objs:
+        bt = objs[ob].get("building")
+        st = objs[ob].get("state")
+    else:
+        bt, st = _building_head(data, ob)
+    loc = _load_loc_all()
+    bzh = loc.get(bt) if bt else None
+    if not bzh and bt and bt.startswith("building_company_"):
+        # 公司建筑本地化键为 company_<类型后缀> (如 building_company_X → company_X)
+        bzh = loc.get("company_" + bt[len("building_company_"):])
+    info = {
+        "building_id": ob,
+        "building_type": bt,
+        "building_zh": bzh,
+        "state_zh": _state_zh_cached(data, st) if st is not None else None,
+    }
+    wf = _workforce_summary(workforce, ob)
+    if wf:
+        info["workforce"] = wf
+    return info
+
+
+def _ownership_holders(data, bid, player_id=None, building_obj=None,
+                       objs=None, workforce=None):
+    """结构化所有权持有人列表 → (holders, total_levels)。
+
+    holder 字段:
+      kind     : state/foreign/company/foreign_company/private/laborer/workforce
+      zh       : 中文持有人词 (如「本楼从业者」「当地劳动力」)
+      levels   : 该持有人份额等级数
+      pct      : 占该建筑总等级百分比 (无总等级时为 None)
+      owner    : 私有/公司/外国公司份额的持有建筑
+                 {building_id, building_type, building_zh, state_zh, workforce}
+      workforce: 自持份额的本楼从业职业 [{pop_type, zh, workforce, pct}]
+    """
+    if building_obj is None:
+        building_obj = (objs or {}).get(bid) or _building_object(data, bid) or {}
+    owners = building_obj.get("owners") or []
+    total = building_obj.get("levels") or 0
+    if not owners:
+        return [], total
+    st = building_obj.get("state")
+    owner_ctry = None
+    if st is not None and player_id is None:
+        owner_ctry = _state_fields(data, st).get("country")
+    if owner_ctry is None:
+        owner_ctry = player_id
+    btype = building_obj.get("building")
+    self_kind, self_zh = _self_owned_kind(btype)
+    idx = _ownership_index(data)
+    by_kind = {}   # kind -> {"levels": n, "owner_bids": {ob: levels}}
+    for oid in owners:
+        oe = idx["by_oid"].get(oid)
+        if not oe:
+            continue
+        lv = oe.get("levels") or 0
+        ident = oe.get("identity") or {}
+        if "country" in ident:
+            c = ident["country"]
+            k = "state" if c == owner_ctry else "foreign"
+            d = by_kind.setdefault(k, {"levels": 0, "owner_bids": {}})
+            d["levels"] += lv
+            continue
+        ob = ident.get("building")
+        if ob == bid:
+            d = by_kind.setdefault(self_kind, {"levels": 0, "owner_bids": {}})
+            d["levels"] += lv
+            continue
+        ob_bt, ob_st = _building_head(data, ob)
+        octry = None
+        if ob_st is not None:
+            octry = _state_fields(data, ob_st).get("country")
+        if ob_bt and ob_bt.startswith("building_company_"):
+            k = ("foreign_company"
+                 if (octry is not None and octry != owner_ctry) else "company")
+        else:
+            k = "foreign" if (octry is not None and octry != owner_ctry) else "private"
+        d = by_kind.setdefault(k, {"levels": 0, "owner_bids": {}})
+        d["levels"] += lv
+        d["owner_bids"][ob] = d["owner_bids"].get(ob, 0) + lv
+    holders = []
+    for k, v in sorted(by_kind.items(),
+                       key=lambda kv: (-kv[1]["levels"],
+                                       _OWNERSHIP_ORDER_ALL.index(kv[0]))):
+        lv = v["levels"]
+        if not lv:
+            continue
+        h = {"kind": k,
+             "zh": _OWNERSHIP_HOLDER.get(k, k),
+             "levels": int(round(lv)),
+             "pct": round(lv / total * 100, 1) if total else None}
+        if k in ("workforce", "laborer"):
+            wf = _workforce_summary(workforce, bid)
+            if wf:
+                h["workforce"] = wf
+        elif k in ("private", "company", "foreign_company"):
+            if v["owner_bids"]:
+                ob = max(v["owner_bids"], key=v["owner_bids"].get)
+                info = _owner_building_info(data, ob, objs=objs,
+                                           workforce=workforce)
+                if info:
+                    h["owner"] = info
+        holders.append(h)
+    return holders, total
+
+
+def _ownership_sentence(holders):
+    """按持有人明细生成一句话; 混合时只列份额前三。无数据返回 None。"""
+    if not holders:
         return None
-    items = [(k, v / total) for k, v in dist.items() if v > 0]
-    items.sort(key=lambda kv: (-kv[1], _OWNERSHIP_ORDER.index(kv[0])))
-    top, share = items[0]
-    holder = _OWNERSHIP_HOLDER[top]
-    if share >= 1.0 - 1e-9:
-        if top == "foreign_company":
-            return f"该建筑物完全由{holder}持有"
-        return f"该建筑物完全由{holder}所有"
-    if share > 0.5:
-        if top == "foreign_company":
-            return f"该建筑物主要由{holder}持有"
-        return f"该建筑物主要由{holder}所有"
-    parts = "、".join(f"{_OWNERSHIP_ZH[k]}约{sh * 100:.0f}%"
-                      for k, sh in items[:3])
+    items = sorted(holders,
+                   key=lambda h: (-(h.get("pct") or 0),
+                                  _OWNERSHIP_ORDER_ALL.index(h.get("kind"))))
+
+    def _extra(h):
+        extras = []
+        wf = h.get("workforce") or []
+        if wf:
+            top = "、".join(x.get("zh") or x.get("pop_type") for x in wf[:2])
+            if top:
+                extras.append("从业者以" + top + "为主")
+        ow = h.get("owner")
+        if h.get("kind") in ("private", "company") and ow and ow.get("building_zh"):
+            place = "的".join(x for x in (ow.get("state_zh"),
+                                          ow.get("building_zh")) if x)
+            if place:
+                extras.append("持有者为" + place)
+        return "、".join(extras)
+
+    top = items[0]
+    share = top.get("pct") or 0
+    verb = "持有" if top.get("kind") in ("company", "foreign_company") else "所有"
+    zh = top.get("zh") or top.get("kind") or "未知持有人"
+    extra = _extra(top)
+    if share >= 100 - 1e-6:
+        return (f"该建筑物完全由{zh}{verb}"
+                + (f"（{extra}）" if extra else ""))
+    if share > 50:
+        return (f"该建筑物主要由{zh}{verb}"
+                + (f"（{extra}）" if extra else ""))
+    parts = "、".join(f"{h.get('zh') or h.get('kind')}约{h.get('pct', 0):.0f}%"
+                      for h in items[:3])
     return f"该建筑物所有权构成：{parts}"
 
 
@@ -3400,20 +3741,68 @@ def _pops_by_state(data, state_ids, pops_index=None):
     return out
 
 
+def _interview_cands_in_building(sid, bid, pops_index):
+    """某州某建筑内的合格 POP 候选 (劳动力>MIN_POP_WORKFORCE 且有有效 SoL)。
+    返回 [(sol, 家庭规模, POP对象)]; 供家庭采访随机抽取与审核脚本复用。"""
+    cands = []
+    for obj in pops_index.get(sid) or []:
+        if obj.get("workplace") != bid:
+            continue
+        if not _pool_workforce_ok(obj):
+            continue
+        sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
+        sol = obj.get("previous_quality_of_life")
+        if sol is None or not isinstance(sol, (int, float)):
+            continue
+        cands.append((sol, sz, obj))
+    return cands
+
+
+def _eligible_interview_pool(state_ids, pops_index, buildings_index):
+    """A: 全国候选池 = 所有玩家州中满足「同建筑 ≥2 合格 POP」的建筑。
+    返回 [(sid, bid, cands)]; cands 已按 (sol, 规模) 升序。
+    等价于「先按州内合格建筑数加权选州, 再州内等概率选合格建筑」,
+    避免边疆小州与发达州同权, 也不再只考察某州前 3 栋建筑。"""
+    pool = []
+    for sid in sorted(state_ids):
+        for bid in buildings_index.get(sid) or []:
+            cands = _interview_cands_in_building(sid, bid, pops_index)
+            if len(cands) >= 2:
+                cands.sort(key=lambda x: (x[0], x[1]))
+                pool.append((sid, bid, cands))
+    return pool
+
+
+def _apply_interview_prev_filter(pool, prev_interview, state_ids):
+    """C: 防连年重复 — 排除上一年已用过的州(含其全部建筑)。
+    排除后无可选时回退全池 (单州国家等场景), 保证不因去重而丢样本。"""
+    if not prev_interview:
+        return pool
+    ex_sid = prev_interview.get("location")
+    if ex_sid not in state_ids:
+        return pool
+    filtered = [item for item in pool if item[0] != ex_sid]
+    return filtered if filtered else pool
+
+
 def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price_map=None,
                         cid=None, player_tag=None,
                         preferred_state=None, ruler_visited=False,
                         pops_index=None, buildings_index=None,
-                        forced_family=None, rnd=None, building_objs=None):
-    """随机选一个州 → 随机选该州一个建筑 → 取建筑内 SoL 最低与最高两个 POP
+                        forced_family=None, rnd=None, building_objs=None,
+                        prev_interview=None, seed_year=None):
+    """在全国候选池中随机选一栋建筑 → 取建筑内 SoL 最低与最高两个 POP
     (劳动力>MIN_POP_WORKFORCE, 与杂志各文章池同一门槛)
     分别作为「民生访谈」与「邻里富户」数据块。
+    候选池 (A): 所有玩家州中满足「同建筑 ≥2 合格 POP」的建筑等概率抽取,
+    等价于「按州内合格建筑数加权选州, 再州内等概率选合格建筑」。
+    prev_interview (C): 传入上一年家庭采访样本时排除其所在州 (防连年重复),
+    排除后无可选建筑时回退全池。
     preferred_state: 优先在该州取材 (统治者走访联动); ruler_visited=True 且确实用到
     该州时, 在民生访谈块上打 ruler_visited 标记, 供渲染时让受访者提及统治者到访。
     若该州失业率(失业POP劳动力/该州总人口)>5%, 再附加「失业民生」块:
-    该州人口最多的失业 POP + 失业率。建筑内合格 POP 不足 2 个时的兜底逻辑:
-    同州内再找两次 (共试 3 栋建筑), 仍不满足则换一个新州再试 3 栋,
-    再不行返回兜底 (无采访样本, 渲染层输出兜底文本)。
+    该州人口最多的失业 POP + 失业率。全国无合格建筑时返回兜底
+    (无采访样本, 渲染层输出兜底文本)。
     forced_family: 指定家庭采访 POP(统治者走访联动时使用), 不再随机选州/建筑。
     返回 {"family_interview", "top_sol_peer", "unemployed_interview"} (缺失为 None)。"""
     state_ids = set(state_ids or [])
@@ -3426,7 +3815,6 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
         pops_index = _pops_by_state(data, state_ids)
     if buildings_index is None:
         buildings_index = _buildings_by_state(data, state_ids)
-    state_order = sorted(state_ids)
     sid = None
     lowest = highest = None
     if forced_family is not None:
@@ -3434,73 +3822,21 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
         bid = forced_family.get("workplace")
         if sid not in state_ids or bid is None:
             return result
-        cands = []
-        for obj in pops_index.get(sid) or []:
-            if obj.get("workplace") != bid:
-                continue
-            if not _pool_workforce_ok(obj):
-                continue
-            sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
-            sol = obj.get("previous_quality_of_life")
-            if sol is None or not isinstance(sol, (int, float)):
-                continue
-            cands.append((sol, sz, obj))
+        cands = _interview_cands_in_building(sid, bid, pops_index)
         if not cands:
             return result
         cands.sort(key=lambda x: (x[0], x[1]))
         lowest = forced_family
         highest = cands[-1][2]
     else:
-        # 兜底逻辑: 同州内最多试 3 栋建筑 (初次 + 同州再找两次);
-        # 全州不满足则换一个新州再试 3 栋 (换州再找三次);
-        # 仍不满足则返回兜底 (无采访样本, 渲染层输出兜底文本)。
-        # 走访联动: 统治者走访的州优先作为首个尝试州。
-
-        def _cands_in_building(sid, bid):
-            cands = []
-            for obj in pops_index.get(sid) or []:
-                if obj.get("workplace") != bid:
-                    continue
-                if not _pool_workforce_ok(obj):
-                    continue
-                sz = (obj.get("workforce") or 0) + (obj.get("dependents") or 0)
-                sol = obj.get("previous_quality_of_life")
-                if sol is None or not isinstance(sol, (int, float)):
-                    continue
-                cands.append((sol, sz, obj))
-            return cands
-
-        def _try_state(sid, max_buildings):
-            """州内依次试 max_buildings 栋建筑;
-            返回 (bid, 最穷POP, 最富POP) 或 None。"""
-            buildings = list(buildings_index.get(sid) or [])
-            rnd.shuffle(buildings)
-            for bid in buildings[:max_buildings]:
-                cands = _cands_in_building(sid, bid)
-                if len(cands) < 2:
-                    continue
-                # SoL 升序; 同 SoL 时取人口较少者作最穷、人口较多者作最富
-                cands.sort(key=lambda x: (x[0], x[1]))
-                return bid, cands[0][2], cands[-1][2]
-            return None
-
-        state_pool = list(state_order)
-        rnd.shuffle(state_pool)
-        if preferred_state is not None and preferred_state in state_ids:
-            state_pool = [preferred_state] + [s for s in state_pool
-                                              if s != preferred_state]
-
-        sid = lowest = highest = None
-        if state_pool:
-            hit = _try_state(state_pool[0], 3)      # 首个州: 同州再找两次 (共 3 栋)
-            if hit:
-                bid, lowest, highest = hit
-                sid = state_pool[0]
-        if lowest is None and len(state_pool) > 1:
-            hit = _try_state(state_pool[1], 3)      # 换州再找三次 (新州试 3 栋)
-            if hit:
-                bid, lowest, highest = hit
-                sid = state_pool[1]
+        # A: 全国候选池等概率抽取 (合格建筑不足 2 个即不入选)。
+        pool = _eligible_interview_pool(state_ids, pops_index, buildings_index)
+        pool = _apply_interview_prev_filter(pool, prev_interview, state_ids)
+        if not pool:
+            return result
+        sid, bid, cands = rnd.choice(pool)
+        # SoL 升序; 同 SoL 时取人口较少者作最穷、人口较多者作最富
+        lowest, highest = cands[0][2], cands[-1][2]
         if lowest is None or highest is None:
             return result
     if lowest is None or highest is None:
@@ -3521,6 +3857,9 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                      if region_key else 0.0)
     devastation = (state_obj.get("devastation") or 0.0) if state_obj else 0.0
     laws = query_laws(data, cid)
+    # 游戏中妇女默认计入受抚养人口; 有「女性工作/妇女选举权」法律时才计入劳动力
+    wife_works = bool(set(laws or []) & {"law_women_in_the_workplace",
+                                         "law_womens_suffrage"})
     insts = _country_institution_levels(data, cid)
     health_inv = insts.get("institution_health_system", 0)
     schools_inv = insts.get("institution_schools", 0)
@@ -3547,10 +3886,14 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                 building_ctx["hub_name"] = hub_names[HUB_ORDER.index(hub_cat)]
     building_ctx["pms_zh"] = _pm_names_zh(active_pms, drop_raw=True) if bid is not None else None
     movement_names = _movement_names_zh(data, player_tag)
-    own_sentence = None
+    own_block = None
     if bid is not None and cid is not None:
-        own_dist, own_total = _building_ownership(data, bid, cid, building_obj=bobj)
-        own_sentence = _ownership_sentence(own_dist, own_total)
+        holders, _own_total = _ownership_holders(
+            data, bid, cid, building_obj=bobj, objs=building_objs,
+            workforce=_workforce_by_building(pops_index))
+        summary = _ownership_sentence(holders)
+        if holders:
+            own_block = {"summary": summary, "holders": holders}
     common = dict(region_name=region_name, region_key=region_key, ig_slots=ig_slots,
                   building_map=building_map, incorporation=incorporation,
                   harvest_conditions=harvest_conditions, pop_needs=pop_needs,
@@ -3560,12 +3903,18 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                              bits=bits, schools_inv=schools_inv,
                              building_group=building_group, active_pms=active_pms,
                              institutions_active=bool(incorporation and incorporation >= 1)),
-                  movement_names=movement_names, workplace_ownership=own_sentence)
-    family = _family_from_pop(lowest, **common)
+                  movement_names=movement_names, workplace_ownership=own_block)
+    family = _family_from_pop(
+        lowest,
+        children_seed=f"{seed_year or '?'}|{cid}|family|{bid or sid}",
+        wife_works=wife_works, **common)
     if ruler_visited and preferred_state is not None and sid == preferred_state:
         family["ruler_visited"] = True
     result["family_interview"] = family
-    result["top_sol_peer"] = _family_from_pop(highest, **common)
+    result["top_sol_peer"] = _family_from_pop(
+        highest,
+        children_seed=f"{seed_year or '?'}|{cid}|peer|{bid or sid}",
+        wife_works=wife_works, **common)
     # 失业率: (该州失业POP的劳动力) / (该州总人口)
     total_pop = 0
     unemployed_work = 0
@@ -3583,7 +3932,10 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
                 unemployed_big = obj
     rate = unemployed_work / total_pop if total_pop else 0.0
     if rate > 0.05 and unemployed_big is not None:
-        uni = _family_from_pop(unemployed_big, **common)
+        uni = _family_from_pop(
+            unemployed_big,
+            children_seed=f"{seed_year or '?'}|{cid}|unemployed|{sid}",
+            wife_works=wife_works, **common)
         uni["unemployment_rate_pct"] = round(rate * 100, 2)
         result["unemployed_interview"] = uni
     return result
@@ -5012,7 +5364,9 @@ class SaveContext:
         """州对象按 id 惰性缓存: 每个州只在首次访问时做一次带边界查找,
         避免整库一次 json.loads (约 5.5s) 以及旧代码的重复线性扫描。"""
         if sid not in self._state_obj_cache:
-            self._state_obj_cache[sid] = _state_object(self.data, sid)
+            obj = _state_object(self.data, sid)
+            self._state_obj_cache[sid] = obj
+            _state_fields_seed(self.data, sid, obj)
         return self._state_obj_cache[sid]
 
     def state_region_key(self, sid):
@@ -5177,8 +5531,10 @@ def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None, place=No
     if pms_zh:
         bits.append("采用" + "、".join(pms_zh))
     try:
-        dist, total = _building_ownership(melted, bid, cid, building_obj=obj)
-        own = _ownership_sentence(dist, total)
+        holders, _t = _ownership_holders(
+            melted, bid, cid, building_obj=obj,
+            workforce=_workforce_by_building(pops))
+        own = _ownership_sentence(holders)
         if own:
             bits.append(own)
     except Exception:
@@ -5208,8 +5564,9 @@ def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None, place=No
     return "，".join(bits) + "。"
 
 
-def _pool_pop_text(pid, obj, ctx, loc):
-    """一个 POP → 自然语言: 身份/州/人数/生活水平/识字/接受度/周预算。"""
+def _pool_pop_text(pid, obj, ctx, loc, unit=None):
+    """一个 POP → 自然语言: 身份/州/人数/生活水平/识字/接受度/月收支。
+    unit 为货币单位字样 (如「比索」), 缺省不显示。"""
     try:
         from journal import POP_TYPE_NAMES, sol_band
     except Exception:
@@ -5245,9 +5602,9 @@ def _pool_pop_text(pid, obj, ctx, loc):
         except Exception:
             ACCEPTANCE_NAMES = {}
         bits.append(f"当地接受度为{ACCEPTANCE_NAMES.get(acc, acc)}")
-    wb = obj.get("weekly_budget")
-    if isinstance(wb, (int, float)):
-        bits.append(f"每周收支约{round(wb, 1)}")
+    inc = _crime_pop_weekly_income(obj)
+    if inc is not None:
+        bits.append(f"每月收支约{round(inc * 52 / 12, 1)}{unit or ''}")
     return "，".join(bits) + "。"
 
 
@@ -5334,6 +5691,7 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
     else:
         main = f"本期铁道主线：{st_name}（城市名：{city_hub or '未知'}）。"
     pops = ctx.player_pops(state_ids)
+    unit = currency_unit(country_obj=country)
     lead = [
         main,
         _pool_building_text(melted, ctx, cid, rb, robj, loc, gm, pops=pops),
@@ -5371,9 +5729,11 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
                if low_rail and low_rail[0][1].get("culture") is not None
                else None)))
     if ups:
-        workers_lines.append("- " + _pool_pop_text(ups[0][0], ups[0][1], ctx, loc))
+        workers_lines.append("- " + _pool_pop_text(
+            ups[0][0], ups[0][1], ctx, loc, unit=unit))
     if low_rail:
-        workers_lines.append("- " + _pool_pop_text(low_rail[0][0], low_rail[0][1], ctx, loc))
+        workers_lines.append("- " + _pool_pop_text(
+            low_rail[0][0], low_rail[0][1], ctx, loc, unit=unit))
     if not ups and not low_rail:
         workers_lines.append("（该铁路建筑当前无足量人群样本，请据雇佣与产出情况含蓄写作。）")
     _blk = person_names_block(f"{snap.get('year')}|{cid}|railway",
@@ -5394,7 +5754,8 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
                                n=2, rnd=rnd)
         life_lines.append("乡村建筑里的劳动者样本：")
         for pid, o in lows:
-            life_lines.append("- " + _pool_pop_text(pid, o, ctx, loc))
+            life_lines.append("- " + _pool_pop_text(pid, o, ctx, loc,
+                                                    unit=unit))
         if lows and lows[0][1].get("culture") is not None:
             life_ck = culture_id_to_key(lows[0][1].get("culture"))
         if not lows:
@@ -5568,6 +5929,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     if not tcs:
         return None
     prices = _market_price_map(melted, country) or {}
+    unit = currency_unit(country_obj=country)
     chain, industrial = _load_goods_chain()
     if not industrial:
         industrial = set(_POOL_SHELF_FALLBACK_GOODS)
@@ -5689,12 +6051,12 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     if source == "traded":
         active_line = (
             f"该州交易的大宗商品中，最活跃商品为「{good['zh']}」"
-            + (f"，市价约{round(good['price'], 2)}"
+            + (f"，市价约{round(good['price'], 2)}{unit}"
                if isinstance(good["price"], (int, float)) else "") + "。")
     else:
         active_line = (
             f"本期从我国可自产的制成品中选取市价居前的「{good['zh']}」"
-            + (f"（市价约{round(good['price'], 2)}）"
+            + (f"（市价约{round(good['price'], 2)}{unit}）"
                if isinstance(good["price"], (int, float)) else "")
             + "作为货架焦点。")
     if importer:
@@ -5703,7 +6065,8 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         if importer.get("state_zh"):
             extra.append(f"该国商埠：{importer['state_zh']}")
         if isinstance(importer.get("market_price"), (int, float)):
-            extra.append(f"当地市价约{round(importer['market_price'], 2)}")
+            extra.append(f"当地市价约{round(importer['market_price'], 2)}"
+                         f"{importer.get('currency') or unit}")
         export_line = dest + (f"（{'，'.join(extra)}）" if extra else "") + "。"
     else:
         export_line = "（出口去向资料不足，本期按本地市场情况写作。）"
@@ -5730,7 +6093,8 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                                      classes=("lower_class", "middle_class"),
                                      n=1, rnd=rnd)
             for pid, po in picked:
-                workshop_lines.append("  工人样本：" + _pool_pop_text(pid, po, ctx, loc))
+                workshop_lines.append("  工人样本：" + _pool_pop_text(
+                    pid, po, ctx, loc, unit=unit))
                 if wk_ck is None and po.get("culture") is not None:
                     wk_ck = culture_id_to_key(po.get("culture"))
     else:
@@ -5772,7 +6136,8 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             picked = _pool_pick_pops(pops, bid=b2, classes=("lower_class",),
                                      n=1, rnd=rnd)
             for pid, po in picked:
-                mine_lines.append(f"  {up_label}：" + _pool_pop_text(pid, po, ctx, loc))
+                mine_lines.append(f"  {up_label}：" + _pool_pop_text(
+                    pid, po, ctx, loc, unit=unit))
                 if mn_ck is None and po.get("culture") is not None:
                     mn_ck = culture_id_to_key(po.get("culture"))
     else:
@@ -5836,12 +6201,14 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                     f"进口补贴{-ir}%×（到岸价{round(import_base, 2)}）" if ir < 0
                     else f"进口关税{ir}%×（到岸价{round(import_base, 2)}）")
         cust_lines.append(
-            f"该消费者购买时共花费约{round(total, 2)}英镑（" + "＋".join(bits) + "）。")
+            f"该消费者购买时共花费约{round(total, 2)}{unit}（"
+            + "＋".join(bits) + "）。")
     else:
         picked = _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
                                  n=2, rnd=rnd)
         for pid, po in picked:
-            cust_lines.append("- " + _pool_pop_text(pid, po, ctx, loc))
+            cust_lines.append("- " + _pool_pop_text(pid, po, ctx, loc,
+                                                    unit=unit))
             if cu_ck is None and po.get("culture") is not None:
                 cu_ck = culture_id_to_key(po.get("culture"))
         cust_lines.append("（出口去向资料不足，按本地市场情况写目的地顾客。）")
@@ -5852,7 +6219,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         cust_lines.append(_blk)
     if not importer and isinstance(good["price"], (int, float)):
         cust_lines.append(
-            f"「{good['zh']}」当前市价约{round(good['price'], 2)}，"
+            f"「{good['zh']}」当前市价约{round(good['price'], 2)}{unit}，"
             "可作为家庭账本的一笔支出参照。")
 
     # 动态板块标题: 按生产/上游环节实际形态命名,
@@ -5893,6 +6260,7 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     """为人民服务: 教育/医疗/执法机构 + 随机州随机 POP。"""
     loc = _load_loc_all()
     insts = _country_institution_levels(melted, cid) or {}
+    unit = currency_unit(country_obj=country)
     laws = query_laws(melted, cid)
     edu = next((l for l in _POOL_EDUCATION_LAWS if l in laws), None)
     health = next((l for l in _POOL_HEALTH_LAWS if l in laws), None)
@@ -5938,7 +6306,8 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     if staff:
         classroom.append("基层公职/教员样本：")
         for pid, o in staff:
-            classroom.append("- " + _pool_pop_text(pid, o, ctx, loc))
+            classroom.append("- " + _pool_pop_text(pid, o, ctx, loc,
+                                                   unit=unit))
     st_ck = (culture_id_to_key(staff[0][1].get("culture"))
              if staff and staff[0][1].get("culture") is not None else None)
     _blk = person_names_block(f"{snap.get('year')}|{cid}|service",
@@ -5953,7 +6322,7 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     grassroots = ["最基层样本："]
     if grassroots_pop:
         pid, o = grassroots_pop[0]
-        grassroots.append(_pool_pop_text(pid, o, ctx, loc))
+        grassroots.append(_pool_pop_text(pid, o, ctx, loc, unit=unit))
     else:
         grassroots.append("（无足量基层人群样本，请含蓄写作。）")
     gr_ck = (culture_id_to_key(grassroots_pop[0][1].get("culture"))
@@ -6048,6 +6417,7 @@ def _pool_vote_verdict(pop, dop, citizenship, church=None, state_religion=None):
 def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
     """神圣庄严的权利: 选举法律 + 随机州随机 POP 的投票权检定。"""
     loc = _load_loc_all()
+    unit = currency_unit(country_obj=country)
     laws = query_laws(melted, cid)
     dop = next((l for l in _POOL_DOP_LAWS if l in laws), None)
     citizenship = next((l for l in _POOL_CITIZENSHIP_LAWS if l in laws), None)
@@ -6084,7 +6454,7 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
     ballot = []
     if sps:
         pid, pop = rnd.choice(sps)
-        ballot.append(_pool_pop_text(pid, pop, ctx, loc))
+        ballot.append(_pool_pop_text(pid, pop, ctx, loc, unit=unit))
         bl_ck = (culture_id_to_key(pop.get("culture"))
                  if pop.get("culture") is not None else None)
         # 投票文章例外: 未施行妇女选举权时, 合格选民必然为男性
@@ -6164,17 +6534,22 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
     sid = st.get("id")
     st_zh = ctx.state_zh(sid) or st.get("name") or "未知州"
     household = [f"样本家庭所在地：{st_zh}。"]
-    ps = (ctx.state_object(sid) or {}).get("pop_statistics") or {}
-    wage = ps.get("wage")
-    if isinstance(wage, (int, float)):
-        household.append(f"该州平均周薪约{round(wage, 1)}。")
+    # 平均月薪: 复用 crime 板块口径 (ΣPOP周收入 / Σ劳动力, 再折算月),
+    # 不用原生 pop_statistics.wage (游戏内部量级, 与物价/叙事货币不在一个尺度)。
+    _state_avg_w = _crime_state_avg_weekly_income(pops, sid)
+    wage = (_state_avg_w * 52 / 12
+            if _state_avg_w is not None else None)
+    unit = currency_unit(country_obj=country)
+    if wage is not None:
+        household.append(f"该州劳动力人均月薪约{round(wage, 2)}{unit}。")
     state_pool = {pid: o for pid, o in pops.items()
                   if o.get("location") == sid}
     lows = (_pool_pick_pops(state_pool, classes=("lower_class",), n=1, rnd=rnd)
             or _pool_pick_pops(pops, classes=("lower_class",), n=1, rnd=rnd))
     if lows:
         pid, o = lows[0]
-        household.append("餐桌上的主妇/劳工样本：" + _pool_pop_text(pid, o, ctx, loc))
+        household.append("餐桌上的主妇/劳工样本：" + _pool_pop_text(
+            pid, o, ctx, loc, unit=unit))
         hh_ck = (culture_id_to_key(o.get("culture"))
                  if o.get("culture") is not None else None)
         _blk = person_names_block(f"{snap.get('year')}|{cid}|price",
@@ -6200,10 +6575,12 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
                 pass
     market = ["本刊关注的几件商品与市价："]
     for r in rows[:5]:
-        market.append(f"- {r['zh']}：市价约{round(r['price'], 2)}（基准价{r['cost']}）")
+        market.append(f"- {r['zh']}：市价约{round(r['price'], 2)}{unit}"
+                      f"（基准价{r['cost']}{unit}）")
     street = ["街市与生计收束素材："]
-    if isinstance(wage, (int, float)):
-        street.append(f"{st_zh}平均周薪约{round(wage, 1)}，可作家庭支出参照。")
+    if wage is not None:
+        street.append(f"{st_zh}劳动力人均月薪约{round(wage, 2)}{unit}，"
+                      "可作家庭支出参照。")
     street.append("物价涨落与工资、识字率、阶层结构共同构成百姓餐桌的底色，"
                   "行文以给定数字为准，不得编造。")
     hh_ck = (culture_id_to_key(lows[0][1].get("culture"))
@@ -6224,6 +6601,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
 def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
     """海外来信: 未并入本土的海外属地 + 本土首都对照。"""
     loc = _load_loc_all()
+    unit = currency_unit(country_obj=country)
     state_ids = _pool_state_ids(snap)
     states = snap.get("states") or []
     pops = ctx.player_pops(state_ids)
@@ -6279,7 +6657,8 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
     if sps:
         sampled = rnd.sample(sps, min(2, len(sps)))
         for pid, o in sampled:
-            island.append("- " + _pool_pop_text(pid, o, ctx, loc))
+            island.append("- " + _pool_pop_text(pid, o, ctx, loc,
+                                                unit=unit))
         if sampled and sampled[0][1].get("culture") is not None:
             isl_ck = culture_id_to_key(sampled[0][1].get("culture"))
     else:
@@ -6295,7 +6674,8 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
                 and _pool_workforce_ok(o)]
     home_ck = None
     if cap_pops:
-        home.append("本土家庭样本：" + _pool_pop_text(cap_pops[0][0], cap_pops[0][1], ctx, loc))
+        home.append("本土家庭样本：" + _pool_pop_text(
+            cap_pops[0][0], cap_pops[0][1], ctx, loc, unit=unit))
         if cap_pops[0][1].get("culture") is not None:
             home_ck = culture_id_to_key(cap_pops[0][1].get("culture"))
     _blk = person_names_block(f"{snap.get('year')}|{cid}|letters",
@@ -6346,6 +6726,58 @@ _SURNAME_FIRST_CULTURES = {
     # 原版游戏同为 last_first 的中华文化 (粤/闽/客家/彝/苗)
     "yue", "min", "hakka", "yi", "miao",
 }
+
+# 女性配偶姓氏政策 (按文化):
+#   double  = 双姓: 妻保留本姓并冠夫姓 (伊比利亚/拉美/西化菲律宾, 如 名·妻姓·夫姓)
+#   own     = 保留女方本姓 (朝鲜/越南/穆斯林世界/南亚/东南亚/非洲等)
+#   其他文化 = 冠夫姓 (随夫姓, 默认)
+_SPOUSE_DOUBLE_SURNAME = {
+    "spanish", "iberian", "aragonese", "asturleonese", "basque", "catalan",
+    "galician", "portuguese", "brazilian", "mexican", "central_american",
+    "caribeno", "afro_caribeno", "argentine", "bolivian", "chilean",
+    "colombian", "ecuadorian", "paraguayan", "peruvian", "uruguayan",
+    "venezuelan", "platinean", "north_andean", "south_andean",
+    "paulista", "nordestino", "sulista",
+    "filipino_mestizo", "filipino_hispanophone",
+}
+_SPOUSE_KEEP_MAIDEN = {
+    # 东亚: 朝鲜/越南婚后不改姓
+    "korean", "vietnamese", "champa", "ryukyuan",
+    # 穆斯林世界与西亚
+    "arab", "bedouin", "mashriqi", "misri", "yemenite", "maghrebi",
+    "berber", "tuareg", "haratin", "persian", "mazanderani", "luri",
+    "kurdish", "turkish", "azerbaijani", "kazak", "kirgiz", "uzbek",
+    "turkmen", "tajik", "uighur", "mongol", "tibetan",
+    # 南亚
+    "baluchi", "pashtun", "pathan", "sindi", "panjabi", "hindustani",
+    "avadhi", "bundeli", "chhattisgarhi", "bengali", "bihari", "oriya",
+    "assamese", "nepali", "pahari", "rajput", "gujarati", "marathi",
+    "telegu", "tamil", "kannada", "malayalam", "sinhala", "kashmiri",
+    "hazara", "deccani", "gondi", "naga", "manipuri",
+    # 东南亚
+    "burmese", "karen", "kachin", "khmu", "mon", "shan", "khmer", "lao",
+    # 非洲主要文化 (普遍不改姓)
+    "amhara", "tigray", "oromo", "somali", "afar", "sidama", "swahili",
+    "nyamwezi", "sukuma", "ruanda", "rundi", "kikuyu", "maasai", "luo",
+    "ganda", "baganda", "akan", "ewe", "fon", "ibo", "igbo",
+    "yoruba", "hausa", "kanuri", "fulbe", "mande", "bambara", "dyula",
+    "songhai", "mossi", "wolof", "kru", "bassa", "senufo",
+    "azande", "dinka", "nuer", "sara", "baguirmi",
+    "fur", "teda", "ovimbundu", "mbundu",
+    "bakongo", "luba", "lunda", "chewa", "sena", "shona",
+    "nguni", "zulu", "xhosa", "sotho", "tswana", "herero",
+    "khoisan", "malagasy",
+}
+
+
+def spouse_surname_policy(culture_key):
+    """女性配偶姓氏政策: "double"(双姓) / "own"(保留本姓) / "husband"(冠夫姓)。"""
+    if culture_key in _SPOUSE_DOUBLE_SURNAME:
+        return "double"
+    if culture_key in _SPOUSE_KEEP_MAIDEN:
+        return "own"
+    return "husband"
+
 
 # 政治动机的「政府直属建筑」: 存档中无所有权记录、由国家直接拥有 (政府行政/大学/艺术学院等)
 _GOVERNMENT_BUILDING_TYPES = (
@@ -7039,7 +7471,7 @@ _HARSH_GOVT_LAWS = (
 # life_at 为触发"终身"的判决得分下限。罚金栏为"当地劳动力人均月收入的月数"
 # (2026-08-17 实采 10 州: 1853 年全球各州人均月收入约 0.35~1.0 英镑,
 #  倍率 2~6/6~18/24~72 个月既成比例又不至于写成天文数字);
-# 判决时按 月数 × 人均月收入 换算为英镑金额直接入判词。
+# 判决时按 月数 × 人均月收入 换算为金额 (币种随国家动态取) 直接入判词。
 _PENAL_NUMERIC = {
     "监禁": {"lenient": (1, 3, None), "standard": (5, 12, None),
              "harsh": (15, 25, 84)},
@@ -7281,7 +7713,7 @@ def _crime_verdict_reason(case, tier, murderer):
 
 
 def _crime_sentence(case, laws, fw, severity, tier, murderer, victim,
-                    fine_monthly=None):
+                    fine_monthly=None, unit="英镑"):
     """破案定罪后的最终判决: 档位 × 刑种 × 数字 (基准区间按得分插值)。
     奴隶/习惯法体系走特别条款, 不产生程序化刑期。"""
     laws = set(laws or [])
@@ -7322,7 +7754,7 @@ def _crime_sentence(case, laws, fw, severity, tier, murderer, victim,
                 amount = own * 52 / 12 * months
         if amount is not None:
             n = max(1, int(round(amount)))
-            return f"判处罚金约{n}英镑{suffix}。"
+            return f"判处罚金约{n}{unit}{suffix}。"
         return f"判处罚金，数额以家资折抵{suffix}。"
     if form == "鞭笞":
         n = int(round(lo + pos * (hi - lo)))
@@ -7383,6 +7815,7 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
         pops, victim[1].get("location"))
     fine_monthly = (_state_avg_w * 52 / 12
                     if _state_avg_w is not None else None)
+    unit = currency_unit(country_obj=country)
     # 刑法框架 / 破案 / 判决 三层引擎 (config crime_outcome_engine=false 关闭)
     outcome = None
     try:
@@ -7410,7 +7843,7 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
             tier = _crime_verdict_tier(severity, fw, case, laws)
             sentence = _crime_sentence(case, laws, fw, severity, tier,
                                        murderer[1], victim[1],
-                                       fine_monthly=fine_monthly)
+                                       fine_monthly=fine_monthly, unit=unit)
             outcome["severity"] = severity
             outcome["verdict_tier"] = tier
             outcome["sentence"] = sentence
@@ -7426,7 +7859,7 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
             verdict_reason = "案件未破，无从审理。"
 
     def _role_line(pop, role):
-        txt = _pool_pop_text(pop[0], pop[1], ctx, loc)
+        txt = _pool_pop_text(pop[0], pop[1], ctx, loc, unit=unit)
         nm = (names.get(role) or (None, None))[1]
         return f"- 【{role}】{nm}，{txt}" if nm else f"- 【{role}】{txt}"
 
@@ -7818,6 +8251,8 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
         return None
     pick = rnd.choices(rows, weights=[r["weight"] for r in rows], k=1)[0]
     index, _, _ = ctx.index()
+    imp_tag = (index.get(pick["cid"]) or {}).get("definition")
+    imp_unit = currency_unit(tag=imp_tag)
     try:
         names = build_country_id_names(melted, index)
     except Exception:
@@ -7841,7 +8276,7 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
                          and _pool_workforce_ok(o)]
             if qualified:
                 pid, o = rnd.choice(qualified)
-                pop_text = _pool_pop_text(pid, o, ctx, loc)
+                pop_text = _pool_pop_text(pid, o, ctx, loc, unit=imp_unit)
                 pop_culture = (culture_id_to_key(o.get("culture"))
                                if o.get("culture") is not None else None)
                 sol_note = (f"该商品属{need_name}需求，通常由生活水平{need_sol}及以上"
@@ -7858,7 +8293,7 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
                        and _pool_workforce_ok(o)]
                 if top:
                     pid, o = rnd.choice(top)
-                    pop_text = _pool_pop_text(pid, o, ctx, loc)
+                    pop_text = _pool_pop_text(pid, o, ctx, loc, unit=imp_unit)
                     pop_culture = (culture_id_to_key(o.get("culture"))
                                    if o.get("culture") is not None else None)
                 sol_note = (
@@ -7869,7 +8304,8 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
             picked = _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
                                      n=1, rnd=rnd)
             if picked:
-                pop_text = _pool_pop_text(picked[0][0], picked[0][1], ctx, loc)
+                pop_text = _pool_pop_text(picked[0][0], picked[0][1], ctx, loc,
+                                          unit=imp_unit)
                 pop_culture = (culture_id_to_key(picked[0][1].get("culture"))
                                if picked[0][1].get("culture") is not None else None)
     total_w = sum(r["weight"] for r in rows)
@@ -7879,6 +8315,7 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
         "state_zh": ctx.state_zh(tsid) if tsid else None,
         "market_price": pick["market_price"],
         "world_price": pick["world_price"],
+        "currency": imp_unit,
         "tariff": pick["tariff"],
         "policy": pick["policy"],
         "pop": pop_text,
@@ -8775,7 +9212,7 @@ def _pick_visit_pop(snap, capital_id, pops_index=None):
 
 def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
                              building_type_map=None, visit_pop_obj=None,
-                             building_objs=None):
+                             building_objs=None, workforce_map=None):
     """按概率拼装一条「统治者活动」事实 (程序侧完成, 直接作为数据传给模型)。
 
     活动池: 视察某地建筑 / 召集内阁会议 / 走访某州某文化某宗教的 POP 家庭 /
@@ -8812,9 +9249,10 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
                 own = ""
                 if bid is not None:
                     bobj = (building_objs or {}).get(bid)
-                    own_dist, own_total = _building_ownership(
-                        melted, bid, country_id, building_obj=bobj)
-                    own_sentence = _ownership_sentence(own_dist, own_total)
+                    holders, _t = _ownership_holders(
+                        melted, bid, country_id, building_obj=bobj,
+                        objs=building_objs, workforce=workforce_map)
+                    own_sentence = _ownership_sentence(holders)
                     if own_sentence:
                         own = f"（{own_sentence}）"
                 return f"{ruler}视察了位于{where}的{bld}{own}", kind, None
@@ -8871,8 +9309,14 @@ def build_journal_data(snap):
     # 玩家国家标识: 供 render_overview 从战争参与者中识别「我国」,
     # 避免把列强之间的战事误报成本国参战
     data["tag"] = snap.get("tag")
+    data["player_tag"] = snap.get("player_tag")
+    data["currency"] = snap.get("currency") or currency_unit(
+        tag=snap.get("player_tag"), player_name=snap.get("player"))
     data["player_country_id"] = snap.get("player_country_id")
     data["govt"] = snap.get("govt_zh") or gov_to_name(snap.get("govt", "other"))
+    # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国), 供抬头/报头使用
+    from journal import full_country_name
+    data["player_full"] = full_country_name(data["player"], data["govt"])
     # 政体原始键 (如 gov_constitutional_empire), 供采访地点按政体标注"省/州"
     data["govt_key"] = snap.get("govt")
     # 首都: 由首都 state 的 hub 名(城市)解析, 失败回退州域名; 不再让模型凭空猜测
@@ -8946,11 +9390,13 @@ def build_journal_data(snap):
     data["war_goals"] = snap.get("war_goals") or []
     return data
 
-def extract_full_snapshot(melted, cid=None, ctx=None):
+def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None):
     """从熔化数据提取完整快照 (精确数值 + 本年度法律变化 + pop占比 + 战争 + 政体中文)。
     cid 为 None 时取玩家国; 指定 cid 时可提取任意国家 (供 test 等批量生成复用)。
     ctx 可选: SaveContext, 传入时复用已建索引/已解析 POP 与州对象 (阶段1),
-    否则内部新建一个, 保证无上下文调用 (test 脚本等) 行为不变。"""
+    否则内部新建一个, 保证无上下文调用 (test 脚本等) 行为不变。
+    prev_interview 可选: 上一年家庭采访样本 (含 location/workplace_id), 传入时
+    家庭采访抽选会排除其所在州 (防连年重复)。"""
     if ctx is None:
         ctx = SaveContext(melted)
     if cid is None:
@@ -8965,6 +9411,9 @@ def extract_full_snapshot(melted, cid=None, ctx=None):
     snap["tag"] = tag
     snap["country_id"] = cid
     player_tag = tag or (country or {}).get("definition")
+    snap["player_tag"] = player_tag
+    snap["currency"] = currency_unit(tag=player_tag,
+                                     player_name=snap.get("player"))
     snap["govt_zh"] = gov_to_name(snap.get("govt"))
     snap["capital"] = ctx.capital_name(country)
     # 首都州(区域)键与中文名: 供领袖/统治者「家乡非首都州」判定
@@ -9062,7 +9511,8 @@ def extract_full_snapshot(melted, cid=None, ctx=None):
     ruler_act, act_kind, visit_state = _assemble_ruler_activity(
         melted, snap, cid, buildings_index=buildings_index,
         building_type_map=building_map, visit_pop_obj=visit_pop_obj,
-        building_objs=building_objs)
+        building_objs=building_objs,
+        workforce_map=_workforce_by_building(pops_index))
     snap["ruler_activity"] = ruler_act
     # 家庭采访样本: 走访活动必须与统治者访问的家庭完全一致;
     # 其它活动按年份确定性随机，避免同年重生成结果漂移。
@@ -9075,7 +9525,9 @@ def extract_full_snapshot(melted, cid=None, ctx=None):
                                     ruler_visited=forced_family is not None,
                                     pops_index=pops_index, buildings_index=buildings_index,
                                     forced_family=forced_family, rnd=interview_rnd,
-                                    building_objs=building_objs)
+                                    building_objs=building_objs,
+                                    prev_interview=prev_interview,
+                                    seed_year=snap.get("year"))
     snap["family_interview"] = interview.get("family_interview")
     snap["top_sol_peer"] = interview.get("top_sol_peer")
     snap["unemployed_interview"] = interview.get("unemployed_interview")
@@ -9516,10 +9968,11 @@ def _article_natural(article_type, fname, sname, meta):
     meta = meta or {}
     kind = meta.get("kind")
     if article_type == "money_transfer" and kind == "quantity":
-        # 游戏内实际逻辑: 每周转移固定数额的英镑
+        # 游戏内实际逻辑: 每周转移固定数额, 币种按付款方国家取
         qty = meta.get("quantity")
         if qty is not None:
-            return f"{fname}每周向{sname}转移{qty}英镑"
+            return (f"{fname}每周向{sname}转移{qty}"
+                    f"{currency_unit(player_name=fname)}")
     tmpl_key = ARTICLE_TEMPLATE_KEYS.get(article_type)
     tmpl = _article_templates().get(tmpl_key) if tmpl_key else None
     if tmpl:
@@ -10039,6 +10492,49 @@ def _load_snapshot_cache(journal_dir, year):
     return matches[0][0], matches[0][1]
 
 
+def _load_prev_year_interview(journal_dir, year, player=None):
+    """尽力读取上一年快照中的家庭采访样本 (供防连年重复)。
+
+    快照缓存带「当前存档 mtime」校验, 跨年会因存档更新而失效, 因此这里不校验
+    mtime: 只按年份 + 会话文件夹前缀匹配 (玻利维亚 / 玻利维亚2...), 取最新会话。
+    找不到、年份无效或玩家不匹配时返回 None。"""
+    if not year or year <= 1:
+        return None
+    prev_year = year - 1
+    try:
+        entries = sorted(os.listdir(journal_dir))
+    except OSError:
+        return None
+    best = None
+    best_key = None
+    for folder in entries:
+        if player and not str(folder).startswith(str(player)):
+            continue
+        path = _snapshot_cache_path(journal_dir, folder, prev_year)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as fp:
+                snap = json.load(fp)
+        except Exception:
+            continue
+        meta = snap.get("_meta") or {}
+        if not isinstance(meta, dict):
+            continue
+        mp = meta.get("player")
+        if player and mp and mp != player:
+            continue
+        fi = snap.get("family_interview") or {}
+        if not isinstance(fi, dict) or fi.get("workplace_id") is None:
+            continue
+        m = re.match(r"^(.*?)(\d+)$", str(folder))
+        key = (m.group(1), int(m.group(2))) if m else (str(folder), 0)
+        if best_key is None or key > best_key:
+            best_key = key
+            best = fi
+    return best
+
+
 _STATE_FALLBACK_RE = re.compile(r"^州\d+$")
 
 
@@ -10119,7 +10615,9 @@ def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None):
         else:
             if ctx is None:
                 ctx = SaveContext(melted)
-            snap = extract_full_snapshot(melted, ctx=ctx)
+            prev = _load_prev_year_interview(cfg["journal_dir"], year,
+                                             _first_player_name(melted))
+            snap = extract_full_snapshot(melted, ctx=ctx, prev_interview=prev)
     if year and snap.get("year") != year:
         print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
     bad = _snap_states_health(snap)
@@ -10178,7 +10676,9 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None, ctx=N
         else:
             if ctx is None:
                 ctx = SaveContext(melted)
-            snap = extract_full_snapshot(melted, ctx=ctx)
+            prev = _load_prev_year_interview(cfg["journal_dir"], year,
+                                             _first_player_name(melted))
+            snap = extract_full_snapshot(melted, ctx=ctx, prev_interview=prev)
     if year and snap.get("year") != year:
         print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
     bad = _snap_states_health(snap)
@@ -10347,7 +10847,12 @@ def cmd_watch(continue_mode=False):
             print(err)
             return 1
         ctx = SaveContext(melted)
-        snap = extract_full_snapshot(melted, ctx=ctx)
+        meta0 = _parse_meta(melted)
+        m_year = re.match(r"(\d{4})", str(meta0.get("game_date", "")))
+        year_hint = int(m_year.group(1)) if m_year else None
+        prev = _load_prev_year_interview(cfg["journal_dir"], year_hint,
+                                         _first_player_name(melted))
+        snap = extract_full_snapshot(melted, ctx=ctx, prev_interview=prev)
         bad = _snap_states_health(snap)
         if bad:
             print(bad)
@@ -10395,7 +10900,12 @@ def cmd_watch(continue_mode=False):
                     if melted[1]:
                         print(f"  熔化失败: {melted[1]}")
                     else:
-                        snap = extract_full_snapshot(melted[0])
+                        meta0 = _parse_meta(melted[0])
+                        m_year = re.match(r"(\d{4})", str(meta0.get("game_date", "")))
+                        year_hint = int(m_year.group(1)) if m_year else None
+                        prev = _load_prev_year_interview(cfg["journal_dir"], year_hint,
+                                                         _first_player_name(melted[0]))
+                        snap = extract_full_snapshot(melted[0], prev_interview=prev)
                         bad = _snap_states_health(snap)
                         if bad:
                             print(bad)

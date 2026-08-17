@@ -308,7 +308,7 @@ POOL = {
                 "罗列几件商品的市价与基准价，写市场涨落背后的贸易与生产，不作价格预测。"
             )},
             {"key": "street", "title": "街市与生计", "req": (
-                "以平均周薪与阶层结构收束，写百姓在物价中的生计，行文平实。"
+                "以平均月薪与阶层结构收束，写百姓在物价中的生计，行文平实。"
             )},
         ],
     },
@@ -1415,11 +1415,14 @@ def build_intro_messages(data):
     govt_zh = data.get("govt_zh") or data.get("govt") or "未知"
     year = data.get("year", "?")
     preview = _intro_article_preview(data)
+    # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国); 政体字段随之从抬头移除
+    full = journal.full_country_name(country, govt_zh)
     sys_msg = (
         f"你是《{country}》杂志的总编辑。本刊定位为19世纪的非虚构文学月刊, "
         "聚焦具体人物的命运, 以小人物与大人物映照时代大局。\n\n"
-        f"本期关键变量(抬头必须原样保留):\n"
-        f"【国名】{country}\n【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
+        f"本期关键变量(抬头中的国名必须原样保留正式国名):\n"
+        f"【国名】{country}（合并政体后的正式国名：{full}）\n"
+        f"【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
         f"本刊基调:\n{_voice(data)}\n\n"
         f"三篇特稿: {preview}。\n\n"
         f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}\n"
@@ -1428,7 +1431,7 @@ def build_intro_messages(data):
         "导言正文控制在约400–600字。"
         "输出格式:\n"
         "# 《刊名》\n"
-        "国名：X｜都城：Y｜政体：Z｜年份：W\n\n"
+        f"国名：{full}｜都城：Y｜年份：W\n\n"
         "导言正文..."
     )
     at_war = data.get("player_at_war")
@@ -1439,7 +1442,9 @@ def build_intro_messages(data):
             "\n本期我国无战事记录，各板块均按和平年代写作，不涉及任何战争或敌军。"
         )
     user_msg = (
-        f"本期杂志: 【国名】{country}, 【都城】{capital}, 【政体】{govt_zh}, 【年份】{year}。"
+        f"本期杂志: 【国名】{country}（正式国名 {full}）, 【都城】{capital}, "
+        f"【政体】{govt_zh}, 【年份】{year}。"
+        f"\n抬头中的国名须按正式国名「{full}」一字不改写入（不得自创、不得省略）。"
         "\n\n本期数据框架（以下资料为唯一事实依据，不得另行发挥或套用真实历史）：\n"
         f"{_intro_framework(data)}\n\n"
         "请据上述变量与数据框架拟定刊名并撰写导言。"
