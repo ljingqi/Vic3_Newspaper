@@ -43,6 +43,47 @@ MELT_CACHE = os.path.join(TOOLS_DIR, "melt.json")
 SAVE_DIR = os.path.join(os.path.expanduser("~"), "Documents",
                         "Paradox Interactive", "Victoria 3", "save games")
 
+try:
+    import msvcrt
+except ImportError:  # 非 Windows 环境降级为无锁
+    msvcrt = None
+
+MELT_LOCK_PATH = os.path.join(TOOLS_DIR, "melt.lock")
+
+
+class _MeltLock:
+    """跨进程互斥锁: 熔化/读取 melt.json 前获取, 防止多终端并发读写同一缓存
+    导致读到半写文件 (states.database 缺失 → 全州「未知州」)。
+
+    Windows 用 msvcrt.locking (阻塞等待, 最多约 10 秒), 其它平台降级为无操作。
+    """
+
+    def __init__(self):
+        self._f = None
+
+    def __enter__(self):
+        try:
+            self._f = open(MELT_LOCK_PATH, "a+b")
+            if msvcrt is not None:
+                self._f.seek(0)
+                msvcrt.locking(self._f.fileno(), msvcrt.LK_LOCK, 1)
+        except OSError:
+            pass  # 锁不可用时降级继续, 完整性校验仍会兜底
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if self._f is not None:
+                if msvcrt is not None:
+                    self._f.seek(0)
+                    msvcrt.locking(self._f.fileno(), msvcrt.LK_UNLCK, 1)
+                self._f.close()
+        except OSError:
+            pass
+        self._f = None
+        return False
+
+
 # ---------------------------------------------------------------------------
 # 基础工具
 # ---------------------------------------------------------------------------
@@ -324,27 +365,49 @@ def _autosave_player(v3):
         return None
 
 def load_melted(auto_melt=True):
-    """读取熔化的 JSON; 若 autosave 玩家与缓存不一致(新开局/换国), 自动重新熔化。"""
+    """读取熔化的 JSON; 若 autosave 玩家与缓存不一致(新开局/换国), 自动重新熔化。
+    读入后校验完整性 (含 states.database), 缓存损坏/截断时自动重熔一次。"""
     v3 = find_latest_v3()
-    if v3 and os.path.exists(MELT_CACHE):
+    with _MeltLock():
+        _STATES_DB_BOUNDS.clear()
+        if v3 and os.path.exists(MELT_CACHE):
+            try:
+                with open(MELT_CACHE, "rb") as fp:
+                    cache_head = fp.read(200000)
+                cache_player = _first_player_name(cache_head)
+                save_player = _autosave_player(v3)
+                if (save_player and cache_player and save_player != cache_player
+                        and auto_melt):
+                    print(f"[存档] 检测到玩家变化 {cache_player} -> {save_player}, 重新熔化...")
+                    path, err = melt_with_rakaly(v3, force=True)
+                    if err:
+                        return None, err
+            except Exception:
+                pass
+        if not os.path.exists(MELT_CACHE):
+            return None, "尚未熔化存档, 请先运行 melt"
         try:
             with open(MELT_CACHE, "rb") as fp:
-                cache_head = fp.read(200000)
-            cache_player = _first_player_name(cache_head)
-            save_player = _autosave_player(v3)
-            if (save_player and cache_player and save_player != cache_player
-                    and auto_melt):
-                print(f"[存档] 检测到玩家变化 {cache_player} -> {save_player}, 重新熔化...")
-                melt_with_rakaly(v3, force=True)
-        except Exception:
-            pass
-    if not os.path.exists(MELT_CACHE):
-        return None, "尚未熔化存档, 请先运行 melt"
-    try:
-        with open(MELT_CACHE, "rb") as fp:
-            return fp.read(), None
-    except Exception as e:
-        return None, f"读取失败: {e}"
+                data = fp.read()
+        except Exception as e:
+            return None, f"读取失败: {e}"
+        if _melt_ok(data):
+            return data, None
+        # 缓存损坏: 有存档则重熔一次, 仍失败才报错
+        _STATES_DB_BOUNDS.clear()
+        if auto_melt and v3:
+            print("[警告] 熔化缓存不完整 (缺少 states.database 或 JSON 截断), 重新熔化...")
+            path, err = melt_with_rakaly(v3, force=True)
+            if err:
+                return None, err
+            try:
+                with open(MELT_CACHE, "rb") as fp:
+                    data = fp.read()
+            except Exception as e:
+                return None, f"读取失败: {e}"
+            if _melt_ok(data):
+                return data, None
+        return None, "熔化缓存不完整: 缺少 states.database 或 JSON 截断"
 
 def _parse_meta(data):
     md_start = data.find(b'"meta_data"')
@@ -1880,24 +1943,41 @@ def _state_object(data, state_id):
     return None
 
 
-_STATES_DB_BOUNDS = {}
+_STATES_DB_BOUNDS = {}  # id(data) -> (data, (sob, so_end))
+# 只缓存「仍持有原对象引用」的条目: 若 bytes 对象被释放后 id 被新熔化数据复用,
+# 同一性校验 (m[0] is data) 会判定失效并重算, 杜绝旧存档边界串到新存档。
+# 每次重新熔化/读取新数据时也会整体清空, 避免长期驻留大对象引用。
 
 
 def _states_db_bounds(data):
-    """states.database 起始/结束字节位 (按 bytes 对象 id 缓存, 每次熔化一份)。"""
+    """states.database 起始/结束字节位 (按 bytes 对象 id + 同一性缓存)。"""
     key = id(data)
     m = _STATES_DB_BOUNDS.get(key)
-    if m:
-        return m
+    if m is not None and m[0] is data:
+        return m[1]
     sd = data.find(b'"states":{"database"')
     if sd < 0:
-        _STATES_DB_BOUNDS[key] = (0, 0)
+        _STATES_DB_BOUNDS[key] = (data, (0, 0))
         return (0, 0)
     db = data.find(b'"database"', sd)
     sob = data.find(b'{', db)
     so_end = _object_end(data, sob)
-    _STATES_DB_BOUNDS[key] = (sob, so_end)
+    _STATES_DB_BOUNDS[key] = (data, (sob, so_end))
     return (sob, so_end)
+
+
+def _melt_ok(data):
+    """熔化产物完整性校验: JSON 结构完整、含 states.database 且边界有效。
+
+    在喂给解析/生成之前拦截「截断/半写/串档」的缓存, 避免静默产出
+    州N/未知州 等脏数据。"""
+    if not isinstance(data, (bytes, bytearray)) or len(data) < 100000:
+        return False
+    tail = data.rstrip(b" \t\r\n")
+    if not tail.endswith((b"}", b"]")):
+        return False
+    sob, so_end = _states_db_bounds(data)
+    return so_end > sob
 
 
 def _state_incorporation(data, state_id):
@@ -2160,6 +2240,8 @@ def _civil_war_progress(data, country_id):
 _CJK_JOIN_CULTURES = {
     "han", "manchu", "zhuang", "shan", "yuanzhumin",
     "japanese", "korean", "vietnamese",
+    # 与上表一致: 粤/闽/客家也按 姓+名 连写 (李陈), 不带分隔符
+    "yue", "min", "hakka",
 }
 
 
@@ -6229,6 +6311,8 @@ _HUB_CATEGORY_ZH = {
 _SURNAME_FIRST_CULTURES = {
     "han", "manchu", "zhuang", "shan", "yuanzhumin",
     "japanese", "korean", "vietnamese", "hungarian",
+    # 原版游戏同为 last_first 的中华文化 (粤/闽/客家)
+    "yue", "min", "hakka",
 }
 
 # 政治动机的「政府直属建筑」: 存档中无所有权记录、由国家直接拥有 (政府行政/大学/艺术学院等)
@@ -6313,6 +6397,99 @@ def women_law_female_pct(law_key):
 _CULTURE_NAMES = None
 
 
+# ---------------------------------------------------------------------------
+# 中华文化随机人名「名/姓表」覆盖 (汉字直接入池, 不依赖拉丁转写)。
+# 原版游戏中 han/yue/min/zhuang/hakka 的 male_common_first_names 基本都是
+# 姓氏字 (Chen→陈、Li→李、Zhang→张…), 随机组合「姓池+名池」会生成
+# 「姓+姓」(如 李陈、张李); 且 min/hakka 的 common_last_names 是历史人物名
+# (Zexu→则徐、Yatsen→逸仙…), zhuang 的姓池也混有非姓字 (Phach→珀、Den→登…),
+# 无法直接当姓用。故此处统一用维护好的常见中文名/姓表覆盖其池子。
+# 名表按 1830s 清代语境选取, 单双字混合; 姓表为常见中国姓。
+# ---------------------------------------------------------------------------
+_CJK_GIVEN_NAMES = {
+    "male": [
+        "伟", "强", "明", "亮", "刚", "勇", "毅", "忠", "孝", "仁",
+        "义", "礼", "智", "信", "德", "才", "文", "武", "斌", "杰",
+        "俊", "豪", "魁", "元", "亨", "康", "泰", "安", "宁", "平",
+        "和", "顺", "祥", "瑞", "福", "禄", "寿", "贵", "荣", "华",
+        "富", "达", "兴", "隆", "昌", "盛", "全", "宝", "玉", "金",
+        "财", "广", "高", "升", "山", "海", "江", "河", "松", "柏",
+        "云", "雷", "霖", "涛", "渊", "泽", "浩", "宇", "辰", "旭",
+        "阳", "昭", "承", "继", "绍", "宗", "业", "功", "声", "诚",
+        "勤", "学", "志", "远", "鹏", "龙", "鹤", "麟",
+        "志远", "志强", "志高", "志学", "永康", "永福", "永贵", "永昌",
+        "国安", "国泰", "国栋", "国梁", "家兴", "家祥", "世昌", "世隆",
+        "继祖", "继宗", "承业", "承恩", "光宗", "耀祖", "守仁", "守义",
+        "文达", "文成", "文明", "文远", "武成", "建功", "立业", "朝贵",
+        "朝栋", "天佑", "天祥", "天成", "云龙", "云鹏", "金贵", "金宝",
+        "玉堂", "玉成", "春生", "秋生", "有德", "有福", "有才", "进宝",
+        "万全", "百顺", "常安", "明德", "明远", "明理", "宗元", "宗仁",
+        "学文", "学礼", "学义", "克勤", "克俭", "安邦", "定国", "兴邦",
+        "宏业", "宏图", "鹏程", "万里", "春华", "秋实", "正邦", "正国",
+        "正阳", "保国", "卫国", "振邦", "振国", "景春", "景秋", "德福",
+        "德贵", "德润", "恩泽", "泽民", "惠民", "崇文", "崇武", "尚贤",
+        "尚德", "怀仁", "怀德", "秉忠", "秉义", "全忠", "全孝", "守业",
+        "世恩", "承宗", "光祖", "继业", "绍祖", "显祖", "立功", "立言",
+        "立德", "天赐", "朝恩", "廷玉", "廷贵", "文翰", "文澜", "文韬",
+        "武略", "忠良", "忠义", "仁义", "礼义", "智勇", "诚信", "敦厚",
+        "朴诚", "静山", "静安", "存义", "存忠", "自新", "自强", "思齐",
+        "思贤", "学成", "学道", "经世", "济民", "兴华", "荣昌", "永泰",
+        "永和", "泰安", "恒升", "吉祥", "如意", "长顺", "长春", "玉树",
+        "金城", "锦堂", "锦程", "鸿升", "鸿运", "鹏飞", "龙翔", "凤鸣",
+        "麒麟", "瑞麟", "祥麟", "松龄", "鹤年", "鹤寿", "南山", "中正",
+        "守正", "秉正", "清源", "明山",
+    ],
+    "female": [
+        "芳", "芬", "英", "兰", "香", "玉", "梅", "桂", "莲", "荷",
+        "菊", "芝", "蓉", "薇", "慧", "敏", "静", "淑", "娴", "雅",
+        "丽", "娟", "珍", "珠", "凤", "鸾", "燕", "云", "霞", "雪",
+        "月", "春", "秋", "翠", "秀", "巧", "爱", "喜", "瑞", "贞",
+        "端", "庄", "竹", "桃", "杏", "棠", "馨", "萱", "蘅", "芷",
+        "秀英", "秀兰", "秀珍", "秀莲", "秀华", "秀芳", "玉兰", "玉梅",
+        "玉英", "玉芳", "玉珍", "桂英", "桂兰", "桂芳", "桂香", "春梅",
+        "冬梅", "红梅", "腊梅", "荷花", "莲香", "凤英", "凤兰", "淑珍",
+        "淑英", "淑兰", "淑芳", "淑华", "丽华", "丽珍", "丽英", "慧兰",
+        "慧英", "慧芳", "静兰", "静芳", "素珍", "素英", "素芳", "文娟",
+        "玉娟", "秀娟", "丽娟", "春兰", "秋兰", "秋香", "月英", "月娥",
+        "云英", "云香", "雪梅", "雪英", "瑞兰", "瑞英", "金凤", "银凤",
+        "彩凤", "彩云", "彩霞", "碧云", "碧霞", "翠兰", "翠英", "翠莲",
+        "玉娥", "玉凤", "瑞凤", "桂娥", "桂凤", "梅英", "梅香", "菊英",
+        "菊香", "莲英", "荷香", "杏花", "桃花", "梅花", "菊花", "秋菊",
+        "春桃", "冬雪", "明珠", "明霞", "秀云", "彩萍", "秋月", "玉环",
+        "玉簪", "秀姑", "文秀", "文静", "文英", "书香", "咏梅", "咏兰",
+        "思梅", "念慈", "怀玉", "爱莲", "爱菊", "秀竹", "翠竹", "碧桃",
+        "金莲", "玉莲", "银莲", "春香", "冬香", "夏荷", "晓月", "晓云",
+        "晓霞", "晚晴", "清荷", "清莲", "素心", "冰心", "婉贞", "婉如",
+        "惠贞", "惠英", "慧贞", "静贞", "秀贞", "淑贞", "瑞贞", "凤贞",
+        "兰贞", "桂贞", "云贞", "月贞",
+    ],
+}
+
+# 常见中国姓 (与 han/yue 原版姓池同源, 直接以汉字给出, 免去本地化依赖)
+_CJK_COMMON_SURNAMES = [
+    "崔", "李", "聂", "张", "董", "方", "胡", "江", "金", "吕",
+    "马", "彭", "邱", "沈", "孙", "田", "丁", "韦", "吴", "叶",
+    "赵", "陈", "林", "黄", "郑", "王", "刘", "杨", "徐", "谢",
+    "朱", "梁", "何", "高", "罗", "谭", "邓", "冯", "曹", "周",
+]
+
+# 名池覆盖: 上述中华文化统一用维护好的中文名表
+_CJK_GIVEN_OVERRIDES = {
+    "han": _CJK_GIVEN_NAMES,
+    "yue": _CJK_GIVEN_NAMES,
+    "min": _CJK_GIVEN_NAMES,
+    "zhuang": _CJK_GIVEN_NAMES,
+    "hakka": _CJK_GIVEN_NAMES,
+}
+
+# 姓池覆盖: min/hakka 原版姓池是历史人物名, zhuang 姓池混有非姓字, 统一换常见姓
+_CJK_SURNAME_OVERRIDES = {
+    "min": _CJK_COMMON_SURNAMES,
+    "zhuang": _CJK_COMMON_SURNAMES,
+    "hakka": _CJK_COMMON_SURNAMES,
+}
+
+
 def build_culture_names():
     """culture key → {first: [合并名池], male: [男名池], female: [女名池], last: [姓池]}。
     解析 game/common/cultures/*.txt 中每个文化内联的
@@ -6347,6 +6524,11 @@ def build_culture_names():
                                      if re.fullmatch(r"[A-Za-z][A-Za-z'\-_]*", t)]
                 male_first = list(dict.fromkeys(male_first))
                 female_first = list(dict.fromkeys(female_first))
+                # 中华文化用维护好的中文名表覆盖原版名池 (汉字直接入池)
+                if key in _CJK_GIVEN_OVERRIDES:
+                    ov = _CJK_GIVEN_OVERRIDES[key]
+                    male_first = list(dict.fromkeys(ov["male"]))
+                    female_first = list(dict.fromkeys(ov["female"]))
                 # 合并池保持 男→女 的原文顺序, 未指定性别时行为与旧版完全一致
                 first = list(dict.fromkeys(male_first + female_first))
                 last = []
@@ -6355,6 +6537,8 @@ def build_culture_names():
                         block, re.S):
                     last += [t for t in lm.group(1).split()
                              if re.fullmatch(r"[A-Za-z][A-Za-z'\-_]*", t)]
+                if key in _CJK_SURNAME_OVERRIDES:
+                    last = list(dict.fromkeys(_CJK_SURNAME_OVERRIDES[key]))
                 first = list(dict.fromkeys(first))
                 last = list(dict.fromkeys(last))
                 if first and last:
@@ -9297,19 +9481,54 @@ def _load_snapshot_cache(journal_dir, year):
     return matches[0][0], matches[0][1]
 
 
+_STATE_FALLBACK_RE = re.compile(r"^州\d+$")
+
+
+def _snap_states_health(snap):
+    """快照州名健康检查: 大量州退化为占位名(州N)说明熔化数据不完整。
+
+    返回告警文案, 正常返回 None。调用方据此中止生成, 避免把脏数据喂给 LLM。
+    """
+    states = snap.get("states") or []
+    if not states:
+        return None
+    bad = [s for s in states
+           if isinstance(s.get("name"), str) and _STATE_FALLBACK_RE.match(s["name"])]
+    if len(bad) / len(states) < 0.5:
+        return None
+    sample = [s.get("id") for s in bad[:10]]
+    return (f"[警告] 州名解析异常: {len(bad)}/{len(states)} 个州退化为占位名"
+            f" (示例 id: {sample}), 熔化数据疑似不完整, 中止本次生成")
+
+
 def ensure_fresh_melt():
-    """强制用最新存档重新熔化, 返回 (melted_bytes, err)。"""
+    """强制用最新存档重新熔化, 返回 (melted_bytes, err)。
+
+    熔化+读取全程持有跨进程锁; 对熔化产物做完整性校验, 截断/损坏时
+    间隔重试一次, 仍失败则报错, 不再返回脏数据。"""
     v3 = find_latest_v3()
     if not v3:
         return None, "未找到存档"
-    path, err = melt_with_rakaly(v3, force=True)
-    if err:
-        return None, err
-    try:
-        with open(MELT_CACHE, "rb") as fp:
-            return fp.read(), None
-    except Exception as e:
-        return None, f"读取失败: {e}"
+    last_err = None
+    for attempt in (1, 2):
+        with _MeltLock():
+            _STATES_DB_BOUNDS.clear()
+            path, err = melt_with_rakaly(v3, force=True)
+            if err:
+                last_err = err
+                continue
+            try:
+                with open(MELT_CACHE, "rb") as fp:
+                    data = fp.read()
+            except Exception as e:
+                last_err = f"读取失败: {e}"
+                continue
+            if _melt_ok(data):
+                return data, None
+            last_err = "熔化结果不完整: 缺少 states.database 或 JSON 截断"
+            print(f"[警告] {last_err} (第 {attempt} 次), 2 秒后重试...")
+        time.sleep(2)
+    return None, last_err
 
 def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None):
     """用存档数据生成报纸 (复用 journal.py)。
@@ -9345,6 +9564,10 @@ def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None):
             snap = extract_full_snapshot(melted, ctx=ctx)
     if year and snap.get("year") != year:
         print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
+    bad = _snap_states_health(snap)
+    if bad:
+        print(bad)
+        return 1
     # 首次确定文件夹: 检查根目录同名文件夹, 有则加数字(大南、大南2...); 同局沿用
     if not journal.SESSION["folder"]:
         with journal._FOLDER_LOCK:
@@ -9400,6 +9623,10 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None, ctx=N
             snap = extract_full_snapshot(melted, ctx=ctx)
     if year and snap.get("year") != year:
         print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
+    bad = _snap_states_health(snap)
+    if bad:
+        print(bad)
+        return 1
     if not journal.SESSION["folder"]:
         with journal._FOLDER_LOCK:
             if not journal.SESSION["folder"]:
@@ -9500,8 +9727,21 @@ def cmd_check():
 def cmd_melt():
     v3 = find_latest_v3()
     if not v3: print("未找到存档。"); return 1
-    path, err = melt_with_rakaly(v3, force=True)
-    if err: print(f"熔化失败: {err}"); return 1
+    with _MeltLock():
+        _STATES_DB_BOUNDS.clear()
+        path, err = melt_with_rakaly(v3, force=True)
+        if err:
+            print(f"熔化失败: {err}")
+            return 1
+        try:
+            with open(MELT_CACHE, "rb") as fp:
+                data = fp.read()
+        except Exception as e:
+            print(f"读取失败: {e}")
+            return 1
+        if not _melt_ok(data):
+            print("熔化结果不完整: 缺少 states.database 或 JSON 截断, 请重试")
+            return 1
     return 0
 
 def cmd_sniff():
@@ -9510,6 +9750,22 @@ def cmd_sniff():
     snap = extract_full_snapshot(melted)
     print(json.dumps(snap, ensure_ascii=False, indent=2, default=str))
     return 0
+
+def _wait_save_stable(path, seconds=2.0, attempts=4):
+    """等待存档文件大小/修改时间连续稳定, 避免在游戏写入中途熔化。"""
+    try:
+        prev = None
+        for _ in range(attempts):
+            st = os.stat(path)
+            sig = (st.st_size, st.st_mtime_ns)
+            if prev is not None and sig == prev:
+                return True
+            prev = sig
+            time.sleep(seconds)
+    except OSError:
+        return False
+    return False
+
 
 def cmd_watch(continue_mode=False):
     import journal
@@ -9534,6 +9790,11 @@ def cmd_watch(continue_mode=False):
             return 1
         ctx = SaveContext(melted)
         snap = extract_full_snapshot(melted, ctx=ctx)
+        bad = _snap_states_health(snap)
+        if bad:
+            print(bad)
+            print("续传模式中止: 快照州名异常, 请检查存档/熔化数据后重试。")
+            return 1
         player = snap.get("player") or "未知名国家"
         folder = journal.find_latest_session_folder(player, cfg["journal_dir"])
         if folder:
@@ -9565,6 +9826,11 @@ def cmd_watch(continue_mode=False):
             if v3:
                 mt = os.path.getmtime(v3)
                 if mt != last_mtime and (baseline is None or mt > baseline + 3):
+                    if not _wait_save_stable(v3):
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] "
+                              f"存档仍在写入, 5 秒后重新检测...")
+                        time.sleep(5)
+                        continue
                     last_mtime = mt
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] 检测到新存档, 重新熔化...")
                     melted = ensure_fresh_melt()
@@ -9572,6 +9838,11 @@ def cmd_watch(continue_mode=False):
                         print(f"  熔化失败: {melted[1]}")
                     else:
                         snap = extract_full_snapshot(melted[0])
+                        bad = _snap_states_health(snap)
+                        if bad:
+                            print(bad)
+                            time.sleep(30)
+                            continue
                         player = snap.get("player")
                         year = snap.get("year")
                         if player and player != last_player:
