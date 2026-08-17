@@ -2240,8 +2240,8 @@ def _civil_war_progress(data, country_id):
 _CJK_JOIN_CULTURES = {
     "han", "manchu", "zhuang", "shan", "yuanzhumin",
     "japanese", "korean", "vietnamese",
-    # 与上表一致: 粤/闽/客家也按 姓+名 连写 (李陈), 不带分隔符
-    "yue", "min", "hakka",
+    # 与上表一致: 粤/闽/客家/彝/苗也按 姓+名 连写 (李陈), 不带分隔符
+    "yue", "min", "hakka", "yi", "miao",
 }
 
 
@@ -2284,6 +2284,36 @@ def _localize_character_name(first, last, loc, culture_key=None):
         return a + b
     return a + "·" + b
 
+
+def surname_from_name(name, culture_key=None, raw_last=None):
+    """从中文姓名中提取姓 (供「子女随受访大臣姓」等场景使用)。
+    优先用原版拉丁姓 (未被子名表覆盖的文化) 本地化, 可正确保留复姓
+    (如伊藤博文→伊藤); 取不到中文时回退到展示名拆分:
+    姓前文化取开头段/首字 (汉字连写无分隔符视为姓前), 名前文化取「·」后的末段。
+    无姓可提取返回 None (调用方维持不固定姓的原行为)。"""
+    if not name:
+        return None
+    if raw_last and culture_key not in _CJK_SURNAME_OVERRIDES:
+        try:
+            zh_last = _localize_character_name("", raw_last, _load_loc_all(),
+                                               culture_key)
+        except Exception:
+            zh_last = None
+        if zh_last and _is_cjk_text(zh_last):
+            return zh_last
+    if culture_key in _SURNAME_FIRST_CULTURES or (
+            _is_cjk_text(name) and "·" not in name):
+        head = name.split("·")[0]
+        if not head:
+            return None
+        # 汉字连写且无分隔符时, 本套姓池为单字姓, 取首字; 有点分隔时整段即姓
+        if "·" not in name and _is_cjk_text(name):
+            return head[0]
+        return head
+    parts = name.split("·")
+    return parts[-1] or None
+
+
 def _player_characters(data, country_id):
     """character_manager.database 该国角色 → {id: {"name"(中文), "ideology", "template",
     "culture"(中文), "religion"(中文), "home_region"(中文), 及对应原始 key/id}}。"""
@@ -2323,6 +2353,8 @@ def _player_characters(data, country_id):
             home_region = obj.get("home_region")
             chars[int(m.group(1))] = {
                 "name": nm or None,
+                "first_name": str(obj.get("first_name") or "") or None,
+                "last_name": str(obj.get("last_name") or "") or None,
                 "ideology": obj.get("ideology"),
                 "template": obj.get("template"),
                 "culture_id": culture,
@@ -6311,8 +6343,8 @@ _HUB_CATEGORY_ZH = {
 _SURNAME_FIRST_CULTURES = {
     "han", "manchu", "zhuang", "shan", "yuanzhumin",
     "japanese", "korean", "vietnamese", "hungarian",
-    # 原版游戏同为 last_first 的中华文化 (粤/闽/客家)
-    "yue", "min", "hakka",
+    # 原版游戏同为 last_first 的中华文化 (粤/闽/客家/彝/苗)
+    "yue", "min", "hakka", "yi", "miao",
 }
 
 # 政治动机的「政府直属建筑」: 存档中无所有权记录、由国家直接拥有 (政府行政/大学/艺术学院等)
@@ -6405,6 +6437,13 @@ _CULTURE_NAMES = None
 # (Zexu→则徐、Yatsen→逸仙…), zhuang 的姓池也混有非姓字 (Phach→珀、Den→登…),
 # 无法直接当姓用。故此处统一用维护好的常见中文名/姓表覆盖其池子。
 # 名表按 1830s 清代语境选取, 单双字混合; 姓表为常见中国姓。
+# 同处中华文化圈的少数民族文化一并覆盖:
+#   - manchu(满): 名池是满语/旗人名 (Oboi、Songgotu…), 姓池混入名 (Kang_an、
+#     Linge…), 名、姓两池均需替换;
+#   - yi(彝): 与 han/yue 同样的问题——男名池是姓氏字 (Chen、Li、Zhang…),
+#     随机组合生成「姓+姓」, 仅需换名池 (彝姓池本身是规范中国姓);
+#   - miao(苗): 姓池混有历史人物名 (Congwen→从文、Liangyu→梁宇、Zhiming→志明),
+#     同 zhuang 的「姓池混入非姓字」问题, 名、姓两池一并替换。
 # ---------------------------------------------------------------------------
 _CJK_GIVEN_NAMES = {
     "male": [
@@ -6473,20 +6512,26 @@ _CJK_COMMON_SURNAMES = [
     "朱", "梁", "何", "高", "罗", "谭", "邓", "冯", "曹", "周",
 ]
 
-# 名池覆盖: 上述中华文化统一用维护好的中文名表
+# 名池覆盖: 上述中华文化及同圈的满/彝/苗统一用维护好的中文名表
 _CJK_GIVEN_OVERRIDES = {
     "han": _CJK_GIVEN_NAMES,
     "yue": _CJK_GIVEN_NAMES,
     "min": _CJK_GIVEN_NAMES,
     "zhuang": _CJK_GIVEN_NAMES,
     "hakka": _CJK_GIVEN_NAMES,
+    "manchu": _CJK_GIVEN_NAMES,
+    "yi": _CJK_GIVEN_NAMES,
+    "miao": _CJK_GIVEN_NAMES,
 }
 
-# 姓池覆盖: min/hakka 原版姓池是历史人物名, zhuang 姓池混有非姓字, 统一换常见姓
+# 姓池覆盖: min/hakka/manchu/miao 原版姓池混有历史人物名或旗人名,
+# zhuang 姓池混有非姓字, 统一换常见姓 (yi 的姓池本身规范, 不覆盖)
 _CJK_SURNAME_OVERRIDES = {
     "min": _CJK_COMMON_SURNAMES,
     "zhuang": _CJK_COMMON_SURNAMES,
     "hakka": _CJK_COMMON_SURNAMES,
+    "manchu": _CJK_COMMON_SURNAMES,
+    "miao": _CJK_COMMON_SURNAMES,
 }
 
 
@@ -6554,9 +6599,10 @@ def build_culture_names():
     return out
 
 
-def _crime_make_name(culture_key, rnd, gender=None):
+def _crime_make_name(culture_key, rnd, gender=None, fixed_last=None):
     """按文化随机组合 姓+名 → (拉丁原名, 中译名); 姓前/名前由文化键值判定;
     gender 为 "male"/"female" 时从对应名池取, None 用合并池 (现行为);
+    fixed_last 给定时固定使用该姓 (不再从姓池随机), 用于「子女随父姓」等场景;
     无该文化姓名数据返回 (None, None)。拉丁名仅用于内部身份/唯一性判断,
     对外一律用中译名 (经 names_l 本地化查表)。"""
     if not culture_key:
@@ -6568,7 +6614,7 @@ def _crime_make_name(culture_key, rnd, gender=None):
         first = rnd.choice(data.get(gender) or data["first"])
     else:
         first = rnd.choice(data["first"])
-    last = rnd.choice(data["last"])
+    last = fixed_last or rnd.choice(data["last"])
     if culture_key in _SURNAME_FIRST_CULTURES:
         latin = f"{last} {first}"
     else:
@@ -6620,26 +6666,30 @@ def _crime_role_names(case, rnd, female_pct=None):
     return names
 
 
-def culture_person_name(culture_key, seed=None, gender=None, female_pct=None):
+def culture_person_name(culture_key, seed=None, gender=None, female_pct=None,
+                        fixed_last=None):
     """按文化生成一个确定性中文人名 (经 names_l 本地化查表)。
     seed 推荐用 f"{year}|{country}|{article}|{section}|{role}" 保证同年稳定;
     gender 显式指定男/女名池; 未指定且 female_pct 给出时, 先按该概率掷性别再
     取名 (同一 seed 结果稳定); 两者皆无时维持合并池现行为。
-    无该文化姓名池或查不到译名时返回 None (调用方不得自行命名)。"""
+    fixed_last 固定姓 (如子女沿用受访大臣之姓); 无该文化姓名池或查不到译名时
+    返回 None (调用方不得自行命名)。"""
     if not culture_key:
         return None
     rnd = random.Random(seed) if seed is not None else random.Random()
     if gender is None and female_pct is not None:
         gender = "female" if rnd.random() < female_pct else "male"
-    _latin, zh = _crime_make_name(culture_key, rnd, gender=gender)
+    _latin, zh = _crime_make_name(culture_key, rnd, gender=gender,
+                                  fixed_last=fixed_last)
     return zh or None
 
 
-def person_names(seed, roles, female_pct=None, genders=None):
+def person_names(seed, roles, female_pct=None, genders=None, fixed_last=None):
     """roles: [(角色名, culture_key|None), ...] → {角色: 中文名}。
     各角色姓名互不相同; 文化无名池的角色不出现在结果里。
     genders: {角色: "male"/"female"} 显式强制性别; 其余角色在 female_pct 给出时
-    按该概率各自掷性别, 否则维持合并池现行为。"""
+    按该概率各自掷性别, 否则维持合并池现行为。
+    fixed_last: 所有角色共用同一固定姓 (如一家子女随父姓)。"""
     out = {}
     used = set()
     genders = genders or {}
@@ -6651,7 +6701,8 @@ def person_names(seed, roles, female_pct=None, genders=None):
                 nm = culture_person_name(
                     ck, seed=f"{seed}|{i}|{role}|{_}",
                     gender=g,
-                    female_pct=None if g else female_pct)
+                    female_pct=None if g else female_pct,
+                    fixed_last=fixed_last)
                 if nm and nm not in used:
                     break
         if nm:
@@ -6660,9 +6711,12 @@ def person_names(seed, roles, female_pct=None, genders=None):
     return out
 
 
-def person_names_block(seed, roles, female_pct=None, genders=None):
-    """人名名单提示块: 姓名已由数据给定, 全文必须原样使用。无姓名返回空串。"""
-    names = person_names(seed, roles, female_pct=female_pct, genders=genders)
+def person_names_block(seed, roles, female_pct=None, genders=None,
+                       fixed_last=None):
+    """人名名单提示块: 姓名已由数据给定, 全文必须原样使用。无姓名返回空串。
+    fixed_last: 所有角色共用同一固定姓 (如一家子女随父姓)。"""
+    names = person_names(seed, roles, female_pct=female_pct, genders=genders,
+                         fixed_last=fixed_last)
     if not names:
         return ""
     lines = ["人物名单（姓名已由数据给定，全文必须原样使用，不得自行取名或改名）："]
@@ -6756,10 +6810,10 @@ def _crime_motive(melted, cid, victim, murderer, objs):
     v_acc = _crime_acceptance_rank(victim)
     m_acc = _crime_acceptance_rank(murderer)
     if v_acc is not None and m_acc is not None and v_acc > m_acc:
-        return "cultural", "文化动机：受害者在当地受到的接受度低于凶手（更受歧视）。"
+        return "cultural", "文化动机：受害者在当地受到歧视。"
     bid = victim.get("workplace")
     if bid in objs and _crime_state_owned(melted, cid, bid, objs[bid]):
-        return "political", "政治动机：受害者工作于国家（政府）所有的建筑。"
+        return "political", "政治动机：受害者工作于国家所有的建筑。"
     return None
 
 
@@ -6847,6 +6901,436 @@ def _safe_int(v):
         return None
 
 
+# ---------------------------------------------------------------------------
+# 罪案与法网 · 刑法框架 / 破案判定 / 判决判定 三层引擎
+# 全部为纯函数: 输入均来自已播种稳定的数据 (案件/角色/法律/机构), 不调用 rnd,
+# 同一年同一国结果恒定。config.json 的 crime_outcome_engine=false 可整体关闭。
+# ---------------------------------------------------------------------------
+
+# 刑罚体系五取向: 死刑/身体刑 / 监禁 / 流放 / 罚金 / 宗族村社习惯法
+_PENAL_ORIENTATIONS = ("death_corporal", "imprisonment", "exile", "fine",
+                       "customary")
+_PENAL_ORIENTATION_ZH = {
+    "death_corporal": "以死刑/身体刑为主",
+    "imprisonment": "以监禁为主",
+    "exile": "以流放为主",
+    "fine": "以罚金为主",
+    "customary": "以宗族村社公议、习惯法为主",
+}
+_PENAL_ORIENTATION_SHORT = {
+    "death_corporal": "死刑/身体刑",
+    "imprisonment": "监禁",
+    "exile": "流放",
+    "fine": "罚金",
+    "customary": "宗族村社公议",
+}
+
+# 法律 → 各取向加分。同一法律组只命中一条现行法律 (权重=该取向得分贡献)。
+_PENAL_FRAMEWORK_WEIGHTS = (
+    # 权力分配 (主因子): 谁的意志决定惩罚
+    (("law_autocracy", "law_neo_absolutism", "law_bakufu",
+      "law_single_party_state"),
+     {"death_corporal": 40, "imprisonment": 10, "exile": 10}),
+    (("law_oligarchy", "law_wealth_voting"),
+     {"death_corporal": 10, "imprisonment": 15, "fine": 35}),
+    (("law_landed_voting",),
+     {"death_corporal": 5, "imprisonment": 15, "exile": 10, "fine": 20}),
+    (("law_census_voting", "law_universal_suffrage"),
+     {"death_corporal": -15, "imprisonment": 30, "exile": 5, "fine": 15}),
+    (("law_elder_council",),
+     {"death_corporal": 15, "imprisonment": 5, "exile": 15, "customary": 25}),
+    (("law_technocracy",),
+     {"death_corporal": 5, "imprisonment": 35, "exile": 5, "fine": 15}),
+    (("law_organic_regulation",),
+     {"death_corporal": 20, "imprisonment": 10, "fine": 10, "customary": 10}),
+    (("law_anarchy",),
+     {"death_corporal": -10, "imprisonment": -10, "customary": 50}),
+    # 治理原则: 谁执裁判之权
+    (("law_theocracy",),
+     {"death_corporal": 20, "imprisonment": 5, "fine": 10, "customary": 5}),
+    (("law_monarchy", "law_social_monarchy"),
+     {"death_corporal": 5, "imprisonment": 10, "exile": 15, "fine": 5}),
+    (("law_corporate_state",), {"imprisonment": 10, "fine": 20}),
+    (("law_presidential_republic", "law_parliamentary_republic",
+      "law_council_republic"),
+     {"death_corporal": -10, "imprisonment": 20, "fine": 10}),
+    (("law_chiefdom",),
+     {"death_corporal": 20, "exile": 10, "fine": 5, "customary": 15}),
+    (("law_colonial_administration",),
+     {"imprisonment": 5, "exile": 20, "fine": 5}),
+    # 殖民机构: 有殖民地 → 流放有处可去
+    (("law_colonial_resettlement", "law_colonial_exploitation"),
+     {"exile": 20}),
+    (("law_no_colonial_affairs",), {"exile": -10}),
+    # 公民权: 异族重罚 / 放逐倾向
+    (("law_ethnostate", "law_national_supremacy"),
+     {"death_corporal": 5, "exile": 20}),
+    (("law_racial_segregation", "law_cultural_exclusion"),
+     {"death_corporal": 5, "exile": 10}),
+    # 言论自由: 政治罪的轻重
+    (("law_outlawed_dissent",),
+     {"death_corporal": 10, "exile": 15, "customary": 5}),
+    (("law_censorship",), {"death_corporal": 5, "exile": 10}),
+    # 教会与国家: 宗教法庭 / 悔罪金倾向
+    (("law_state_religion", "law_people_of_the_book"),
+     {"death_corporal": 10, "fine": 10, "customary": 5}),
+    (("law_state_atheism",), {"imprisonment": 5, "exile": 10}),
+    # 警察机构
+    (("law_militarized_police",), {"death_corporal": 15, "imprisonment": 5}),
+    (("law_dedicated_police", "law_local_police"),
+     {"imprisonment": 5, "fine": 5}),
+    # 国内安全
+    (("law_secret_police", "law_shinsengumi"),
+     {"death_corporal": 10, "imprisonment": 5, "exile": 10}),
+    (("law_guaranteed_liberties",),
+     {"death_corporal": -20, "imprisonment": 15, "fine": 10}),
+    # 奴隶制: 把人当财产 → 体罚常见、对奴隶不适用常规审判
+    (("law_legacy_slavery", "law_debt_slavery", "law_slave_trade",
+      "law_colonial_slavery"),
+     {"death_corporal": 15, "fine": -5, "customary": 10}),
+    # 移民: 关闭边境 / 限制移民 → 流放无处可去
+    (("law_closed_borders",), {"exile": -15}),
+    (("law_migration_controls",), {"exile": -5}),
+)
+
+# 破案判定: 基础难度 (按案件类型) 与法律/机构/身份修正
+_CRIME_SOLVE_BASE = {
+    "theft": 35, "blackmail": 40, "arson": 45, "robbery": 50,
+    "assault": 55, "murder": 60, "terrorism": 30,
+}
+_POLICE_LAW_SOLVE = {
+    "law_no_police": -25, "law_local_police": 0,
+    "law_dedicated_police": 10, "law_militarized_police": 15,
+}
+_INTERNAL_LAW_SOLVE = {
+    "law_no_home_affairs": 0, "law_national_guard": 5,
+    "law_secret_police": 15, "law_shinsengumi": 15,
+    "law_guaranteed_liberties": -10,
+}
+_CLASS_SOLVE_VICTIM = {"upper_class": 10, "middle_class": 2, "lower_class": -4}
+_CLASS_SOLVE_MURDERER = {"upper_class": -12, "middle_class": -3,
+                         "lower_class": 3}
+
+# 判决判定: 基础刑量 (按案件类型) 与身份/法律/政体修正
+_CRIME_VERDICT_BASE = {
+    "theft": 30, "blackmail": 45, "robbery": 50, "arson": 55,
+    "assault": 50, "murder": 80, "terrorism": 90,
+}
+_CLASS_VERDICT_MURDERER = {"upper_class": -10, "middle_class": 0,
+                           "lower_class": 10}
+_CLASS_VERDICT_VICTIM = {"upper_class": 10, "middle_class": 2,
+                         "lower_class": -5}
+_POLICE_LAW_VERDICT = {
+    "law_no_police": -10, "law_local_police": 0,
+    "law_dedicated_police": 5, "law_militarized_police": 10,
+}
+_INTERNAL_LAW_VERDICT = {
+    "law_no_home_affairs": 0, "law_national_guard": 5,
+    "law_secret_police": 10, "law_shinsengumi": 10,
+    "law_guaranteed_liberties": -15,
+}
+_HARSH_GOVT_LAWS = (
+    "law_autocracy", "law_neo_absolutism", "law_bakufu",
+    "law_single_party_state", "law_theocracy", "law_elder_council",
+    "law_chiefdom",
+)
+
+# 档位→数字体系: 各刑种基准区间 (分档低分→高分线性插值);
+# life_at 为触发"终身"的判决得分下限。罚金栏为"当地劳动力人均月收入的月数"
+# (2026-08-17 实采 10 州: 1853 年全球各州人均月收入约 0.35~1.0 英镑,
+#  倍率 2~6/6~18/24~72 个月既成比例又不至于写成天文数字);
+# 判决时按 月数 × 人均月收入 换算为英镑金额直接入判词。
+_PENAL_NUMERIC = {
+    "监禁": {"lenient": (1, 3, None), "standard": (5, 12, None),
+             "harsh": (15, 25, 84)},
+    "苦役": {"lenient": (1, 2, None), "standard": (4, 10, None),
+             "harsh": (12, 20, 84)},
+    "流放": {"lenient": (3, 5, None), "standard": (8, 15, None),
+             "harsh": (18, 25, 80)},
+    "鞭笞": {"lenient": (20, 40, None), "standard": (50, 80, None),
+             "harsh": (100, 150, None)},
+    "罚金": {"lenient": (2, 6, None), "standard": (6, 18, None),
+             "harsh": (24, 72, None)},
+}
+# 各体系在各档位的默认刑种; customary 体系不产生数字刑期
+_PENAL_FORM_BY_ORIENTATION = {
+    "death_corporal": {"lenient": "鞭笞", "standard": "苦役",
+                       "harsh": "苦役", "capital": "死刑"},
+    "imprisonment": {"lenient": "罚金", "standard": "监禁",
+                     "harsh": "监禁", "capital": "死刑"},
+    "exile": {"lenient": "罚金", "standard": "流放",
+              "harsh": "流放", "capital": "死刑"},
+    "fine": {"lenient": "罚金", "standard": "罚金",
+             "harsh": "罚金", "capital": "死刑"},
+    "customary": {"lenient": "赔偿了结", "standard": "鞭笞或放逐",
+                  "harsh": "放逐出籍", "capital": None},
+}
+# 档位分数边界 (用于插值)
+_PENAL_TIER_BOUNDS = {"lenient": (0, 40), "standard": (40, 65),
+                      "harsh": (65, 85)}
+_CRIME_SOLVE_TIER_ZH = {
+    "convicted": "破案定罪",
+    "acquitted": "破案未定罪",
+    "unsolved": "悬案未破",
+}
+_VERDICT_TIER_ZH = {
+    "lenient": "从轻处置", "standard": "常规刑罚",
+    "harsh": "从重严惩", "capital": "极刑（死刑）",
+}
+
+
+def _crime_penal_framework(laws):
+    """现行法律 → 刑罚体系取向 (主导 + 辅取向 + 死刑可用性 + 依据法律)。
+    纯函数; 得分全 0 时给中立默认「监禁为主」。"""
+    from journal import law_zh
+    laws = set(laws or [])
+    scores = {k: 0 for k in _PENAL_ORIENTATIONS}
+    contrib = []
+    for keys, weights in _PENAL_FRAMEWORK_WEIGHTS:
+        hit = next((l for l in keys if l in laws), None)
+        if hit is None:
+            continue
+        for k, w in weights.items():
+            scores[k] += w
+        contrib.append((hit, sum(abs(w) for w in weights.values())))
+    order = sorted(scores.items(), key=lambda kv: (kv[1], kv[0]),
+                   reverse=True)
+    dominant = order[0][0]
+    secondary = None
+    for k, v in order[1:]:
+        if v > 0 and v >= order[0][1] * 0.6:
+            secondary = k
+            break
+    if order[0][1] <= 0:
+        dominant = "imprisonment"
+        secondary = None
+    contrib.sort(key=lambda x: x[1], reverse=True)
+    basis = "、".join(law_zh(l) for l, _w in contrib[:4])
+    return {
+        "dominant": dominant,
+        "secondary": secondary,
+        "scores": scores,
+        "death_available": scores["death_corporal"] >= 30,
+        "basis": basis or "（资料缺失）",
+    }
+
+
+def _penal_orientation_text(fw):
+    """框架 → 自然语言取向, 如「以监禁为主，辅以罚金」。"""
+    txt = _PENAL_ORIENTATION_ZH[fw["dominant"]]
+    if fw["secondary"]:
+        txt += "，辅以" + _PENAL_ORIENTATION_SHORT[fw["secondary"]]
+    return txt
+
+
+def _crime_is_slave(pop):
+    return (pop or {}).get("type") == "slaves"
+
+
+def _crime_pop_weekly_income(pop):
+    """POP 每周收入: weekly_budget 正分量之和 (与家庭采访同口径,
+    journal_save.py 家庭采访注释: 收入分量 0/2/4/5/6 及补充收入分量)。
+    旧存档标量 (正数) 兼容; 无收入返回 None。"""
+    wb = (pop or {}).get("weekly_budget")
+    if isinstance(wb, list):
+        vals = [v for v in wb if isinstance(v, (int, float)) and v > 0]
+        return sum(vals) if vals else None
+    if isinstance(wb, (int, float)) and wb > 0:
+        return wb
+    return None
+
+
+def _crime_state_avg_weekly_income(pops, state_id):
+    """该州劳动力人均每周收入 = Σ(POP周收入) / Σ(POP劳动力)。
+    weekly_budget 是 POP 总额 (非人均), 故不再按劳动力二次加权;
+    州内无有效收入样本返回 None。"""
+    total_inc = 0.0
+    total_wf = 0.0
+    for _pid, obj in (pops or {}).items():
+        if obj.get("location") != state_id:
+            continue
+        wf = obj.get("workforce")
+        inc = _crime_pop_weekly_income(obj)
+        if not isinstance(wf, (int, float)) or wf <= 0 or not inc:
+            continue
+        total_wf += wf
+        total_inc += inc
+    if total_wf <= 0:
+        return None
+    return total_inc / total_wf
+
+
+def _crime_slavery_active(laws):
+    laws = set(laws or [])
+    return bool(laws & {"law_legacy_slavery", "law_debt_slavery",
+                        "law_slave_trade", "law_colonial_slavery"})
+
+
+def _crime_solve_assessment(case, laws, insts, victim, murderer, witness):
+    """破案判定: 0~100 分 → 破案定罪 / 破案未定罪 / 悬案未破。"""
+    laws = set(laws or [])
+    crime = case["crime_type"]
+    political = (crime == "terrorism" or case.get("motive") == "political")
+    score = _CRIME_SOLVE_BASE.get(crime, 40)
+    score += _POLICE_LAW_SOLVE.get(
+        next((l for l in _POLICE_LAW_SOLVE if l in laws), None), 0)
+    intl = next((l for l in _INTERNAL_LAW_SOLVE if l in laws), None)
+    if intl:
+        score += _INTERNAL_LAW_SOLVE[intl] * (1.5 if political else 0.5)
+    score += (insts.get("institution_police") or 0) * 3
+    score += (insts.get("institution_home_affairs") or 0) * 1.5
+    score += _CLASS_SOLVE_VICTIM.get(_pool_pop_class(victim), 0)
+    score += _CLASS_SOLVE_MURDERER.get(_pool_pop_class(murderer), 0)
+    v_acc = _crime_acceptance_rank(victim)
+    m_acc = _crime_acceptance_rank(murderer)
+    if v_acc is not None:
+        score -= v_acc * 4
+    if m_acc is not None:
+        score += m_acc * 4
+    if witness.get("location") == victim.get("location"):
+        score += 8
+    if witness.get("workplace") == victim.get("workplace"):
+        score += 12
+    if _crime_is_slave(murderer) and _crime_slavery_active(laws):
+        score += 10
+    if crime == "terrorism":
+        rad = (case.get("movement") or {}).get("radicalism")
+        if isinstance(rad, (int, float)):
+            score += -5 if rad >= 60 else (5 if rad <= 30 else 0)
+    score = max(0, min(100, score))
+    tier = ("convicted" if score >= 65
+            else "acquitted" if score >= 45 else "unsolved")
+    return {"score": round(score, 1), "tier": tier}
+
+
+def _crime_outcome_reason(tier, police_lv):
+    """破案结果的一句话说明 (以执法机构档位点缀, 其余模板化)。"""
+    if tier == "unsolved":
+        return "线索寥寥，侦办乏力，案件悬而未决，真凶逍遥法外。"
+    if tier == "acquitted":
+        return "凶手虽被锁定，然证据不足或贵势庇护，法庭宣告无罪开释。"
+    return f"执法机构{police_lv}，案件告破，凶手缉拿归案并移送审判。"
+
+
+def _crime_verdict_severity(case, laws, victim, murderer):
+    """判决轻重: 0~100 分 (越高越重)。纯函数。"""
+    laws = set(laws or [])
+    crime = case["crime_type"]
+    score = _CRIME_VERDICT_BASE.get(crime, 40)
+    score += _CLASS_VERDICT_MURDERER.get(_pool_pop_class(murderer), 0)
+    score += _CLASS_VERDICT_VICTIM.get(_pool_pop_class(victim), 0)
+    v_acc = _crime_acceptance_rank(victim)
+    m_acc = _crime_acceptance_rank(murderer)
+    if v_acc is not None:
+        score -= v_acc * 4
+    if m_acc is not None:
+        score += m_acc * 5
+    score += _POLICE_LAW_VERDICT.get(
+        next((l for l in _POLICE_LAW_VERDICT if l in laws), None), 0)
+    score += _INTERNAL_LAW_VERDICT.get(
+        next((l for l in _INTERNAL_LAW_VERDICT if l in laws), None), 0)
+    if any(l in laws for l in _HARSH_GOVT_LAWS):
+        score += 8
+    elif any(l in laws for l in ("law_monarchy", "law_social_monarchy")):
+        score += 3
+    if case.get("motive") == "political":
+        score += 10
+    if crime == "terrorism":
+        score += 15
+    return max(0, min(100, score))
+
+
+def _crime_verdict_tier(severity, fw, case, laws):
+    """判决得分 → 档位。极刑闸门: 须死刑可用 (或异议非法下的政治案),
+    且案件为凶杀/恐怖主义 (异议非法下的政治案可突破罪种限制)。"""
+    laws = set(laws or [])
+    if severity >= 85:
+        political = (case.get("motive") == "political"
+                     or case["crime_type"] == "terrorism")
+        outlawed = "law_outlawed_dissent" in laws
+        death_ok = fw["death_available"] or (political and outlawed)
+        eligible = (case["crime_type"] in ("murder", "terrorism")
+                    or (political and outlawed))
+        if death_ok and eligible:
+            return "capital"
+        return "harsh"
+    if severity >= 65:
+        return "harsh"
+    if severity >= 40:
+        return "standard"
+    return "lenient"
+
+
+def _crime_verdict_reason(case, tier, murderer):
+    """判决理由一行 (身份/政治因素点缀)。"""
+    bits = []
+    cls = _pool_pop_class(murderer)
+    if cls == "upper_class":
+        bits.append("凶手出身上层，有势可倚")
+    elif cls == "lower_class":
+        bits.append("凶手出身下层，无势可倚")
+    m_acc = _crime_acceptance_rank(murderer)
+    if m_acc is not None and m_acc >= 2:
+        bits.append("凶手在当地备受歧视")
+    if case.get("motive") == "political" or case["crime_type"] == "terrorism":
+        bits.append("案涉政治")
+    zh = {"lenient": "轻", "standard": "常例", "harsh": "重",
+          "capital": "极"}[tier]
+    why = "、".join(bits[:2]) if bits else "本案情节"
+    return f"依据现行刑法框架，综合考虑{why}，从{zh}判决。"
+
+
+def _crime_sentence(case, laws, fw, severity, tier, murderer, victim,
+                    fine_monthly=None):
+    """破案定罪后的最终判决: 档位 × 刑种 × 数字 (基准区间按得分插值)。
+    奴隶/习惯法体系走特别条款, 不产生程序化刑期。"""
+    laws = set(laws or [])
+    if _crime_is_slave(murderer) and _crime_slavery_active(laws):
+        return "凶手身为奴隶，不受常规审判，交由主人或官府体罚处置。"
+    if fw["dominant"] == "customary":
+        form = ("放逐出籍" if tier == "capital"
+                else _PENAL_FORM_BY_ORIENTATION["customary"][tier])
+        return f"依宗族村社公议，判处{form}。"
+    if tier == "capital":
+        return "判处死刑。"
+    form = _PENAL_FORM_BY_ORIENTATION[fw["dominant"]][tier]
+    # 赎买条款: 罚金主导或寡头/财产投票/地产投票体系下, 上层凶手可罚金折赎
+    redemption = (tier in ("lenient", "standard")
+                  and _pool_pop_class(murderer) == "upper_class"
+                  and (fw["dominant"] == "fine"
+                       or bool(laws & {"law_oligarchy", "law_wealth_voting",
+                                       "law_landed_voting"})))
+    suffix = "（罚金折赎）" if redemption else ""
+    if redemption:
+        form = "罚金"
+    lo, hi, life_at = _PENAL_NUMERIC[form][tier]
+    tlo, thi = _PENAL_TIER_BOUNDS[tier]
+    pos = max(0.0, min(1.0, (severity - tlo) / (thi - tlo)))
+    if life_at is not None and severity >= life_at:
+        head = {"监禁": "终身监禁", "苦役": "终身苦役",
+                "流放": "终身流放"}.get(form)
+        if head:
+            return f"判处{head}{suffix}。"
+    if form == "罚金":
+        months = int(round(lo + pos * (hi - lo)))
+        amount = None
+        if fine_monthly is not None and fine_monthly > 0:
+            amount = fine_monthly * months
+        else:
+            own = _crime_pop_weekly_income(murderer)
+            if own is not None:
+                amount = own * 52 / 12 * months
+        if amount is not None:
+            n = max(1, int(round(amount)))
+            return f"判处罚金约{n}英镑{suffix}。"
+        return f"判处罚金，数额以家资折抵{suffix}。"
+    if form == "鞭笞":
+        n = int(round(lo + pos * (hi - lo)))
+        return f"判处鞭笞{n}下{suffix}。"
+    n = int(round(lo + pos * (hi - lo)))
+    return f"判处{form}{n}年{suffix}。"
+
+
 def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
     """罪案与法网: 每期一桩案件 + 3个居民(受害者/凶手/证人) + 法律机构。
     案件类型: 凶杀/纵火/故意伤害/勒索/抢劫/盗窃/恐怖主义(激进派);
@@ -6894,6 +7378,52 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
     # 存档无该机构条目即未投入, 按 0 级「尚未设立」处理
     police_lv = _institution_level_zh(insts.get("institution_police", 0))
     home_lv = _institution_level_zh(insts.get("institution_home_affairs", 0))
+    # 罚金基准线: 案发地所在州劳动力人均月收入 (weekly_budget 正分量 / 劳动力)
+    _state_avg_w = _crime_state_avg_weekly_income(
+        pops, victim[1].get("location"))
+    fine_monthly = (_state_avg_w * 52 / 12
+                    if _state_avg_w is not None else None)
+    # 刑法框架 / 破案 / 判决 三层引擎 (config crime_outcome_engine=false 关闭)
+    outcome = None
+    try:
+        from journal import load_config
+        _cfg = load_config()
+    except Exception:
+        _cfg = {}
+    if _cfg.get("crime_outcome_engine", True):
+        fw = _crime_penal_framework(laws)
+        solve = _crime_solve_assessment(case, laws, insts, victim[1],
+                                        murderer[1], witness[1])
+        outcome = {
+            "framework": _penal_orientation_text(fw),
+            "basis": fw["basis"],
+            "death_available": fw["death_available"],
+            "fine_baseline_monthly": round(fine_monthly, 3)
+            if fine_monthly is not None else None,
+            "solve_score": solve["score"],
+            "solve_tier": solve["tier"],
+            "sentence": None,
+        }
+        if solve["tier"] == "convicted":
+            severity = _crime_verdict_severity(case, laws, victim[1],
+                                               murderer[1])
+            tier = _crime_verdict_tier(severity, fw, case, laws)
+            sentence = _crime_sentence(case, laws, fw, severity, tier,
+                                       murderer[1], victim[1],
+                                       fine_monthly=fine_monthly)
+            outcome["severity"] = severity
+            outcome["verdict_tier"] = tier
+            outcome["sentence"] = sentence
+            verdict_line = f"判决：{sentence}"
+            verdict_reason = _crime_verdict_reason(case, tier, murderer[1])
+        elif solve["tier"] == "acquitted":
+            outcome["verdict_tier"] = "acquitted"
+            verdict_line = "判决：无罪开释（凶手身份已查明，然证据不足或贵势庇护）。"
+            verdict_reason = "依据现行刑法框架，证据不足以定罪。"
+        else:
+            outcome["verdict_tier"] = "unsolved"
+            verdict_line = "判决：无（案件未破，悬案收束）。"
+            verdict_reason = "案件未破，无从审理。"
 
     def _role_line(pop, role):
         txt = _pool_pop_text(pop[0], pop[1], ctx, loc)
@@ -6908,8 +7438,8 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
     )
     if all((names.get(r) or (None, None))[1]
            for r in ("受害者", "凶手", "证人")):
-        name_rule = ("三人中文姓名已由资料给定，全篇必须原样使用（译法固定），"
-                     "不得另行取名、改名或回写拉丁原名。")
+        name_rule = ("三人中文姓名已由资料给定，全篇必须原样使用"
+                     "。")
     else:
         name_rule = ("不得虚构人物姓名，一律以「受害者」「凶手」「证人」"
                      "及职业身份代称。")
@@ -6963,15 +7493,37 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
         + (law_zh(internal) if internal else "（资料缺失）") + "。",
         f"执法机构（Policing）投入：{police_lv}。",
         f"内务机构（Internal Security）投入：{home_lv}。",
-        "本板块请写案件进入法网后的后续——侦办、缉凶、庭审或悬案收束，"
-        "尺度以给定法律与机构为限，不得虚构具体判决与刑期。",
     ]
-    return {"sections": {
+    if outcome:
+        justice_lines.append(f"现行刑法框架：{outcome['framework']}"
+                             f"（依据：{outcome['basis']}）。")
+        justice_lines.append(
+            f"破案结果：{_CRIME_SOLVE_TIER_ZH[outcome['solve_tier']]}——"
+            f"{_crime_outcome_reason(outcome['solve_tier'], police_lv)}")
+        justice_lines.append(verdict_line)
+        justice_lines.append(f"判决理由：{verdict_reason}")
+        justice_lines.append(
+            "破案结果与判决已由资料给定，必须原样照写，不得改动或另拟；"
+            "悬案时不得补写破案与判决。"
+        )
+        justice_lines.append(
+            "本板块请写案件进入法网后的后续——侦办、缉凶、庭审或悬案收束，"
+            "尺度以给定法律与机构为限。"
+        )
+    else:
+        justice_lines.append(
+            "本板块请写案件进入法网后的后续——侦办、缉凶、庭审或悬案收束，"
+            "尺度以给定法律与机构为限，不得虚构具体判决与刑期。"
+        )
+    ret = {"sections": {
         "case": "\n".join(case_lines),
         "victim": "\n".join(victim_lines),
         "perpetrator": "\n".join(perp_lines),
         "justice": "\n".join(justice_lines),
     }}
+    if outcome:
+        ret["outcome"] = outcome
+    return ret
 
 
 # ---------------------------------------------------------------------------
@@ -9373,9 +9925,13 @@ def _extract_interest_groups(data, player_id, chars=None):
                 "approval_state": obj.get("approval_state"),
                 "approval_band": _ig_approval_band(approval),
                 "leader_name": (leader or {}).get("name"),
+                "leader_last_name": (leader or {}).get("last_name"),
                 "leader_ideology": (_clean_loc_name(loc.get(lideo, lideo), loc)
                                     if lideo else None),
                 "leader_culture": (leader or {}).get("culture"),
+                "leader_culture_key": (
+                    culture_id_to_key((leader or {}).get("culture_id"))
+                    if (leader or {}).get("culture_id") is not None else None),
                 "leader_religion": (leader or {}).get("religion"),
                 "leader_home_region": (leader or {}).get("home_region"),
             })
@@ -9387,7 +9943,9 @@ def _extract_interest_groups(data, player_id, chars=None):
 # 快照缓存 (阶段2: 落盘缓存, 重复生成报纸/杂志时跳过熔化+提取)
 # ---------------------------------------------------------------------------
 
-SNAPSHOT_CACHE_VERSION = 4
+# 版本 5: interest_groups 增加 leader_culture_key/leader_last_name
+# (供杂志「大臣之家」子女随受访大臣姓使用), 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 5
 # 快照缓存写入锁: 报纸/杂志并行生成时两者会各自落盘同一 snapshot_<year>.json
 # (内容相同), 加锁避免并发写同一文件交错。
 _SNAP_CACHE_LOCK = threading.Lock()

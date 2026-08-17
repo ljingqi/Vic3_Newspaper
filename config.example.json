@@ -13,6 +13,7 @@
   "magazine_enabled": true,
   "magazine_pool_size": 3,
   "magazine_pool_override": null,
+  "crime_outcome_engine": true,
   "female_pct_by_women_law": {
     "law_no_womens_rights": 0.05,
     "law_women_in_the_fields": 0.05,

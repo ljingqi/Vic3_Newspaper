@@ -360,8 +360,10 @@ POOL = {
             {"key": "justice", "title": "法网与衙门", "req": (
                 "三角色身份必须与全篇一致（资料原样，不得互换），报道现行警察机构"
                 "法律（Policing）与国内安全法律（Internal Security）、执法与内务"
-                "两机构投入的自然语言档位，写案件进入法网后的后续——侦办、缉凶、"
-                "庭审或悬案收束，尺度以给定法律与机构为限，不虚构具体判决与刑期。"
+                "两机构投入的自然语言档位，以及资料给定的现行刑法框架（刑罚取向），"
+                "写案件进入法网后的后续——侦办、缉凶、庭审或悬案收束；资料给出"
+                "破案结果与判决时，必须原样照写，不得改动或另拟；资料未给出时，"
+                "尺度以给定法律与机构为限，不虚构具体判决与刑期。"
             )},
         ],
     },
@@ -912,13 +914,15 @@ def _facts_garrison(m, data):
     return _facts_soldier(m, data, peacetime=True)
 
 
-def _mag_person_names(data, article_key, roles, soldier=False, genders=None):
+def _mag_person_names(data, article_key, roles, soldier=False, genders=None,
+                      fixed_last=None):
     """生成「人物名单（姓名已给定）」提示块。
     roles: [(角色名, culture_key|None)]; 种子按 (年|国名|文章|角色) 播种,
     同一角色在同年各板块间姓名一致, 保证跨板块连续性。
     soldier=True: 士兵文章, 军人/军官角色强制男名池, 其余角色不应用法律概率
     (维持合并池现行为); 否则女性概率按现行女权法律 (data["women_law"]) 调整。
-    genders: {角色: "male"/"female"} 显式强制性别 (如 长子/幼女 等自带性别的角色)。"""
+    genders: {角色: "male"/"female"} 显式强制性别 (如 长子/幼女 等自带性别的角色)。
+    fixed_last: 所有角色共用同一固定姓 (如大臣之家子女随受访大臣姓)。"""
     try:
         from journal_save import person_names_block, women_law_female_pct
     except Exception:
@@ -932,7 +936,8 @@ def _mag_person_names(data, article_key, roles, soldier=False, genders=None):
                 genders.setdefault(role, "male")
     else:
         female_pct = women_law_female_pct(data.get("women_law"))
-    return person_names_block(seed, roles, female_pct=female_pct, genders=genders)
+    return person_names_block(seed, roles, female_pct=female_pct, genders=genders,
+                              fixed_last=fixed_last)
 
 
 def _facts_homefront(m, data):
@@ -1083,11 +1088,29 @@ def _facts_household(m, data):
     lines = [f"首都/上层社会样本（大臣之家素材，首都 {cap}）："]
     for p in elites[:3]:
         lines.append("- " + _fmt_pop(p))
-    ck = next((p.get("culture_key") for p in elites if p.get("culture_key")), None)
+    # 大臣之家的子女与受访大臣同姓: 取大臣访谈中首位有姓名的大臣
+    # (与「大臣访谈」板块同源, 即执政利益集团按政治力量排序的首个领袖)。
+    surname, minister_ck = None, None
+    try:
+        from journal_save import surname_from_name
+        for g in (m.get("cabinet") or []):
+            nm = g.get("leader_name")
+            if not nm:
+                continue
+            minister_ck = g.get("leader_culture_key")
+            surname = surname_from_name(nm, minister_ck,
+                                        raw_last=g.get("leader_last_name"))
+            break
+    except Exception:
+        surname, minister_ck = None, None
+    ck = (minister_ck
+          or next((p.get("culture_key") for p in elites
+                   if p.get("culture_key")), None))
     blk = _mag_person_names(data, "court_household",
                             [("府中长子", ck), ("府中次子", ck), ("府中幼女", ck)],
                             genders={"府中长子": "male", "府中次子": "male",
-                                     "府中幼女": "female"})
+                                     "府中幼女": "female"},
+                            fixed_last=surname)
     if blk:
         lines.append(blk)
     return "\n".join(lines)
