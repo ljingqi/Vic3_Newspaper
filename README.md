@@ -16,7 +16,7 @@
                                  │ DeepSeek API         │
                                  └────────────┬─────────┘
                                               ▼
-                            <项目目录>/output/<国名>/报纸_1837.md
+                            <项目目录>/output/<国名>/报纸/报纸_1837.md
 ```
 
 > 旧版「V3 Journal 报纸Mod」（debug_log 路线，`journal.py watch/once`）已废弃，
@@ -34,13 +34,17 @@
 | `<项目目录>\journal_save.py` | **Python 伴生程序（存档直读主入口）**：`watch`/`continue` 监控存档，`newspaper`/`magazine` 按年份生成 |
 | `<项目目录>\journal.py` | **渲染库**：分板块生成报纸；另提供 `regen` / `test-llm` / `config` 命令 |
 | `<项目目录>\magazine.py` | **杂志生成程序**（复用 journal.py 的 API 调用，按政体定制基调） |
+| `<项目目录>\htmlview.py` | **阅读页生成器**：把报纸/杂志 Markdown 汇总为单页 `index.html`（可切换报纸/杂志与年份），并提供存量迁移命令 `rebuild` |
 | `<项目目录>\saveparse.py` | 存档信封解析工具（读取 .v3 元数据与 gamestate，检测格式） |
 | `<项目目录>\config.json` | 配置文件（由 `config.example.json` 复制而来；含你的 DeepSeek Key，**勿上传**） |
 | `<项目目录>\config.example.json` | 配置模板（所有参数已填好，仅 API Key 留空） |
 | `<项目目录>\requirements.txt` | Python 依赖（requests） |
 | `<项目目录>\README.md` | 本文档 |
-| `<项目目录>\output\<国名>\报纸_<年份>.md` | 生成的报纸（每个存档开局一个文件夹，自动产生） |
-| `<项目目录>\output\<国名>\杂志_<年份>.md` | 生成的杂志（与报纸同文件夹，每年一份） |
+| `<项目目录>\启动监控.bat` | **一键启动（新档）**：双击运行 `journal_save.py watch` |
+| `<项目目录>\启动续传.bat` | **一键启动（旧档）**：双击运行 `journal_save.py continue` |
+| `<项目目录>\output\<国名>\报纸\报纸_<年份>.md` | 生成的报纸（每个存档开局一个文件夹，自动产生） |
+| `<项目目录>\output\<国名>\杂志\杂志_<年份>.md` | 生成的杂志（与报纸分文件夹，每年一份） |
+| `<项目目录>\output\<国名>\index.html` | 会话阅读页：一个页面内切换报纸/杂志版式与年份，双击直接用浏览器阅读 |
 | `<项目目录>\output\<国名>\data\raw_<年份>.json` | 每年导出的原始数据（随报纸同放于该会话文件夹，用于 regen 重试） |
 | `<项目目录>\output\<国名>\data\pops_<年份>.json` | 每年玩家州 POP 指纹（跨年比对升职/迁移） |
 | `<项目目录>\output\<国名>\data\magazine_<年份>.json` | 每年杂志专属数据（战役/移民/改信样本） |
@@ -48,7 +52,7 @@
 > 注意：GitHub 仓库**不包含**以下内容（已在 `.gitignore` 中排除），使用前需自行准备：
 > - `config.json`（含你的 DeepSeek API Key，切勿上传；仓库提供 `config.example.json` 模板，复制改名即可）
 > - `tools\`（rakaly 等二进制工具，下载方式见下文「工具与环境准备」）
-> - `output\`（各测试集/存档开局文件夹，含 `<国名>\报纸_*.md` 与 `<国名>\data\raw_*.json`，由程序自动生成）
+> - `output\`（各测试集/存档开局文件夹，含 `<国名>\报纸\报纸_*.md`、`<国名>\杂志\杂志_*.md` 与 `<国名>\data\raw_*.json`，由程序自动生成）
 > - `docs\`（开发用内部文档，不随仓库发布）
 
 > 每次开始一个新存档并运行 `watch`/`continue`，都会在 **`output\` 内新建一个以国名命名的
@@ -128,10 +132,15 @@ python journal_save.py watch                 :: 持续监控自动存档(建议�
 ```
 
 `journal_save.py watch` 会监控最新存档，检测到新年度即调用 DeepSeek 生成当期报纸并写入
-`<项目目录>\output\<国名>\报纸_<年份>.md`；同一快照还会生成当期杂志
-`杂志_<年份>.md`。`config.json` 的 `newspaper_enabled` / `magazine_enabled` 可分别关闭
+`<项目目录>\output\<国名>\报纸\报纸_<年份>.md`；同一快照还会生成当期杂志
+`<项目目录>\output\<国名>\杂志\杂志_<年份>.md`。每次写入后自动刷新该会话的
+`index.html` 阅读页。`config.json` 的 `newspaper_enabled` / `magazine_enabled` 可分别关闭
 自动管线中的报纸 / 杂志生成（手动 `newspaper <年份>` / `magazine <年份>` 命令不受开关限制）。
 熔化与解析只做一次，两份输出共享同一快照与本地化缓存。
+
+**一键启动**：日常使用无需手动敲命令，直接双击根目录的
+`启动监控.bat`（新档）或 `启动续传.bat`（旧档）即可；窗口关闭前会暂停并提示按键。
+
 > 首次运行会以玩家国名在 `output\` 内新建文件夹；同一国家再次开新档则生成 `国名2`。
 > （`journal.py` 现主要作为渲染库被 `journal_save.py` 复用，其 `watch`/`once` 为旧的
 > debug_log 路线，仅作保留。）
@@ -146,6 +155,7 @@ python journal_save.py watch                 :: 持续监控自动存档(建议�
 | `python journal_save.py continue` | 续传：沿用该国家最新文件夹，缺当年产物先补生成，再进入监控 |
 | `python journal_save.py newspaper <年份>` | 用当前存档补生成某年报纸 |
 | `python journal_save.py magazine <年份>` | 用当前存档补生成某年杂志（每年报纸与杂志为两个独立文件） |
+| `python htmlview.py rebuild [国家名]` | 为已有会话迁移旧版目录结构（报纸/杂志分文件夹）并生成 `index.html` 阅读页；不传国家名则处理全部会话（跳过 `Archive`） |
 | `python journal.py regen <年份> [--player 国家名]` | 用已保存的原始数据重新生成某年报纸；`--player` 可在旧数据缺玩家名时补填并按国名决定文件夹，例如 `regen 1836 --player 法兰西`（会在全部分档文件夹中查找该年份数据） |
 | `python journal.py test-llm` | 测试 DeepSeek API 连通性 |
 | `python journal.py config` | 打印当前生效的配置（隐藏密钥） |

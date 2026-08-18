@@ -11,7 +11,7 @@
   当前主入口为 journal_save.py（存档直读）; 本文件主要承担「渲染」:
   把数据打包成 Prompt, 调用 DeepSeek API 生成指定风格报纸。
   报纸按会话分文件夹保存(重名加数字), 统一放在 output/ 下:
-      <项目目录>/output/<国名>/报纸_<年份>.md
+      <项目目录>/output/<国名>/报纸/报纸_<年份>.md
 
 用法:
   python journal.py watch              持续监控游戏日志(建议后台运行)
@@ -3026,7 +3026,7 @@ def on_block_complete(data, cfg, force=False):
         return
     folder = data.get("output_dir") or resolve_session_folder(data, cfg)
     base_dir = os.path.join(cfg["journal_dir"], folder)
-    md_path = os.path.join(base_dir, f"报纸_{year}.md")
+    md_path = os.path.join(base_dir, "报纸", f"报纸_{year}.md")
     if os.path.exists(md_path) and not force:
         log(f"[{year}年] 报纸已存在, 跳过 (加 --force 或使用 regen 重新生成): {md_path}")
         return
@@ -3051,6 +3051,13 @@ def on_block_complete(data, cfg, force=False):
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(header + text.rstrip() + "\n")
         log(f"[{year}年] 报纸已生成: {md_path}")
+        try:
+            import htmlview
+            page = htmlview.rebuild_session(cfg["journal_dir"], folder)
+            if page:
+                log(f"[{year}年] 阅读页已更新: {page}")
+        except Exception as e:
+            log(f"[{year}年] 更新阅读页失败: {e}")
     except Exception as e:
         log(f"[{year}年] 写入 md 失败: {e}")
 
@@ -3181,7 +3188,7 @@ def cmd_check(cfg):
             print("          2. 年份尚未滚动(需等到每年 1 月 1 日);")
             print("          3. 游戏版本与 supported_version 不匹配。")
             print("          debug_log 在正常游玩下即可写入(已验证), 无需 -debug_mode。")
-    print(f"报纸输出目录: {cfg['journal_dir']}  (按国名分文件夹, 如 output/<国名>/报纸_<年份>.md)")
+    print(f"报纸输出目录: {cfg['journal_dir']}  (按国名分文件夹, 如 output/<国名>/报纸/报纸_<年份>.md)")
     if cfg.get("style_system") == "dynamic":
         print(f"报纸风格: dynamic (依据科技/政体/投票权动态解析 1~5 档, 见 style.py)")
     else:

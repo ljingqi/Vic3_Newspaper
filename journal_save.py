@@ -10979,9 +10979,9 @@ def cmd_watch(continue_mode=False):
         year = snap.get("year")
         if year:
             md_path = os.path.join(cfg["journal_dir"], journal.SESSION["folder"],
-                                   f"报纸_{year}.md")
+                                   "报纸", f"报纸_{year}.md")
             mg_path = os.path.join(cfg["journal_dir"], journal.SESSION["folder"],
-                                   f"杂志_{year}.md")
+                                   "杂志", f"杂志_{year}.md")
             if not os.path.exists(md_path) and cfg.get("newspaper_enabled", True):
                 print(f"续传模式: {year} 年报纸缺失, 先用当前存档补生成")
                 make_newspaper(year=year, force=True, melted=melted, snap=snap, ctx=ctx)
