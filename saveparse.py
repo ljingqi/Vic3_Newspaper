@@ -21,8 +21,19 @@ import re
 import sys
 import zipfile
 
-SAVE_DIR = os.path.join(os.path.expanduser("~"), "Documents",
-                        "Paradox Interactive", "Victoria 3", "save games")
+def _config_save_dir():
+    """存档目录: 优先取 config.json 的 save_dir, 缺省自动探测 Documents。"""
+    try:
+        import json
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+        with open(path, encoding="utf-8") as fp:
+            return (json.load(fp).get("save_dir") or "").strip()
+    except Exception:
+        return ""
+
+SAVE_DIR = (_config_save_dir()
+            or os.path.join(os.path.expanduser("~"), "Documents",
+                            "Paradox Interactive", "Victoria 3", "save games"))
 
 def find_latest_v3():
     if not os.path.isdir(SAVE_DIR):

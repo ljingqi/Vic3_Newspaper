@@ -1,0 +1,13 @@
+﻿# V3Journal 玩家标记
+# 开局(进入游戏后)给玩家选择的国家打变量 v3journal_player,
+# 存档中存为国家对象 variables.data 里的 flag, 供 journal_save.py 存档直读 100% 识别玩家。
+on_game_started_after_lobby = {
+	effect = {
+		every_country = {
+			limit = {
+				is_player = yes
+			}
+			set_variable = v3journal_player
+		}
+	}
+}

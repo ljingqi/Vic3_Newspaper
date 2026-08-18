@@ -15,6 +15,9 @@ data/
 **/data/
 **/报纸_*.md
 
+# 开发文档（仅本机使用，不上传 GitHub）
+docs/
+
 # 所有存档开局会话统一输出到 output/
 output/
 

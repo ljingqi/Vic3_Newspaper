@@ -9,7 +9,7 @@ journal.py 的分板块报纸生成管线。
 
 依赖:
   - rakaly.exe  (https://github.com/rakaly/cli/releases, 解压到
-                D:/Journal/tools/rakaly.exe)
+                <项目目录>/tools/rakaly.exe)
   - python -m pip install ijson
 
 用法:
@@ -37,21 +37,24 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from currency import currency_unit
+import journal as _journal
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-TOOLS_DIR = os.path.join(SCRIPT_DIR, "tools")
+
+# 目录设定全部来自 config.json (见 journal.DEFAULT_CONFIG / load_config),
+# 导入期读取一次; 修改 config.json 后重启生效。
+_CFG_PATHS = _journal.load_config()
+
+TOOLS_DIR = _CFG_PATHS["tools_dir"]
 RAKALY = os.path.join(TOOLS_DIR, "rakaly.exe")
 MELT_CACHE = os.path.join(TOOLS_DIR, "melt.json")
-SAVE_DIR = os.path.join(os.path.expanduser("~"), "Documents",
-                        "Paradox Interactive", "Victoria 3", "save games")
+MELT_LOCK_PATH = os.path.join(TOOLS_DIR, "melt.lock")
+SAVE_DIR = _CFG_PATHS["save_dir"]
 
 try:
     import msvcrt
 except ImportError:  # 非 Windows 环境降级为无锁
     msvcrt = None
-
-MELT_LOCK_PATH = os.path.join(TOOLS_DIR, "melt.lock")
-
 
 class _MeltLock:
     """跨进程互斥锁: 熔化/读取 melt.json 前获取, 防止多终端并发读写同一缓存
@@ -171,14 +174,17 @@ def melt_with_rakaly(v3_path, force=False):
 # 国家名映射 (游戏本地化 → TAG)
 # ---------------------------------------------------------------------------
 
-GAME_LOCALIZATION = r"F:\Game\steamapps\common\Victoria 3\game\localization\simp_chinese"
-WORKSHOP_DIR = r"F:\Game\steamapps\workshop\content\529340"
-GOVERNMENT_TYPES_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\government_types"
-CHARACTER_TEMPLATES_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\character_templates"
-GAME_DIR = os.path.dirname(os.path.dirname(GAME_LOCALIZATION))
-MAP_EDITOR_STATUS = os.path.join(GAME_DIR, "tools", "mapeditor",
-                                 "map_editor_status.txt")
-STATE_REGIONS_DIR = os.path.join(GAME_DIR, "map_data", "state_regions")
+GAME_DIR = _CFG_PATHS.get("game_dir") or ""
+WORKSHOP_DIR = _CFG_PATHS.get("workshop_dir") or ""
+GAME_LOCALIZATION = (os.path.join(GAME_DIR, "game", "localization", "simp_chinese")
+                     if GAME_DIR else "")
+GOVERNMENT_TYPES_DIR = (os.path.join(GAME_DIR, "game", "common", "government_types")
+                        if GAME_DIR else "")
+CHARACTER_TEMPLATES_DIR = (os.path.join(GAME_DIR, "game", "common", "character_templates")
+                           if GAME_DIR else "")
+MAP_EDITOR_STATUS = (os.path.join(GAME_DIR, "tools", "mapeditor",
+                                  "map_editor_status.txt") if GAME_DIR else "")
+STATE_REGIONS_DIR = os.path.join(GAME_DIR, "map_data", "state_regions") if GAME_DIR else ""
 
 _NAME_CACHE = None
 _LOC_ALL = None
@@ -203,8 +209,7 @@ def _loc_dirs():
         return dirs
     # 读不到启用的 playset 时退回旧逻辑: 扫描全部已安装 mod 目录
     for base in (WORKSHOP_DIR,
-                 os.path.join(os.path.expanduser("~"), "Documents",
-                              "Paradox Interactive", "Victoria 3", "mod")):
+                 os.path.join(_CFG_PATHS["v3_user_dir"], "mod")):
         if not os.path.isdir(base):
             continue
         for d in sorted(os.listdir(base)):
@@ -216,8 +221,7 @@ def _loc_dirs():
 
 def _enabled_mod_dirs():
     """读取启动器当前 playset 的 enabledMods → 已启用 mod 根目录列表。"""
-    doc_root = os.path.join(os.path.expanduser("~"), "Documents",
-                            "Paradox Interactive", "Victoria 3")
+    doc_root = _CFG_PATHS["v3_user_dir"]
     content = os.path.join(doc_root, "content_load.json")
     dirs = []
     try:
@@ -291,8 +295,11 @@ def load_country_names():
 def load_current_country_names(data, index=None):
     """加载 {TAG: 当前中文名}: 默认本地化名 + 存档中 dynamic_name 覆盖。
     存档国家对象带 dynamic_name.dynamic_country_name (如 dyn_c_great_qing),
-    本地化映射到当前名 (如 大清), 覆盖默认名 (如 中华)。"""
-    names = load_country_names()
+    本地化映射到当前名 (如 大清), 覆盖默认名 (如 中华)。
+    另对动态内战国 (D00-D99) 兜底: 存档无 dynamic_name 且本地化无该标签时,
+    用主文化名 + 革命 (如 英格兰革命)。游戏内此类国家显示为「XX革命/叛乱」,
+    实测存档不持久化其名字 (D00 无 dynamic_name 字段), 故按文化名兜底。"""
+    names = dict(load_country_names())
     if index is None:
         index, _, _ = _build_indexes(data)
     loc = _load_loc_all()
@@ -303,6 +310,16 @@ def load_current_country_names(data, index=None):
             continue
         if tag and dyn_key and loc.get(dyn_key):
             names[tag] = _resolve_country_dyn_name(tag, dyn_key, loc) or names[tag]
+    for entry in index.values():
+        tag = entry.get("definition")
+        if not tag or not re.fullmatch(r"D\d{2}", tag):
+            continue
+        if tag in names:
+            continue
+        cults = entry.get("cultures") or []
+        cname = culture_id_to_name(cults[0]) if cults else None
+        if cname:
+            names[tag] = f"{cname}革命"
     return names
 
 # ---------------------------------------------------------------------------
@@ -645,11 +662,12 @@ def query_laws_by_player(data, country_id):
     """便捷包装。"""
     return query_laws(data, country_id)
 
-CULTURE_FILES = r"F:\Game\steamapps\common\Victoria 3\game\common\cultures"
+CULTURE_FILES = os.path.join(GAME_DIR, "game", "common", "cultures") if GAME_DIR else ""
 # 本土定义: 州域 → 本土文化, 见 common/history/states/00_states.txt 的 add_homeland
-HOMELAND_STATES_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\history\states"
+HOMELAND_STATES_DIR = (os.path.join(GAME_DIR, "game", "common", "history", "states")
+                       if GAME_DIR else "")
 # 商品定义: 用于消费权重聚合与市价对比
-GOODS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\goods"
+GOODS_DIR = os.path.join(GAME_DIR, "game", "common", "goods") if GAME_DIR else ""
 _CULTURE_MAP = None
 _HOMELAND_CACHE = None
 _GOODS_CACHE = None
@@ -822,16 +840,18 @@ def build_goods_map():
 # 保证有上游原料建筑可写 (如 铁矿→铁→工具 / 谷物→加工食品)。
 # ---------------------------------------------------------------------------
 
-BUILDINGS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\buildings"
-PM_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\production_methods"
-PMG_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\production_method_groups"
+BUILDINGS_DIR = os.path.join(GAME_DIR, "game", "common", "buildings") if GAME_DIR else ""
+PM_DIR = (os.path.join(GAME_DIR, "game", "common", "production_methods")
+          if GAME_DIR else "")
+PMG_DIR = (os.path.join(GAME_DIR, "game", "common", "production_method_groups")
+           if GAME_DIR else "")
 INDUSTRIAL_BUILDING_GROUPS = ("bg_manufacturing", "bg_light_industry",
                               "bg_heavy_industry", "bg_military_industry")
 
 _GOODS_CHAIN_CACHE = None
 _CONSUMER_GOODS_CACHE = None
 _PM_EMPLOYMENT_CACHE = None
-POP_NEEDS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\pop_needs"
+POP_NEEDS_DIR = os.path.join(GAME_DIR, "game", "common", "pop_needs") if GAME_DIR else ""
 
 
 def _parse_braced_blocks(text):
@@ -1620,9 +1640,10 @@ _WORKING_CONDITIONS_MORT = {
     ("bg_fishing", "engineers"): 0.02,
 }
 
-BUILDINGS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\buildings"
-PRODUCTION_METHODS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\production_methods"
-LAWS_DIR = r"F:\Game\steamapps\common\Victoria 3\game\common\laws"
+BUILDINGS_DIR = os.path.join(GAME_DIR, "game", "common", "buildings") if GAME_DIR else ""
+PRODUCTION_METHODS_DIR = (os.path.join(GAME_DIR, "game", "common", "production_methods")
+                          if GAME_DIR else "")
+LAWS_DIR = os.path.join(GAME_DIR, "game", "common", "laws") if GAME_DIR else ""
 
 _BG_CACHE = None
 _LAW_GROUP_CACHE = None
@@ -3977,6 +3998,9 @@ def _build_indexes(data):
             if isinstance(obj, dict) and (obj.get("definition") or obj.get("is_main_tag")):
                 entry = {"definition": obj.get("definition"),
                          "is_main_tag": bool(obj.get("is_main_tag"))}
+                cults = obj.get("cultures")
+                if isinstance(cults, list) and cults:
+                    entry["cultures"] = cults
                 dyn_name = (obj.get("dynamic_name") or {}).get("dynamic_country_name")
                 if dyn_name:
                     entry["dyn_name"] = dyn_name
@@ -5043,8 +5067,8 @@ def _ship_name_definitions():
     global _SHIP_DEFS_CACHE
     if _SHIP_DEFS_CACHE is not None:
         return _SHIP_DEFS_CACHE
-    base = os.path.join(os.path.dirname(GAME_LOCALIZATION), "..",
-                        "common", "ship_name_definitions")
+    base = (os.path.join(GAME_DIR, "game", "common", "ship_name_definitions")
+            if GAME_DIR else "")
     dirs = [base] if os.path.isdir(base) else []
     defs = {}
     pat = re.compile(rb'ship_names_([a-zA-Z0-9_]+)\s*=\s*\{')
@@ -5604,7 +5628,12 @@ def _pool_pop_text(pid, obj, ctx, loc, unit=None):
         bits.append(f"当地接受度为{ACCEPTANCE_NAMES.get(acc, acc)}")
     inc = _crime_pop_weekly_income(obj)
     if inc is not None:
-        bits.append(f"每月收支约{round(inc * 52 / 12, 1)}{unit or ''}")
+        # weekly_budget 是 POP 总额 (非人均), 与家庭采访/州平均月薪同口径:
+        # 展示时按劳动力均摊, 避免大 POP 被当成单人的千元月薪。
+        if isinstance(wf, (int, float)) and wf > 0:
+            bits.append(f"人均月收支约{round(inc * 52 / 12 / wf, 1)}{unit or ''}")
+        else:
+            bits.append(f"该人群每月收支约{round(inc * 52 / 12, 1)}{unit or ''}")
     return "，".join(bits) + "。"
 
 
@@ -6830,14 +6859,7 @@ def _women_pct_override():
     """config.json 的 female_pct_by_women_law 覆盖表 (一次性读取并缓存)。"""
     global _WOMEN_PCT_OVERRIDE
     if _WOMEN_PCT_OVERRIDE is None:
-        override = {}
-        try:
-            path = os.path.join(SCRIPT_DIR, "config.json")
-            with open(path, encoding="utf-8") as fp:
-                cfg = json.load(fp)
-            override = dict(cfg.get("female_pct_by_women_law") or {})
-        except Exception:
-            override = {}
+        override = dict(_journal.load_config().get("female_pct_by_women_law") or {})
         _WOMEN_PCT_OVERRIDE = override
     return _WOMEN_PCT_OVERRIDE
 
@@ -7751,6 +7773,11 @@ def _crime_sentence(case, laws, fw, severity, tier, murderer, victim,
         else:
             own = _crime_pop_weekly_income(murderer)
             if own is not None:
+                # weekly_budget 是 POP 总额, 罚金基准按人均月收入折算,
+                # 与 fine_monthly (州人均月薪) 口径一致。
+                mwf = (murderer or {}).get("workforce")
+                if isinstance(mwf, (int, float)) and mwf > 0:
+                    own = own / mwf
                 amount = own * 52 / 12 * months
         if amount is not None:
             n = max(1, int(round(amount)))
@@ -10754,17 +10781,21 @@ def _generate_async(year, snap, melted=None):
         except Exception as e:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年{name}生成失败: {e}")
 
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        futures = [
-            ex.submit(_run, "报纸", "newspaper_enabled",
-                      lambda: make_newspaper(year=year, force=True,
-                                             snap=snap, ctx=ctx)),
-            ex.submit(_run, "杂志", "magazine_enabled",
-                      lambda: make_magazine(year=year, force=True,
-                                            melted=melted, snap=snap, ctx=ctx)),
-        ]
-        for f in futures:
-            f.result()
+    newspaper_job = lambda: make_newspaper(year=year, force=True, snap=snap, ctx=ctx)
+    magazine_job = lambda: make_magazine(year=year, force=True,
+                                         melted=melted, snap=snap, ctx=ctx)
+    if cfg.get("parallel_generation_enabled", True):
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            futures = [
+                ex.submit(_run, "报纸", "newspaper_enabled", newspaper_job),
+                ex.submit(_run, "杂志", "magazine_enabled", magazine_job),
+            ]
+            for f in futures:
+                f.result()
+    else:
+        # 串行模式: 关闭并行开关时按顺序生成, 便于排查限流/报错
+        _run("报纸", "newspaper_enabled", newspaper_job)
+        _run("杂志", "magazine_enabled", magazine_job)
 
 # ---------------------------------------------------------------------------
 # 命令行

@@ -11,7 +11,7 @@
   当前主入口为 journal_save.py（存档直读）; 本文件主要承担「渲染」:
   把数据打包成 Prompt, 调用 DeepSeek API 生成指定风格报纸。
   报纸按会话分文件夹保存(重名加数字), 统一放在 output/ 下:
-      D:/Journal/output/<国名>/报纸_<年份>.md
+      <项目目录>/output/<国名>/报纸_<年份>.md
 
 用法:
   python journal.py watch              持续监控游戏日志(建议后台运行)
@@ -81,6 +81,18 @@ DEFAULT_CONFIG = {
     "deepseek_api_key": "",
     "deepseek_model": "deepseek-chat",
     "deepseek_base_url": "https://api.deepseek.com/chat/completions",
+    # Victoria 3 用户目录 (Documents\Paradox Interactive\Victoria 3); 留空自动探测
+    "v3_user_dir": "",
+    # 游戏存档目录; 留空自动使用 v3_user_dir/save games
+    "save_dir": "",
+    # Victoria 3 游戏安装根目录 (steamapps\common\Victoria 3), 存档直读需要
+    "game_dir": "",
+    # 创意工坊 mod 目录 (本地化兜底扫描); 留空则不扫描
+    "workshop_dir": "",
+    # rakaly 等工具目录 (rakaly.exe / melt.json / melt.lock)
+    "tools_dir": os.path.join(SCRIPT_DIR, "tools"),
+    # 伴生程序日志目录 (journal.log / prompts.log)
+    "log_dir": os.path.join(SCRIPT_DIR, "logs"),
     # 游戏日志(debug.log)路径; 留空则自动检测
     "game_log_path": "",
     # 报纸输出目录: 所有存档开局会话统一放在 <项目目录>/output 下
@@ -100,11 +112,25 @@ DEFAULT_CONFIG = {
     # 手动命令 (newspaper <年> / magazine <年>) 不受限, 显式意图优先
     "newspaper_enabled": True,
     "magazine_enabled": True,
+    # 杂志文章池大小与固定组合 (调试用)
+    "magazine_pool_size": 3,
+    "magazine_pool_override": None,
+    # 刑事案例结局引擎 (刑法框架/破案/判决 三层), 关闭后走简化结局
+    "crime_outcome_engine": True,
+    # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
+    "parallel_generation_enabled": True,
+    # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
+    "prompt_log_enabled": True,
+    # 是否在请求中发送 thinking: disabled (关闭思考模式加快生成)
+    "llm_thinking_disabled": True,
 }
 
+def default_v3_user_dir():
+    return os.path.join(os.path.expanduser("~"), "Documents",
+                        "Paradox Interactive", "Victoria 3")
+
 def detect_default_log_path():
-    docs = os.path.join(os.path.expanduser("~"), "Documents")
-    return os.path.join(docs, "Paradox Interactive", "Victoria 3", "logs", "debug.log")
+    return os.path.join(default_v3_user_dir(), "logs", "debug.log")
 
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
@@ -118,8 +144,13 @@ def load_config():
                     cfg[k] = v
         except Exception as e:
             log(f"警告: 读取 config.json 失败 ({e}), 使用默认配置。")
+    # 目录设定: 留空一律回退默认值 (自动探测)
+    cfg["v3_user_dir"] = cfg.get("v3_user_dir") or default_v3_user_dir()
+    cfg["save_dir"] = cfg.get("save_dir") or os.path.join(cfg["v3_user_dir"], "save games")
+    cfg["tools_dir"] = cfg.get("tools_dir") or os.path.join(SCRIPT_DIR, "tools")
+    cfg["log_dir"] = cfg.get("log_dir") or os.path.join(SCRIPT_DIR, "logs")
     if not cfg["game_log_path"]:
-        cfg["game_log_path"] = detect_default_log_path()
+        cfg["game_log_path"] = os.path.join(cfg["v3_user_dir"], "logs", "debug.log")
     # 报纸风格: 只接受 1~4 的整数, 非法时回退默认
     try:
         style = int(cfg.get("newspaper_style", DEFAULT_STYLE))
@@ -140,8 +171,18 @@ def load_config():
 # 工具
 # ---------------------------------------------------------------------------
 
-LOG_FILE = os.path.join(SCRIPT_DIR, "logs", "journal.log")
-PROMPT_LOG = os.path.join(SCRIPT_DIR, "logs", "prompts.log")
+def _configured_log_dir():
+    """日志目录: 优先取 config.json 的 log_dir, 缺省 <项目目录>/logs。
+    直接在导入期读取配置文件, 不走 load_config, 避免与 log() 互相递归。"""
+    try:
+        with open(os.path.join(SCRIPT_DIR, "config.json"), encoding="utf-8") as f:
+            return (json.load(f).get("log_dir") or "").strip()
+    except Exception:
+        return ""
+
+_LOG_DIR = _configured_log_dir() or os.path.join(SCRIPT_DIR, "logs")
+LOG_FILE = os.path.join(_LOG_DIR, "journal.log")
+PROMPT_LOG = os.path.join(_LOG_DIR, "prompts.log")
 PROMPT_LOG_MAX_BYTES = 5 * 1024 * 1024
 _LOG_LOCK = threading.Lock()
 
@@ -180,7 +221,8 @@ def check_api_key(cfg):
     if not key or "sk-" not in key or "这里" in key or "填写" in key:
         sys.exit(
             "未配置 DeepSeek API Key。\n"
-            "请编辑 D:/Journal/config.json, 在 deepseek_api_key 中填入你的 Key "
+            f"请编辑 {os.path.join(SCRIPT_DIR, 'config.json')}, "
+            "在 deepseek_api_key 中填入你的 Key "
             "(在 https://platform.deepseek.com 申请, 形如 sk-xxxxxxxx)。"
         )
     return key
@@ -668,8 +710,8 @@ SHARE_NAMES = {
 }
 
 # 全部法律名称取自游戏官方简体中文本地化
-# (F:\Game\steamapps\common\Victoria 3\game\common\laws\*.txt +
-#  localization\simp_chinese\laws_l_simp_chinese.yml), 兼容旧存档遗留 key。
+# (游戏 common/laws/*.txt + localization/simp_chinese/laws_l_simp_chinese.yml),
+# 兼容旧存档遗留 key。
 LAW_NAMES = {
     # 政体 / 治理
     "law_anarchy": "无政府", "law_autocracy": "独裁制", "law_oligarchy": "寡头制",
@@ -2899,7 +2941,8 @@ def generate_newspaper(data, cfg, history=None):
 # ---------------------------------------------------------------------------
 
 def call_deepseek(messages, cfg, retries=3):
-    _log_prompt(messages)
+    if cfg.get("prompt_log_enabled", True):
+        _log_prompt(messages)
     url = cfg["deepseek_base_url"]
     headers = {
         "Authorization": f"Bearer {cfg['deepseek_api_key']}",
@@ -2913,8 +2956,10 @@ def call_deepseek(messages, cfg, retries=3):
             "messages": messages,
             "temperature": cfg.get("temperature", 1.0),
             "max_tokens": max_tokens,
-            "thinking": {"type": "disabled"},   # 关闭思考模式, 加快生成并避免 reasoning 占满预算
         }
+        if cfg.get("llm_thinking_disabled", True):
+            # 关闭思考模式, 加快生成并避免 reasoning 占满预算
+            payload["thinking"] = {"type": "disabled"}
         try:
             resp = requests.post(url, json=payload, headers=headers, timeout=120)
             resp.raise_for_status()
@@ -2978,7 +3023,8 @@ def on_block_complete(data, cfg, force=False):
     key = (cfg.get("deepseek_api_key") or "").strip()
     if not key or "sk-" not in key or "这里" in key or "填写" in key:
         log(f"[{year}年] 未配置 DeepSeek API Key, 已跳过生成。"
-            f"请在 D:/Journal/config.json 填写 deepseek_api_key 后用 regen {year} 重试。")
+            f"请在 {os.path.join(SCRIPT_DIR, 'config.json')} 填写 "
+            f"deepseek_api_key 后用 regen {year} 重试。")
         return
 
     log(f"[{year}年] 数据块完整, 开始分板块调用 DeepSeek 生成报纸...")
