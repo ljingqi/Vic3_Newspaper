@@ -4215,9 +4215,16 @@ def parse_wars(data, names, player_id=None, index=None, gp_ids=None, dp_index=No
                         side = "initiator"
                     elif cid == dp_target:
                         side = "target"
+                nm = id_names.get(cid)
+                if not nm and tag:
+                    nm = names.get(tag, tag)
+                if not nm:
+                    # 国家对象已从 country_manager 移除(存档值为 "none")时,
+                    # 避免把数字 id 直接泄漏给渲染端
+                    nm = f"未知国家（编号{cid}）" if isinstance(cid, int) else "未知国家"
                 parts.append({
                     "id": cid, "definition": tag,
-                    "name": id_names.get(cid) or (names.get(tag, tag) if tag else str(cid)),
+                    "name": nm,
                     "side": side,
                     "rank": "great_power" if is_gp else "minor_power",
                     "prestige": entry.get("prestige"),
@@ -8810,7 +8817,19 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
     prev_dirs = []
     if folder:
         prev_dirs.append(os.path.join(journal_dir, folder, "data"))
+    def _norm_country_names(tbl):
+        """JSON 往返后 cid 键会变成字符串, 归一化为 int 以便按参与者 cid 查找。"""
+        out = {}
+        for _k, _v in (tbl or {}).items():
+            try:
+                out[int(_k)] = _v
+            except (TypeError, ValueError):
+                out[_k] = _v
+        return out
+
     prev_wars = []
+    prev_cn, prev_tn = {}, {}
+    prev_raw_path = None
     for rd in prev_dirs:
         p = os.path.join(rd, f"raw_{year - 1}.json")
         if not os.path.exists(p):
@@ -8821,10 +8840,44 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
         except Exception:
             continue
         prev_wars = prev.get("wars") or []
+        prev_cn = _norm_country_names(prev.get("country_names"))
+        prev_tn = prev.get("tag_names") or {}
+        prev_raw_path = p
         if prev_wars:
             break
     if not prev_wars:
         return
+    if not prev_cn and not prev_tn:
+        print(f"[警告] {prev_raw_path} 未携带国家名解析表(name_table_version), "
+              f"跨年战争将沿用烘焙名; 建议用 tools/regen_data.py 重新生成上一年数据")
+    cur_cn = _norm_country_names(snap.get("country_names"))
+    cur_tn = snap.get("tag_names") or {}
+
+    def _resolve_name(p):
+        """跨年合并时按 cid/tag 重新解析参与者中文名: 优先当年名字表,
+        再上一年名字表, 避免 raw 中烘焙的旧名(如动态国家 D00)泄漏。"""
+        if not isinstance(p, dict):
+            return p.get("name") if isinstance(p, dict) else None
+        cid = p.get("id")
+        tag = p.get("definition")
+        nm = None
+        if isinstance(cid, int):
+            nm = cur_cn.get(cid)
+            if not nm:
+                nm = prev_cn.get(cid)
+        if not nm and tag:
+            nm = cur_tn.get(tag)
+            if not nm:
+                nm = prev_tn.get(tag)
+        if nm:
+            return nm
+        old = p.get("name")
+        if old and old != tag:
+            return old
+        if tag and re.fullmatch(r"D\d{2}", str(tag)):
+            return "未名革命政权"
+        return old
+
     # 本年仍在进行的战争 (war_manager 只保留进行中战争)
     ongoing_ids = {w.get("id") for w in (snap.get("wars") or [])
                    if w.get("id") is not None and not w.get("ended")}
@@ -8846,7 +8899,10 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
         if not ps:
             continue
         w2 = _as_merged(w)
-        w2["participants"] = ps
+        w2["participants"] = [
+            dict(p, name=_resolve_name(p)) if isinstance(p, dict) else p
+            for p in ps
+        ]
         lyw.append(w2)
         if wid is not None:
             lyw_seen.add(wid)
@@ -8859,7 +8915,14 @@ def _merge_prev_year_wars(snap, journal_dir, folder):
             continue
         if wid is not None and wid in pyw_seen:
             continue
-        pyw.append(_as_merged(w))
+        w2 = _as_merged(w)
+        ps2 = w2.get("participants") or []
+        if ps2:
+            w2["participants"] = [
+                dict(p, name=_resolve_name(p)) if isinstance(p, dict) else p
+                for p in ps2
+            ]
+        pyw.append(w2)
         if wid is not None:
             pyw_seen.add(wid)
     snap["prev_year_wars"] = pyw
@@ -9415,6 +9478,11 @@ def build_journal_data(snap):
     data["last_year_wars"] = snap.get("last_year_wars")
     # 战争目的: 随快照解析一次, 供报纸战事专电与杂志共用
     data["war_goals"] = snap.get("war_goals") or []
+    # 国家名解析表: 供跨年战争合并时按 cid/tag 重新解析参与者名,
+    # 避免上一年烘焙的旧名(如动态国家 D00)原样泄漏到今年
+    data["tag_names"] = snap.get("tag_names") or {}
+    data["country_names"] = snap.get("country_names") or {}
+    data["name_table_version"] = NAME_TABLE_VERSION
     return data
 
 def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None):
@@ -9485,6 +9553,10 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None):
     snap["player_country_id"] = cid
     index, gp_ids, dp_index = ctx.index()
     names = load_current_country_names(melted, index)
+    # 国家名解析表: cid→中文名 与 tag→中文名 (含动态国家 D00-D99 兜底),
+    # 随快照/raw 落盘, 供 _merge_prev_year_wars 跨年合并时重新解析参与者名。
+    snap["tag_names"] = names
+    snap["country_names"] = build_country_id_names(melted, index)
     if cid is not None and tag:
         # 非玩家国: 用国家名覆盖 meta.name(玩家名), 供杂志/报纸以该国名义写作
         snap["player"] = (build_country_id_names(melted, index).get(cid)
@@ -10423,9 +10495,13 @@ def _extract_interest_groups(data, player_id, chars=None):
 # 快照缓存 (阶段2: 落盘缓存, 重复生成报纸/杂志时跳过熔化+提取)
 # ---------------------------------------------------------------------------
 
-# 版本 5: interest_groups 增加 leader_culture_key/leader_last_name
-# (供杂志「大臣之家」子女随受访大臣姓使用), 旧缓存需重新熔化提取。
-SNAPSHOT_CACHE_VERSION = 5
+# 版本 6: 快照增加 country_names/tag_names 国家名解析表
+# (供跨年战争合并时重新解析参与者名, 修复动态国家 D00 名泄漏),
+# 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 6
+# raw/snapshot 携带国家名解析表版本: 跨年合并时若上一年 raw 无此表,
+# 只能沿用烘焙名, 提示用 tools/regen_data.py 重新生成。
+NAME_TABLE_VERSION = 1
 # 快照缓存写入锁: 报纸/杂志并行生成时两者会各自落盘同一 snapshot_<year>.json
 # (内容相同), 加锁避免并发写同一文件交错。
 _SNAP_CACHE_LOCK = threading.Lock()
@@ -10447,13 +10523,16 @@ def _snapshot_cache_path(journal_dir, folder, year):
     return os.path.join(journal_dir, folder, "data", f"snapshot_{year}.json")
 
 
-def _save_snapshot_cache(snap, journal_dir, folder, year):
+def _save_snapshot_cache(snap, journal_dir, folder, year,
+                         save_name=None, save_mtime=None):
     """把完整快照落盘, 附带 _meta 存档校验信息 (存档名+mtime+玩家+会话文件夹)。
     只缓存 extract_full_snapshot 的纯提取结果, 不含 _merge_prev_year_wars
-    补回的跨年战争, 使缓存与上一年 raw JSON 解耦, 读取后每次重新合并结果一致。"""
+    补回的跨年战争, 使缓存与上一年 raw JSON 解耦, 读取后每次重新合并结果一致。
+    save_name/save_mtime 可显式传入(历史存档重提取时用), 缺省取当前最新存档。"""
     if not folder or not year:
         return
-    save_name, save_mtime = _current_save_stamp()
+    if save_name is None or save_mtime is None:
+        save_name, save_mtime = _current_save_stamp()
     snap2 = dict(snap)
     snap2["_meta"] = {
         "version": SNAPSHOT_CACHE_VERSION,

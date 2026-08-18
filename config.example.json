@@ -1,6 +1,6 @@
 {
   "deepseek_api_key": "",
-  "deepseek_model": "deepseek-chat",
+  "deepseek_model": "deepseek-v4-flash",
   "deepseek_base_url": "https://api.deepseek.com/chat/completions",
   "game_log_path": "",
   "v3_user_dir": "",

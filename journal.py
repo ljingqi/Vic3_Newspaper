@@ -2994,12 +2994,9 @@ def call_deepseek(messages, cfg, retries=3):
 # 块处理: 保存原始数据 + 生成报纸
 # ---------------------------------------------------------------------------
 
-def on_block_complete(data, cfg, force=False):
-    year = data.get("year")
-    if not year:
-        log("跳过: 无法从数据块解析年份。")
-        return
-
+def save_raw_data(data, cfg):
+    """把年度数据块落盘为 raw_<year>.json (不生成报纸/杂志)。
+    返回 raw 文件路径; 失败返回 None。"""
     folder = resolve_session_folder(data, cfg)
     data["output_dir"] = folder
     base_dir = os.path.join(cfg["journal_dir"], folder)
@@ -3008,13 +3005,27 @@ def on_block_complete(data, cfg, force=False):
         os.makedirs(raw_dir, exist_ok=True)
     except Exception:
         pass
-    raw_path = os.path.join(raw_dir, f"raw_{year}.json")
+    raw_path = os.path.join(raw_dir, f"raw_{data.get('year')}.json")
     try:
         with open(raw_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         log(f"保存原始数据失败: {e}")
+        return None
+    log(f"原始数据已保存: {raw_path}")
+    return raw_path
 
+def on_block_complete(data, cfg, force=False):
+    year = data.get("year")
+    if not year:
+        log("跳过: 无法从数据块解析年份。")
+        return
+
+    raw_path = save_raw_data(data, cfg)
+    if not raw_path:
+        return
+    folder = data.get("output_dir") or resolve_session_folder(data, cfg)
+    base_dir = os.path.join(cfg["journal_dir"], folder)
     md_path = os.path.join(base_dir, f"报纸_{year}.md")
     if os.path.exists(md_path) and not force:
         log(f"[{year}年] 报纸已存在, 跳过 (加 --force 或使用 regen 重新生成): {md_path}")
