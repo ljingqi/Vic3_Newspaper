@@ -967,8 +967,23 @@ IG_NAMES = {
     "ig_shipping_magnates": "航运巨头", "ig_powerbrokers": "政治掮客",
 }
 
-JOB_SATISFACTION_GUIDE = ("职业满意度为该人群对当前工作/薪水的满意程度："
-                          "正值=满意，负值=不满，数值越大情绪越强烈。")
+def job_satisfaction_band(v):
+    """职业满意度数值 → 自然语言档位。程序判定，不把正负号语义交给模型。"""
+    if not isinstance(v, (int, float)):
+        return None
+    if v <= -300:
+        return "非常不满"
+    if v <= -100:
+        return "不满"
+    if v <= -10:
+        return "轻微不满"
+    if v < 10:
+        return "无意见"
+    if v < 100:
+        return "轻微满意"
+    if v < 300:
+        return "满意"
+    return "非常满意"
 
 def load_history(data, cfg, years_back=9):
     """加载当前年份之前若干年的原始数据, 供模型做发展对比。
@@ -1032,8 +1047,8 @@ def _leader_bg_phrase(home, religion, culture, data):
 SECTION_DEFS = [
     ("headline", "头版", "一句话导语，概括本年度最大事态；须点名国名与年份。"),
     ("war", "战事专电", "报道去年（上一历年）发生的战事：对阵双方（本国参战或列强参战，仅列主要参加者）、"
-     "死伤规模、耗资、是否已结束。传输的数据只有去年发生的战争，不含今年是否处于交战状态，"
-     "不得推断或编造当前战况。"),
+     "死伤规模、耗资、是否已结束。传输的数据只有去年发生的战争，不含今年是否处于交战状态；"
+     "今年战况以给定数据为准。"),
     ("diplo", "外交风云", "报道本国与列强的外交：同盟/敌对/禁运等条约关系、附庸国、世界八强态势。"),
     ("econ", "经济要闻", "报道本国经济：生产总值、人口、生活水平、识字率。"),
     ("politics", "政界动态", "报道政体、统治者、当前执政利益集团（标注「执政」者即组阁集团，"
@@ -1043,23 +1058,22 @@ SECTION_DEFS = [
      "街头暴力冲突）、支持者规模与支持度、"
      "本年度法律变化(新施行/废除的法律)。"
      "每期**必须**至少有一条以「（头衔）（统治者姓名）……」为主干的统治者活动新闻，"
-     "若数据给出「本期统治者活动」一行，必须以该行事实为基础（人物、头衔、地点、事件不得改写），"
+     "若数据给出「本期统治者活动」一行，以该行事实为基础（人物、头衔、地点、事件按给定事实），"
      "在其上扩写细节；该行缺失时头衔按政体与国名常识选用，"
-     "可在不编造具体国名与数字的前提下合理演绎统治者行踪。"),
+     "在给定国名与数字范围内合理演绎统治者行踪。"),
     ("society", "民族宗教与社会", "报道民族构成、宗教构成、移民动向、社会风尚。"),
     ("family", "民生访谈", "记者在样本州的一处建筑内，采访生活水平最低的人群，"
      "以访谈体写衣食住行、收入支出、受抚养人口与生活水平；须体现该人群政治倾向"
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
-     "须基于给定数据，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "可融入叙事作风味，但不得改写成具体数字。"),
+     "以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，融入叙事作风味。"),
     ("peer", "邻里富户", "与民生访谈同一建筑内生活水平最高的人群（富户），"
      "以同样的访谈体写其衣食住行与收支，并体现该人群政治倾向与参与比例最高的两个政治运动，"
-     "须与民生访谈形成贫富对照，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "可融入叙事作风味，但不得改写成具体数字。"),
+     "与民生访谈形成贫富对照，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
+     "融入叙事作风味。"),
     ("unemployed", "失业民生", "仅当样本州失业率超过5%时发送：报道该州失业状况，"
-     "采访失业人群中人口最多的一群（同访谈体），必须体现给定失业率，并体现该人群政治倾向"
-     "与参与比例最高的两个政治运动，不得编造具体数字；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "可融入叙事作风味，但不得改写成具体数字。"),
+     "采访失业人群中人口最多的一群（同访谈体），体现给定失业率，并体现该人群政治倾向"
+     "与参与比例最高的两个政治运动，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
+     "融入叙事作风味。"),
     ("comment", "本报评论", "编辑部评论，结合历年发展对照，评述国运与民生之变迁。"),
     ("ads", "广告与启示", "围绕本期提供的已研发科技创作一两条趣味广告：可为商品、工艺、铺面告白，"
      "也可为文学沙龙、社科研讨会、新政晓谕、学堂启事等非商品形式；至少一条须直接体现科技，富有时代气息。"),
@@ -1067,11 +1081,9 @@ SECTION_DEFS = [
 
 # 所有风格共用的「数据解读规则」：与具体风格无关, 保证各风格拿到的事实口径一致
 FACT_GUIDE = (
-    "「执政利益集团」指当前组阁执政的利益集团（即数据中标注「执政」的集团），"
-    "其政治力量为该集团在政坛的影响力占比；报道政界动态时应以执政集团为核心，"
-    "结合其力量消长说明朝局与施政倾向，但不得虚构具体数字。"
-    "数据中给出的姓名（统治者、大臣、受访人等）一律原样使用，不得自行取名或改名；"
-    "未给出姓名的直接描写对象，一律用身份/职业代称，不得凭空命名。"
+    "报道政界动态时以执政集团为核心，结合其力量消长说明朝局与施政倾向。"
+    "数据中给出的姓名（统治者、大臣、受访人等）直接使用；"
+    "未给出姓名的直接描写对象用身份/职业代称。"
 )
 
 
@@ -1314,7 +1326,7 @@ def render_war(data, history=None):
     L = []
     # 只传去年发生的战争: 玩家参战或列强参战, 仅主要参加者; 不含当前交战状态
     L.append("- 以下战事为去年（上一历年）发生的战争记录（本国参战或列强参战，"
-             "仅列主要参加者）；数据不含今年是否处于交战状态，请勿推断今年战况。")
+             "仅列主要参加者）；数据不含今年是否处于交战状态，今年战况以给定数据为准。")
     wars = _merged_last_year_wars(data, history)
     if not wars:
         L.append("  (去年无相关战事记录)")
@@ -1590,7 +1602,7 @@ def render_econ(data, history=None):
         if abs(lit_delta) < 1e-9:
             tail = "与去年同期持平"
         else:
-            tail = f"比去年同期{'提高' if lit_delta > 0 else '下降'}{abs(lit_delta):.2f}个百分点"
+            tail = f"比去年同期{'提高' if lit_delta > 0 else '下降'}{abs(lit_delta):.2f}%"
         lit_line += f"（{tail}）"
     L.append(lit_line)
     return "\n".join(L)
@@ -1609,7 +1621,7 @@ def render_politics(data, history=None):
     L.append(f"- 统治者：{ruler}")
     ruler_act = data.get("ruler_activity")
     if ruler_act:
-        L.append(f"- 本期统治者活动（须据此如实报道，人物/地点/事件不得改写）：{ruler_act}")
+        L.append(f"- 本期统治者活动（按该行事实如实报道）：{ruler_act}")
     if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
         L.append(f"- 民意倾向：激进派占人口约{data.get('radicals_pct', '?')}%，"
                  f"效忠派占人口约{data.get('loyalists_pct', '?')}%")
@@ -1842,11 +1854,7 @@ def _render_vital_stats(obj):
     birth = obj.get("birth_rate_pct")
     death = obj.get("death_rate_pct")
     if birth is not None and death is not None:
-        if incorp is None or incorp < 1:
-            note = "年化估算；该州未完全并入本土，卫生机构与相关法律覆盖有限"
-        else:
-            note = "年化估算"
-        L.append(f"- 出生率/死亡率（{note}）：约{birth:.2f}% / 约{death:.2f}%")
+        L.append(f"- 出生率/死亡率：约{birth:.2f}% / 约{death:.2f}%")
         le = _life_expectancy_hint(obj.get("sol"), death,
                                    obj.get("hazard_excess_pct"),
                                    obj.get("pollution_pct"),
@@ -2242,19 +2250,18 @@ def render_family(data, style=None):
     else:
         nm = _newspaper_person_name(data, "family", fi.get("culture_key"))
     if nm:
-        L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
+        L.append(f"- 受访人姓名：{nm}")
     if roster:
         if roster["spouse"]["name"]:
             _note = {"double": "双姓（本姓+夫姓）",
                      "own": "保留女方本姓",
                      "husband": "与受访人同姓"}.get(
                 roster.get("spouse_policy"), "与受访人同姓")
-            L.append(f"- 配偶姓名：{roster['spouse']['name']}"
-                     f"（{_note}，姓名已给定，不得改动）")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}（{_note}）")
         if roster["children"]:
             L.append("- 子女：" + "、".join(
                 f"{c['label']} {c['name']}" for c in roster["children"])
-                + "（随父姓，姓名已给定，不得改动）")
+                + "（随父姓）")
         else:
             L.append("- 子女：膝下无子")
     L.extend(_ownership_lines(fi.get("workplace_ownership")))
@@ -2321,15 +2328,16 @@ def render_family(data, style=None):
                  + (f"（{band}）" if band else ""))
     literacy = fi.get("literacy_pct")
     if literacy is not None:
-        L.append(f"- 识字率：约{literacy:.2f}%（该人群识字人口占比）")
+        L.append(f"- 识字率：约{literacy:.2f}%")
     acc_status = fi.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
     L.extend(_render_pop_igs(fi))
     job_sat = fi.get("job_satisfaction")
     if job_sat is not None:
-        mood = "满意" if job_sat > 0 else ("不满" if job_sat < 0 else "一般")
-        L.append(f"- 职业满意度：{mood}（{job_sat:+.2f}；{JOB_SATISFACTION_GUIDE}）")
+        band = job_satisfaction_band(job_sat)
+        if band:
+            L.append(f"- 职业满意度：{band}")
     L.extend(_render_vital_stats(fi))
     dr = fi.get("dependent_ratio")
     workforce = fi.get("workforce")
@@ -2387,19 +2395,18 @@ def render_peer(data, style=None):
     else:
         nm = _newspaper_person_name(data, "peer", peer.get("culture_key"))
     if nm:
-        L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
+        L.append(f"- 受访人姓名：{nm}")
     if roster:
         if roster["spouse"]["name"]:
             _note = {"double": "双姓（本姓+夫姓）",
                      "own": "保留女方本姓",
                      "husband": "与受访人同姓"}.get(
                 roster.get("spouse_policy"), "与受访人同姓")
-            L.append(f"- 配偶姓名：{roster['spouse']['name']}"
-                     f"（{_note}，姓名已给定，不得改动）")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}（{_note}）")
         if roster["children"]:
             L.append("- 子女：" + "、".join(
                 f"{c['label']} {c['name']}" for c in roster["children"])
-                + "（随父姓，姓名已给定，不得改动）")
+                + "（随父姓）")
         else:
             L.append("- 子女：膝下无子")
     if workplace:
@@ -2467,15 +2474,16 @@ def render_peer(data, style=None):
                  + (f"（{band}）" if band else ""))
     literacy = peer.get("literacy_pct")
     if literacy is not None:
-        L.append(f"- 识字率：约{literacy:.2f}%（该人群识字人口占比）")
+        L.append(f"- 识字率：约{literacy:.2f}%")
     acc_status = peer.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
     L.extend(_render_pop_igs(peer))
     job_sat = peer.get("job_satisfaction")
     if job_sat is not None:
-        mood = "满意" if job_sat > 0 else ("不满" if job_sat < 0 else "一般")
-        L.append(f"- 职业满意度：{mood}（{job_sat:+.2f}；{JOB_SATISFACTION_GUIDE}）")
+        band = job_satisfaction_band(job_sat)
+        if band:
+            L.append(f"- 职业满意度：{band}")
     L.extend(_render_vital_stats(peer))
     dr = peer.get("dependent_ratio")
     workforce = peer.get("workforce")
@@ -2522,19 +2530,18 @@ def render_unemployed(data, style=None):
     else:
         nm = _newspaper_person_name(data, "unemployed", uni.get("culture_key"))
     if nm:
-        L.append(f"- 受访人姓名：{nm}（姓名已给定，全文必须原样使用，不得自行取名或改名）")
+        L.append(f"- 受访人姓名：{nm}")
     if roster:
         if roster["spouse"]["name"]:
             _note = {"double": "双姓（本姓+夫姓）",
                      "own": "保留女方本姓",
                      "husband": "与受访人同姓"}.get(
                 roster.get("spouse_policy"), "与受访人同姓")
-            L.append(f"- 配偶姓名：{roster['spouse']['name']}"
-                     f"（{_note}，姓名已给定，不得改动）")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}（{_note}）")
         if roster["children"]:
             L.append("- 子女：" + "、".join(
                 f"{c['label']} {c['name']}" for c in roster["children"])
-                + "（随父姓，姓名已给定，不得改动）")
+                + "（随父姓）")
         else:
             L.append("- 子女：膝下无子")
     L.append(f"- 该州失业率（失业人口/该州总人口）：{rate_s}")
@@ -2590,15 +2597,16 @@ def render_unemployed(data, style=None):
                  + (f"（{band}）" if band else ""))
     literacy = uni.get("literacy_pct")
     if literacy is not None:
-        L.append(f"- 识字率：约{literacy:.2f}%（该人群识字人口占比）")
+        L.append(f"- 识字率：约{literacy:.2f}%")
     acc_status = uni.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
     L.extend(_render_pop_igs(uni))
     job_sat = uni.get("job_satisfaction")
     if job_sat is not None:
-        mood = "满意" if job_sat > 0 else ("不满" if job_sat < 0 else "一般")
-        L.append(f"- 职业满意度：{mood}（{job_sat:+.2f}；{JOB_SATISFACTION_GUIDE}）")
+        band = job_satisfaction_band(job_sat)
+        if band:
+            L.append(f"- 职业满意度：{band}")
     L.extend(_render_vital_stats(uni))
     dr = uni.get("dependent_ratio")
     workforce = uni.get("workforce")
@@ -2802,7 +2810,7 @@ def build_masthead_messages(data, style=DEFAULT_STYLE):
         f"【年份】{year}\n\n"
         f"{st['masthead']}\n\n"
         "请据此取报名并撰写抬头。要求：\n"
-        "1. 抬头中的国名必须按正式国名**一字不改**写入（不得自创、不得替换、不得省略）。\n"
+        "1. 抬头中的国名按正式国名**一字不改**写入。\n"
         "2. 都城若缺失，请用该国广为人知的都城名。\n"
         f"3. 只输出 Markdown 抬头，格式：\n# 《报名》\n国名：{full}｜都城：{cap_note}｜年份：{year}"
     )
@@ -2854,7 +2862,7 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
                  f"请撰写「{title}」板块。要求：{req}")
     sys_msg = "\n\n".join(parts)
     facts = render_section_facts(key, data, history, style=style)
-    user_msg = f"以下是本期报纸关于「{title}」板块的相关数据（涉及国名、都城请用上述变量，不得改动）：\n{facts}\n\n请撰写该板块正文。"
+    user_msg = f"以下是本期报纸关于「{title}」板块的相关数据（涉及国名、都城请用上述变量）：\n{facts}\n\n请撰写该板块正文。"
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
 _MASTHEAD_ECHO_RE = re.compile(r"^#\s*《.+》\s*$")

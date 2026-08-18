@@ -5732,7 +5732,7 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
         main,
         _pool_building_text(melted, ctx, cid, rb, robj, loc, gm, pops=pops),
         "这条铁路连接城镇与乡村，运送旅客与货物，并拉动沿线农矿产品外运；"
-        "行文以给定数据为准，不得虚构车站名与里程。",
+        "行文以给定数据为准。",
     ]
     rural = []
     for hub_cat in ("farm", "mine", "wood", "port"):
@@ -6505,8 +6505,8 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
         ok, reason = _pool_vote_verdict(pop, dop, citizenship, church=church,
                                         state_religion=snap.get("religion"))
         ballot.append(f"判定结果：{reason}。")
-        ballot.append("请严格按判定结果描写投票日场景：拥有则写他履行权利的过程；"
-                      "不拥有则写他被拦在门外的情景，不得反转。")
+        ballot.append("请按判定结果描写投票日场景：拥有则写他履行权利的过程；"
+                      "不拥有则写他被拦在门外的情景。")
     else:
         ballot.append("（该州无人群样本。）")
     future = []
@@ -6618,7 +6618,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
         street.append(f"{st_zh}劳动力人均月薪约{round(wage, 2)}{unit}，"
                       "可作家庭支出参照。")
     street.append("物价涨落与工资、识字率、阶层结构共同构成百姓餐桌的底色，"
-                  "行文以给定数字为准，不得编造。")
+                  "行文以给定数字为准。")
     hh_ck = (culture_id_to_key(lows[0][1].get("culture"))
              if lows and lows[0][1].get("culture") is not None else None)
     _blk = person_names_block(f"{snap.get('year')}|{cid}|price",
@@ -7180,7 +7180,7 @@ def person_names_block(seed, roles, female_pct=None, genders=None,
                          fixed_last=fixed_last)
     if not names:
         return ""
-    lines = ["人物名单（姓名已由数据给定，全文必须原样使用，不得自行取名或改名）："]
+    lines = ["人物名单（姓名已由数据给定，全文直接使用）："]
     for role, _ck in roles:
         if role in names:
             lines.append(f"- {role}：{names[role]}")
@@ -7901,18 +7901,18 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
     case_head = (
         f"本期罪案特稿：一桩{crime_zh}案。"
         f"案发地：{place}（受害者工作建筑所在的{hub_label}）；案发现场为{scene}。"
-        "案件类型、案发地与案发现场全篇不得改变，非暴力案件不得写成杀伤。"
+        "案件类型、案发地与案发现场全篇以给定资料为准，非暴力案件按非暴力处理。"
     )
     if all((names.get(r) or (None, None))[1]
            for r in ("受害者", "凶手", "证人")):
         name_rule = ("三人中文姓名已由资料给定，全篇必须原样使用"
                      "。")
     else:
-        name_rule = ("不得虚构人物姓名，一律以「受害者」「凶手」「证人」"
+        name_rule = ("姓名未给出时，以「受害者」「凶手」「证人」"
                      "及职业身份代称。")
     # 三角色全表: 每个板块都原样附带, 防止模型在分板块写作时互换角色
     role_table = (
-        "全篇三角色身份固定，不得互换、合并或改写（身份/职业/文化/宗教/人数/"
+        "全篇三角色身份固定（身份/职业/文化/宗教/人数/"
         f"生活水平一律以资料为准；{name_rule}）：\n"
         + _role_line(victim, "受害者") + "\n"
         + _role_line(murderer, "凶手") + "\n"
@@ -7928,14 +7928,13 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
         case_lines.append(mov_line)
     case_lines.append(
         f"开篇请立起案发地（{hub_label}）的场景与人物，可按案件类型还原案发经过，"
-        "但不得虚构资料之外的具体伤亡数字与日期。"
+        "伤亡数字与日期以资料为准。"
     )
     victim_lines = [
         case_head,
         role_table,
         f"受害者工作建筑：{bzh}（位于{place}）。",
-        "本板块只写【受害者】与【证人】两位（凶手不得在此出场或换角）："
-        "从他们的视角写案发前后的生活、现场与听闻，"
+        "本板块从【受害者】与【证人】两位的视角写案发前后的生活、现场与听闻，"
         "以资料中的职业/文化/宗教/生活水平塑造人物。",
     ]
     perp_lines = [
@@ -7946,20 +7945,19 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
     if mov_line:
         perp_lines.append(mov_line)
     perp_lines.append(
-        "本板块只写【凶手】一位（受害者与证人不得换角）："
-        "写凶手的处境与动机如何从资料中生长出来：经济落差/文化隔阂/"
-        "政治怨愤以给定动机为准；恐怖主义案件须写其政治运动背景，"
-        "不得虚构运动领袖姓名与具体行动细节。"
+        "本板块从【凶手】一人的视角写凶手的处境与动机如何从资料中生长出来："
+        "经济落差/文化隔阂/政治怨愤以给定动机为准；恐怖主义案件写其政治运动背景，"
+        "运动领袖姓名与具体行动细节以资料为准。"
     )
     justice_lines = [
         case_head,
         role_table,
-        "现行警察机构法律（Policing）："
+        "现行警察机构法律："
         + (law_zh(policing) if policing else "（资料缺失）") + "。",
-        "现行国内安全法律（Internal Security）："
+        "现行国内安全法律："
         + (law_zh(internal) if internal else "（资料缺失）") + "。",
-        f"执法机构（Policing）投入：{police_lv}。",
-        f"内务机构（Internal Security）投入：{home_lv}。",
+        f"执法机构投入：{police_lv}。",
+        f"内务机构投入：{home_lv}。",
     ]
     if outcome:
         justice_lines.append(f"现行刑法框架：{outcome['framework']}"
@@ -7970,8 +7968,8 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
         justice_lines.append(verdict_line)
         justice_lines.append(f"判决理由：{verdict_reason}")
         justice_lines.append(
-            "破案结果与判决已由资料给定，必须原样照写，不得改动或另拟；"
-            "悬案时不得补写破案与判决。"
+            "破案结果与判决已由资料给定，按原样照写；"
+            "悬案时以资料为准。"
         )
         justice_lines.append(
             "本板块请写案件进入法网后的后续——侦办、缉凶、庭审或悬案收束，"
@@ -7980,7 +7978,7 @@ def _pool_crime_data(melted, snap, ctx, rnd, country, cid, data):
     else:
         justice_lines.append(
             "本板块请写案件进入法网后的后续——侦办、缉凶、庭审或悬案收束，"
-            "尺度以给定法律与机构为限，不得虚构具体判决与刑期。"
+            "尺度以给定法律与机构为限，判决与刑期以给定资料为准。"
         )
     ret = {"sections": {
         "case": "\n".join(case_lines),
