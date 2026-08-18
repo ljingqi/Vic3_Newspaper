@@ -1660,6 +1660,10 @@ def generate_magazine(data, cfg, force=True):
         os.makedirs(raw_dir, exist_ok=True)
     except Exception:
         pass
+    try:
+        os.makedirs(os.path.join(base_dir, "杂志"), exist_ok=True)
+    except Exception:
+        pass
     mag_path = os.path.join(base_dir, "杂志", f"杂志_{year}.md")
     if os.path.exists(mag_path) and not force:
         journal.log(f"[{year}年] 杂志已存在, 跳过 (加 --force 或用 magazine 命令重新生成): {mag_path}")

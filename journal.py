@@ -3026,6 +3026,10 @@ def on_block_complete(data, cfg, force=False):
         return
     folder = data.get("output_dir") or resolve_session_folder(data, cfg)
     base_dir = os.path.join(cfg["journal_dir"], folder)
+    try:
+        os.makedirs(os.path.join(base_dir, "报纸"), exist_ok=True)
+    except Exception:
+        pass
     md_path = os.path.join(base_dir, "报纸", f"报纸_{year}.md")
     if os.path.exists(md_path) and not force:
         log(f"[{year}年] 报纸已存在, 跳过 (加 --force 或使用 regen 重新生成): {md_path}")
