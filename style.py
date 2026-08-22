@@ -755,6 +755,20 @@ MODERNITY_TIERS = {
 }
 
 
+# 「股市动态」板块标题: 旧系统 4 档 + 新系统 5 档各补缺省标题
+_STOCK_SECTION_TITLES = {
+    1: "市价行情",
+    2: "股市动态",
+    3: "股市动态",
+    4: "财经行情",
+    5: "市况观察",
+}
+for _styles in (NEWSPAPER_STYLES, MODERNITY_TIERS):
+    for _k, _s in _styles.items():
+        _st = _s.setdefault("section_titles", {})
+        _st.setdefault("stock", _STOCK_SECTION_TITLES.get(_k, "股市动态"))
+
+
 def resolve_newspaper_style(data, cfg=None):
     """动态解析报纸风格, 返回与旧系统同构的风格 dict。
     额外附带 tier/score/govt_category/dop_law 供测试清单使用。"""

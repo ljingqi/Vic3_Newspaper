@@ -20,6 +20,10 @@
   "magazine_pool_size": 3,
   "magazine_pool_override": null,
   "crime_outcome_engine": true,
+  "crime_trick_enabled": true,
+  "crime_trick_chance": 0.6,
+  "crime_special_enabled": true,
+  "crime_special_chance": 0.15,
   "parallel_generation_enabled": true,
   "prompt_log_enabled": true,
   "llm_thinking_disabled": true,
@@ -27,7 +31,10 @@
     "law_no_womens_rights": 0.05,
     "law_women_in_the_fields": 0.05,
     "law_women_own_property": 0.15,
-    "law_women_in_the_workplace": 0.30,
+    "law_women_in_the_workplace": 0.3,
     "law_womens_suffrage": 0.45
-  }
+  },
+  "state_flavor_enabled": true,
+  "stock_market_enabled": true,
+  "stock_local_enterprise_count": 5
 }

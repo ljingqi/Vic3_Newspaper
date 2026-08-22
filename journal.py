@@ -117,6 +117,12 @@ DEFAULT_CONFIG = {
     "magazine_pool_override": None,
     # 刑事案例结局引擎 (刑法框架/破案/判决 三层), 关闭后走简化结局
     "crime_outcome_engine": True,
+    # 州情风味层: 报纸/杂志按州基础设施/行政力/社会演进指标生成州情速写
+    "state_flavor_enabled": True,
+    # 报纸「股市动态」专栏: 研发证券交易所后出现; 每年按商品价格涨跌
+    "stock_market_enabled": True,
+    # 股市专栏中地方企业数量 (按各州商品生产量生成, 州名+商品名命名)
+    "stock_local_enterprise_count": 5,
     # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
     "parallel_generation_enabled": True,
     # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
@@ -1051,6 +1057,10 @@ SECTION_DEFS = [
      "今年战况以给定数据为准。"),
     ("diplo", "外交风云", "报道本国与列强的外交：同盟/敌对/禁运等条约关系、附庸国、世界八强态势。"),
     ("econ", "经济要闻", "报道本国经济：生产总值、人口、生活水平、识字率。"),
+    ("stock", "股市动态", "报道证券交易所开市以来的行情：仅报道资料给出的各公司/企业"
+     "（含国家级公司与地方企业）的名称、所在州域、主营商品、本报指数、年度涨跌幅与"
+     "景气概况；指数与涨跌幅为资料给定的「本报指数」口径，一律照抄，不得编造行情"
+     "之外的个股消息；新上市企业须注明「新设上市」。"),
     ("politics", "政界动态", "报道政体、统治者、当前执政利益集团（标注「执政」者即组阁集团，"
      "数据含其政治力量占比、首领姓名与首领个人意识形态）、主要利益集团力量格局、"
      "当前影响最大的政治运动，"
@@ -1563,6 +1573,45 @@ def _pct_value(v):
     except (TypeError, ValueError):
         return None
 
+def render_stock(data):
+    """股市动态: 证券交易所开市后, 国家级公司 + 地方企业的本报指数行情。"""
+    sm = data.get("stock_market")
+    if not sm:
+        return "- (资料缺失：本期未开设证券交易所)"
+    L = []
+    if sm.get("first_year"):
+        L.append(f"- 本期为证券交易所开市之年（{sm.get('year')}年），"
+                 "下列公司/企业新设上市，本报指数以 100 点为基准。")
+    L.append("- 大盘概况：" + "、".join(filter(None, [
+        f"{sm.get('advancers', 0)} 家上涨",
+        f"{sm.get('decliners', 0)} 家下跌",
+        (f"平均涨跌约{sm.get('avg_change', 0.0):.1f}%"
+         if sm.get('avg_change') is not None else None),
+        (f"领涨：{sm.get('top_gainer')}" if sm.get('top_gainer') else None),
+        (f"领跌：{sm.get('top_loser')}" if sm.get('top_loser') else None),
+    ])) + "。")
+    for c in sm.get("companies") or []:
+        name = c.get("name") or "未知公司"
+        kind = "国家级公司" if c.get("kind") == "national" else "地方企业"
+        where = c.get("state") or "未知州"
+        ind = c.get("industries") or c.get("goods_basket") or "未知行业"
+        bits = [f"- 【{kind}】{name}（{where}，主营{ind}）"]
+        idx = c.get("index")
+        chg = c.get("change_pct")
+        if idx is not None:
+            idx_s = f"本报指数约{round(idx, 1)}"
+            if chg is not None:
+                idx_s += f"，较上年{'涨' if chg >= 0 else '跌'}约{abs(chg):.1f}%"
+            bits.append(idx_s)
+        if c.get("band"):
+            bits.append(f"行情：{c['band']}")
+        if c.get("note"):
+            bits.append(c["note"])
+        L.append("；".join(bits) + "。")
+    L.append("正文以给定公司/企业、指数与涨跌为唯一依据，行情之外的个股消息不得编造。")
+    return "\n".join(L)
+
+
 def render_econ(data, history=None):
     L = []
     prev = (history[-1] or {}) if history else {}
@@ -1787,6 +1836,10 @@ def render_society(data):
     migr = [e for e in (data.get("events") or []) if e.get("kind") == "migration"]
     if migr:
         L.append(f"- 移民动向：本年度有 {len(migr)} 处地区成为新的移民目的地")
+    sfl = data.get("society_flavor_lines") or []
+    if sfl:
+        L.append("- 【全国社会演进】")
+        L.extend(sfl)
     return "\n".join(L)
 
 def _pollution_band(p):
@@ -2357,6 +2410,10 @@ def render_family(data, style=None):
     fs = fi.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
+    _sf = (fi.get("state_flavor") or {}).get("lines") or []
+    if _sf:
+        L.append("- 【州情速写】")
+        L.extend(_sf)
     return "\n".join(L)
 
 
@@ -2503,6 +2560,10 @@ def render_peer(data, style=None):
     fs = peer.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
+    _sf = (peer.get("state_flavor") or {}).get("lines") or []
+    if _sf:
+        L.append("- 【州情速写】")
+        L.extend(_sf)
     return "\n".join(L)
 
 
@@ -2626,6 +2687,10 @@ def render_unemployed(data, style=None):
     fs = uni.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
+    _sf = (uni.get("state_flavor") or {}).get("lines") or []
+    if _sf:
+        L.append("- 【州情速写】")
+        L.extend(_sf)
     return "\n".join(L)
 
 
@@ -2772,6 +2837,8 @@ def render_section_facts(key, data, history=None, style=None):
         return render_diplo(data)
     if key == "econ":
         return render_econ(data, history)
+    if key == "stock":
+        return render_stock(data)
     if key == "politics":
         return render_politics(data, history)
     if key == "society":
@@ -2931,7 +2998,8 @@ def generate_newspaper(data, cfg, history=None):
     parts = [masthead]
     # 条件板块: 失业民生仅在随机州失业率>5%且有样本数据时发送
     sections = [(k, st["section_titles"].get(k, t)) for k, t, _d in SECTION_DEFS
-                if not (k == "unemployed" and not data.get("unemployed_interview"))]
+                if not (k == "unemployed" and not data.get("unemployed_interview"))
+                and not (k == "stock" and not data.get("stock_market"))]
     # 各板块彼此独立, 并发请求 (DeepSeek 并发充足时大幅提速)
     with ThreadPoolExecutor(max_workers=len(SECTION_DEFS)) as ex:
         futures = [ex.submit(_gen_section, key, title)

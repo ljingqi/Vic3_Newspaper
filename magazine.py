@@ -181,6 +181,20 @@ SECTION_FACTS = {s["key"]: s["facts"] for a in ARTICLES for s in a["sections"]}
 # 兜底文章走上方 ARTICLES (court/migration/war), 数据永远可用。
 # ---------------------------------------------------------------------------
 
+# 罪案类型清单 (与 journal_save.CRIME_TYPE_ZH 同步的提示词版本, 2026-08-19)
+CRIME_TYPE_LIST_REQ = (
+    "凶杀/纵火/故意伤害/勒索/抢劫/盗窃/绑架/恐怖主义（含刺杀要员、炸弹袭击、"
+    "冲击政府机构、政治绑架、街头骚乱等细分）/伪造货币/走私/官仓贪腐/饥年盗粮/"
+    "海盗劫掠/私刑/异端审判/逃兵军纪案/坟场盗掘/骗婚/伪造文书"
+)
+# 物证/在场证明与暴力尺度规则 (方案A/B 共用)
+CRIME_EVIDENCE_REQ = (
+    "资料给出的「物证与在场证明」（常购商品/市价偏离/案发现场实物/勘验手段/"
+    "案发时节等）按原文照写或化入叙述，不得另造资料外的物证与人物。"
+    "非暴力案（盗窃/勒索/欺诈/走私/贪腐等）按资料的非暴力性质写；"
+    "绑架/政治绑架案受害者获救或放归、安然无恙。"
+)
+
 POOL = {
     "railway": {
         "default_title": "帝国铁道纪行",
@@ -189,6 +203,7 @@ POOL = {
             {"key": "lead", "title": "铁轨上的州", "req": (
                 "报道铁路及其所在州：建筑等级、生产方法、所有权、投入产出一律以数据为准；"
                 "以城市为舞台立起全篇的旅途与人物，车站名与里程以资料为准。"
+                "可自然化用州情速写中的路网档位（如驿路初通/商路纵横/铁路通衢）描写旅途与沿线民生。"
             )},
             {"key": "rural", "title": "乡村的货厢", "req": (
                 "随铁路走访两座乡村（农场/矿场/林场/渔港）的建筑：等级、生产方法、"
@@ -256,6 +271,7 @@ POOL = {
             {"key": "lead", "title": "国家的触角", "req": (
                 "报道教育/卫生/执法等机构的投入档位（自然语言）与相关法律，写国家力量如何自上而下延伸"
                 "到州县；机构与法律以数据为准。"
+                "可自然化用州情速写中的行政覆盖档位（如州县自治/勉强敷用/令行禁止）描写国家触角所及。"
             )},
             {"key": "classroom", "title": "课堂与诊室", "req": (
                 "以样本州的识字率、政府雇员与基层公职/教员，写学校与诊所的具体面貌，"
@@ -337,36 +353,163 @@ POOL = {
         "theme": "一桩案件的社会与法",
         "sections": [
             {"key": "case", "title": "案件卷宗", "req": (
-                "报道本年度发生的一桩案件：案件类型为资料给定的凶杀/纵火/故意伤害/"
-                "勒索/抢劫/盗窃/恐怖主义（激进派）之一；案发地为受害者工作建筑所在"
-                "城邑、村落等聚落（案发现场可能是工作建筑内/路上/家中三处之一）；"
-                "受害者、凶手、证人三角色与动机一律以资料为准，三人姓名已给定、"
+                "报道本年度发生的一桩案件：案件类型为资料给定的"
+                + CRIME_TYPE_LIST_REQ + "之一；案发地为受害者工作建筑所在"
+                "城邑、村落等聚落（案发现场以资料为准）；"
+                "受害者、犯罪嫌疑人、证人三角色与动机一律以资料为准，三人姓名已给定、"
                 "全篇直接使用。案件经过可按资料合情演绎，身份、地点、职业与数字"
-                "以给定资料为准。"
+                "以给定资料为准。" + CRIME_EVIDENCE_REQ +
+                "绑架案可写胁迫、囚禁、赎金与解救。"
+                "三角色的结局以资料为准，资料未写明死亡的人物皆安好；"
+                "案件的破案与悬案结局以资料为准，正文按此收束。"
             )},
             {"key": "victim", "title": "受害者与证人", "req": (
                 "从资料中的【受害者】与【证人】两位的视角写案发前后他们在同一聚落的"
                 "生活与现场见闻，与开篇《案件卷宗》呼应；职业、文化、宗教、生活水平、"
-                "接受度等以资料为准。案件类型与案发经过与开篇一致（盗窃/勒索等"
-                "非暴力案件按非暴力处理）。"
+                "接受度、物证与在场证明等以资料为准。案件类型与案发经过与开篇一致"
+                "（" + CRIME_EVIDENCE_REQ + "结局以资料为准）。"
             )},
-            {"key": "perpetrator", "title": "凶手与动机", "req": (
-                "从资料中的【凶手】（加害人）一人的视角写其处境与动机如何从资料中"
+            {"key": "perpetrator", "title": "嫌疑人与动机", "req": (
+                "从资料中的【犯罪嫌疑人】（被控加害人）一人的视角写其处境与动机如何从资料中"
                 "生长出来：经济落差/文化隔阂/政治怨愤以资料给定的动机为准；恐怖主义"
-                "案件写其参与的抗议政治运动背景，运动领袖姓名与具体行动细节以资料为准。"
-                "盗窃/勒索等非暴力案件按非暴力处理；庭审与判决由《法网与衙门》板块"
-                "按资料叙述，本板块以资料给定结果为准。"
+                "案件写其参与的抗议政治运动背景与细分类型（刺杀要员/炸弹袭击/"
+                "冲击政府机构/政治绑架/街头骚乱按资料为准），运动领袖姓名与具体"
+                "行动细节以资料为准。" + CRIME_EVIDENCE_REQ +
+                "本板块只叙述案发前后的处境与心路，庭审与判决由《法网与衙门》板块叙述。"
             )},
             {"key": "justice", "title": "法网与衙门", "req": (
                 "三角色身份与全篇一致（资料原样），报道现行警察机构法律与国内安全法律、"
                 "执法与内务两机构投入的自然语言档位，以及资料给定的现行刑法框架"
                 "（刑罚取向），写案件进入法网后的后续——侦办、缉凶、庭审或悬案收束；"
-                "盗窃/勒索等非暴力案件按非暴力处理，受害者以资料结局为准；资料给出"
-                "破案结果与判决时按原样照写；资料未给出时，以给定法律与机构为限。"
+                + CRIME_EVIDENCE_REQ + "受害者以资料结局为准；"
+                "破案结果与判决以资料原文为准照写"
+                "（含刑种、刑期与金额），资料未给出判决时以侦办过程收束。"
+                "资料若有「嫌疑人使计」与「第一目击者」信息，按资料写明诡计得逞/"
+                "被识破及第一目击者结局。"
+            )},
+            {"key": "impact", "title": "判决之后", "req": (
+                "报道案件了结后的社会余波：以资料给定的判决、诡计（如有）、机构与"
+                "动乱数据为限，写街巷舆论、受害与加害两方家庭的境遇、执法与立法风气、"
+                "以及对未来运动或社会情绪的影响。判决以资料原文为唯一依据"
+                "（刑种、刑期与金额照写）；诡计按资料写其得逞或被识破，第一目击者"
+                "结局（已死亡/死里逃生）以资料为准；正文中的事件、人名与数字均出自"
+                "资料。" + CRIME_EVIDENCE_REQ
             )},
         ],
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# 社会与法专版 (crime 抽中后 15% 触发): 1 大案 + 2 小案 整期替换
+# 大案 5 板块 (案件卷宗/受害人与现场/嫌疑人与动机/法网与衙门/判决之后);
+# 小案各 3 板块 (案件简报/街头反响/法网收束)。素材 key 与 journal_save 对应。
+# ---------------------------------------------------------------------------
+POOL["crime_big"] = {
+    "default_title": "社会与法专版·头版大案",
+    "theme": "一桩大案的社会与法",
+    "sections": [
+        {"key": "case", "title": "案件卷宗", "req": (
+            "报道本期社会与法专版的头版大案：案件类型为资料给定的连环杀人/连环毒杀/"
+            "可疑盗尸/双重生活/分尸弃尸之一；案发地、案发现场、多名受害者、"
+            "犯罪嫌疑人、证人与动机一律以资料为准，姓名与身份已给定、全篇直接使用。"
+            "连环案按资料写多名受害者的先后遇害；盗尸案写尸体失踪与解剖房疑云；"
+            "双重生活案写嫌疑人的公开身份与秘密生活；献祭动机按资料作为「民俗/迷信"
+            "之说」叙述，克制处理。" + CRIME_EVIDENCE_REQ +
+            "不得引入现实人物、地名与案件。案件的破案与悬案"
+            "结局以资料为准，正文按此收束。"
+        )},
+        {"key": "victim", "title": "受害人与现场", "req": (
+            "从资料中的【受害者】（含其余受害者）与【证人】的视角写案发前后他们在"
+            "同一聚落的生活与现场见闻；职业、文化、宗教、生活水平、接受度以资料为准。"
+            "案发现场与作案经过与开篇一致；物证与在场证明以资料为准照写；"
+            "多名受害者按资料逐个交代结局"
+            "（资料未写明死亡的人物皆安好）。"
+        )},
+        {"key": "perpetrator", "title": "嫌疑人与动机", "req": (
+            "从资料中的【犯罪嫌疑人】（被控加害人）一人的视角写其处境与动机如何从"
+            "资料中生长出来：骗保/私奔/丑闻/神秘学献祭/卖尸牟利/遗产债务以资料给定"
+            "的动机为准；双重生活案写其公开身份与秘密生活（别名、重婚、第二处住所"
+            "以资料为准）。本板块只叙述案发前后的处境与心路，庭审与判决由"
+            "《法网与衙门》板块叙述。"
+        )},
+        {"key": "justice", "title": "法网与衙门", "req": (
+            "三角色身份与全篇一致（资料原样），报道现行警察机构法律与国内安全法律、"
+            "执法与内务两机构投入的自然语言档位，以及资料给定的现行刑法框架，写案件"
+            "进入法网后的后续——侦办、缉凶、庭审或悬案收束；破案结果与判决以资料原文"
+            "为准照写（含刑种、刑期与金额）。" + CRIME_EVIDENCE_REQ +
+            "资料若有「嫌疑人使计」与「第一目击者」"
+            "信息，按资料写明诡计得逞/被识破及第一目击者结局。"
+        )},
+        {"key": "impact", "title": "判决之后", "req": (
+            "报道大案了结后的社会余波：以资料给定的判决、诡计（如有）、机构与动乱"
+            "数据为限，写街巷舆论、受害与加害两方家庭的境遇、执法与立法风气，以及对"
+            "未来运动或社会情绪的影响。判决以资料原文为唯一依据（刑种、刑期与金额照写）；"
+            "诡计按资料写其得逞或被识破；" + CRIME_EVIDENCE_REQ +
+            "不得编造资料外的事件、人名与数字。"
+        )},
+    ],
+}
+
+POOL["crime_small_a"] = {
+    "default_title": "社会与法专版·案情简报（甲）",
+    "theme": "一桩小案的始末",
+    "sections": [
+        {"key": "brief", "title": "案件简报", "req": (
+            "报道本期社会与法专版的一桩小案：案件类型为资料给定的"
+            + CRIME_TYPE_LIST_REQ + "之一；案发地与案发现场以资料为准；"
+            "受害者、犯罪嫌疑人、证人三角色与动机一律以资料为准，姓名已给定、全篇"
+            "直接使用。" + CRIME_EVIDENCE_REQ +
+            "案件的破案与悬案结局以资料为准，正文按此收束。"
+        )},
+        {"key": "street", "title": "街头反响", "req": (
+            "写这桩小案在案发地街巷的即时反响：以资料给出的案发州动乱度、识字率、"
+            "失业率、政治运动、物价与舆论方向为限，写邻里的议论、受害与加害两方家庭的"
+            "情形；不得编造资料外的事件、人名与数字。结局与判决以资料为准。"
+        )},
+        {"key": "close", "title": "法网收束", "req": (
+            "写这桩小案进入法网后的收束：现行警察机构法律与国内安全法律、执法与"
+            "内务机构投入档位以资料为准；破案结果与判决照抄资料原文（含刑种、刑期与"
+            "金额），悬案时以资料为准收束。" + CRIME_EVIDENCE_REQ +
+            "资料若有「嫌疑人使计」信息，按资料写明"
+            "诡计得逞/被识破。"
+        )},
+    ],
+}
+
+POOL["crime_small_b"] = {
+    "default_title": "社会与法专版·案情简报（乙）",
+    "theme": "另一桩小案的始末",
+    "sections": [
+        {"key": "brief", "title": "案件简报", "req": (
+            "报道本期社会与法专版的另一桩小案：案件类型为资料给定的"
+            + CRIME_TYPE_LIST_REQ + "之一；案发地与案发现场"
+            "以资料为准；受害者、犯罪嫌疑人、证人三角色与动机一律以资料为准，姓名"
+            "已给定、全篇直接使用。" + CRIME_EVIDENCE_REQ +
+            "案件的破案与悬案结局以资料为准，正文按此收束。"
+        )},
+        {"key": "street", "title": "街头反响", "req": (
+            "写这桩小案在案发地街巷的即时反响：以资料给出的案发州动乱度、识字率、"
+            "失业率、政治运动、物价与舆论方向为限，写邻里的议论、受害与加害两方家庭的"
+            "情形；不得编造资料外的事件、人名与数字。结局与判决以资料为准。"
+        )},
+        {"key": "close", "title": "法网收束", "req": (
+            "写这桩小案进入法网后的收束：现行警察机构法律与国内安全法律、执法与"
+            "内务机构投入档位以资料为准；破案结果与判决照抄资料原文（含刑种、刑期与"
+            "金额），悬案时以资料为准收束。" + CRIME_EVIDENCE_REQ +
+            "资料若有「嫌疑人使计」信息，按资料写明"
+            "诡计得逞/被识破。"
+        )},
+    ],
+}
+
+# 极刑行刑方式: 判词保持「判处死刑」, 行刑方式由正文按当地惯例演绎
+for _key, _sec in (("crime", "justice"), ("crime_big", "justice"),
+                   ("crime_small_a", "close"), ("crime_small_b", "close")):
+    for _s in POOL[_key]["sections"]:
+        if _s["key"] == _sec:
+            _s["req"] += ("极刑案件（判处死刑）的行刑方式可按当地惯例合情演绎"
+                          "（如绞刑、斩首），判决原文仍为「判处死刑」。")
 
 
 # 接受度状态 → 军队与当地居民的关系基调 (和平年驻地板块动态使用)
@@ -526,6 +669,14 @@ WORLD_FRAME_RULE = (
     "「平行世界规则」: 本刊报道的世界完全由本刊资料构成, 与任何真实历史无关。"
     "所有国家、战争、边界、统治者、人物、日期、数字一律以本提示词给出的数据为准; "
     "数据未提供的即视为不存在或未知。行文含蓄, 以给定资料为限。"
+)
+
+_CRIME_KEYS = ("crime", "crime_big", "crime_small_a", "crime_small_b")
+
+CRIME_TERM_RULE = (
+    "「罪案称谓」: 全篇提及被控加害人时一律称「犯罪嫌疑人」(必要时可简称"
+    "「嫌疑人」), 不使用「凶手」等假定有罪的称谓; 人物对白、引文与街巷传闻"
+    "同样遵守; 资料中【犯罪嫌疑人】一栏的姓名与身份原样使用。"
 )
 
 BATTLE_TYPE_ZH = {
@@ -902,6 +1053,11 @@ def _facts_soldier(m, data, peacetime=False):
             lines.append("- " + _fmt_pop(p))
     else:
         lines.append("（无足量平民样本，请据驻地数据含蓄写作。）")
+    _fl = _mag_flavor_block(m, [s.get("state") for s in soldiers[:3]]
+                            + [c.get("state") for c in civilians[:2]])
+    if _fl:
+        lines.append("【州情速写】")
+        lines.extend(_fl)
     return "\n".join(lines)
 
 
@@ -956,6 +1112,10 @@ def _facts_homefront(m, data):
                             soldier=True)
     if blk:
         lines.append(blk)
+    _fl = _mag_flavor_block(m, [p.get("state") for p in fam[:3]])
+    if _fl:
+        lines.append("【州情速写】")
+        lines.extend(_fl)
     return "\n".join(lines)
 
 
@@ -1011,6 +1171,10 @@ def _facts_aftermath(m, data):
                             soldier=True)
     if blk:
         lines.append(blk)
+    _fl = _mag_flavor_block(m, [s.get("id") for s in ws[:4]])
+    if _fl:
+        lines.append("【州情速写】")
+        lines.extend(_fl)
     return "\n".join(lines)
 
 
@@ -1109,6 +1273,10 @@ def _facts_household(m, data):
                             fixed_last=surname)
     if blk:
         lines.append(blk)
+    _fl = _mag_flavor_block(m, [p.get("state") for p in elites[:3]])
+    if _fl:
+        lines.append("【州情速写】")
+        lines.extend(_fl)
     return "\n".join(lines)
 
 
@@ -1177,6 +1345,10 @@ def _facts_migrants(m, data):
     blk = _mag_person_names(data, "migration_change", [("移民代表", ck)])
     if blk:
         lines.append(blk)
+    _fl = _mag_flavor_block(m, [r.get("target_state") for r in migs[:3]])
+    if _fl:
+        lines.append("【州情速写】")
+        lines.extend(_fl)
     return "\n".join(lines)
 
 
@@ -1201,6 +1373,10 @@ def _facts_transformed(m, data):
     blk = _mag_person_names(data, "migration_change", [("职业转变者代表", ck)])
     if blk:
         lines.append(blk)
+    _fl = _mag_flavor_block(m, [p.get("state") for p in pros[:3]])
+    if _fl:
+        lines.append("【州情速写】")
+        lines.extend(_fl)
     return "\n".join(lines)
 
 
@@ -1252,6 +1428,10 @@ def _facts_assimilation(m, data):
     blk = _mag_person_names(data, "migration_change", [("改信者代表", ck)])
     if blk:
         lines.append(blk)
+    _fl = _mag_flavor_block(m, [c.get("state") for c in convs[:3]])
+    if _fl:
+        lines.append("【州情速写】")
+        lines.extend(_fl)
     return "\n".join(lines)
 
 
@@ -1273,7 +1453,45 @@ def _facts_newhome(m, data):
     blk = _mag_person_names(data, "migration_change", [("移民代表", ck)])
     if blk:
         lines.append(blk)
+    _fl = _mag_flavor_block(m, [r.get("target_state") for r in migs[:3]])
+    if _fl:
+        lines.append("【州情速写】")
+        lines.extend(_fl)
     return "\n".join(lines)
+
+
+def _mag_flavor_block(m, sids):
+    """按州 id 列表取州情速写行 (去重, 只取首个有数据的州)。"""
+    out = []
+    seen = set()
+    for sid in sids or []:
+        f = (m.get("state_flavors") or {}).get(sid)
+        if not f:
+            continue
+        for ln in f.get("lines") or []:
+            if ln not in seen:
+                seen.add(ln)
+                out.append(ln)
+        if out:
+            break
+    return out
+
+
+STATE_FLAVOR_RULE = (
+    "州情速写（路网/行政覆盖/识字/民情/人群构成）为资料给定的事实，"
+    "必须自然化入正文，不得与速写冲突，也不得另造速写外的州情指标。"
+)
+
+
+def _article_has_flavor(data, article_key):
+    m = data.get("magazine") or {}
+    art = m.get(article_key) or {}
+    sf = art.get("state_flavor") or {}
+    if any(sf.get(k) for k in sf):
+        return True
+    if article_key not in POOL and (m.get("state_flavors")):
+        return True
+    return False
 
 
 def render_facts(article_key, section_key, data):
@@ -1281,8 +1499,12 @@ def render_facts(article_key, section_key, data):
     if article_key in POOL:
         art = m.get(article_key) or {}
         secs = art.get("sections") or {}
-        return (secs.get(section_key)
+        base = (secs.get(section_key)
                 or "（本板块数据不足，请据已知事实含蓄写作或略去。）")
+        fl = ((art.get("state_flavor") or {}).get(section_key)) or []
+        if fl:
+            base = base.rstrip("\n") + "\n\n【州情速写】\n" + "\n".join(fl)
+        return base
     m["_player_wars"] = m.get("player_wars") or data.get("player_wars") or []
     m["_player_at_war"] = m.get("player_at_war") if m.get("player_at_war") is not None else data.get("player_at_war")
     fn = {
@@ -1411,107 +1633,6 @@ def _lead_digest(text, limit=260, tail=180):
 
 
 # ---------------------------------------------------------------------------
-# B2: 罪案一致性校验与违规重生成 (A3 提示词之外的兜底闸门)
-# ---------------------------------------------------------------------------
-
-# 非暴力案件出现这些强死亡词 → 直接判违规 (勒索/盗窃案中无任何死因可写)
-_DEATH_STRONG_RE = re.compile(
-    r"死亡|身亡|遇害|被杀|丧生|命案|尸体|遗骸|毙命|致死|死于|丧命|遇难|"
-    r"杀死|害死|打死|刺死|砍死|勒死|毒死|溺死|烧死|命丧|死尸|伏尸|死讯|"
-    r"殒命|丧于非命|死者")
-# 弱模式: 加害性命的说法 (受害者视角的"性命尚且难保"等不匹配)
-_DEATH_WEAK_RE = re.compile(
-    r"害.{0,10}(性命|人命)|要了.{0,8}命|丢了.{0,4}命|夺.{0,6}(性命|命)")
-# 刑罚/判决词: 非《法网与衙门》板块出现即违规; 法网板块用于"是否另加刑种"检查
-_SENTENCE_TERMS = ("拘役", "监禁", "苦役", "死刑", "流放", "徒刑", "绞刑",
-                   "坐牢", "入狱", "监房", "发配", "斩首", "枪决", "无期", "劳役")
-# 法网板块: 资料只判罚金时, 若出现"坐牢/入狱/监房+期限或惩戒语义"视为另加刑种
-_SENTENCE_EXTRA_RE = re.compile(
-    r"拘役|监禁|苦役|死刑|流放|徒刑|绞刑|发配|斩首|枪决|无期|劳役|"
-    r"(?:坐牢|入狱|监房).{0,8}(?:月|年|半月|以儆|惩戒|惩罚)")
-
-
-def _crime_type_zh(data):
-    """从罪案事实里取案件类型中文 (如 勒索/盗窃/凶杀)。"""
-    m = (data.get("magazine") or {})
-    secs = (m.get("crime") or {}).get("sections") or {}
-    case_facts = secs.get("case") or ""
-    mt = re.search(r"一桩(.+?)案", case_facts)
-    return mt.group(1) if mt else ""
-
-
-def _crime_is_nonviolent(data):
-    """勒索/盗窃视为非暴力案件 (提示词与 B2 一律禁止写成杀伤)。"""
-    return _crime_type_zh(data) in ("勒索", "盗窃")
-
-
-def _crime_section_problems(section_key, text, data):
-    """B2 单板块一致性校验: 返回违规说明列表, 空列表 = 通过。"""
-    probs = []
-    t = text or ""
-    if _crime_is_nonviolent(data):
-        strong = _DEATH_STRONG_RE.search(t)
-        if strong:
-            probs.append(f"非暴力案件出现死亡描写（“{strong.group(0)}”），受害者不得死亡")
-        weak = _DEATH_WEAK_RE.search(t)
-        if weak:
-            probs.append(f"非暴力案件出现加害性命描写（“{weak.group(0)}”），不得写成杀伤")
-    if section_key != "justice":
-        for term in _SENTENCE_TERMS:
-            if term in t:
-                probs.append(f"本板块出现刑罚/判决表述（“{term}”），庭审判决应统一"
-                             "由《法网与衙门》按资料叙述")
-                break
-        return probs
-    # ---- 法网板块: 判决与资料比对 ----
-    m = (data.get("magazine") or {})
-    outcome = (m.get("crime") or {}).get("outcome") or {}
-    sentence = outcome.get("sentence")
-    if not sentence:
-        # 无罪开释/悬案: 不得自拟刑罚
-        extra = _SENTENCE_EXTRA_RE.search(t)
-        if extra:
-            probs.append(f"资料为无罪/悬案收束，正文却出现了刑罚表述（“{extra.group(0)}”）")
-        return probs
-    if "罚金" in sentence:
-        if "罚金" not in t:
-            probs.append(f"判决与资料不符：缺少资料给定的“{sentence}”")
-        else:
-            for d in re.findall(r"\d+", sentence):
-                if d and d not in t:
-                    probs.append(f"判决金额与资料不符：资料为“{sentence}”，正文未出现 {d}")
-                    break
-        extra = _SENTENCE_EXTRA_RE.search(t)
-        if extra:
-            probs.append(f"判决与资料不符：资料只判罚金（{sentence}），正文另加了"
-                         f"“{extra.group(0)}”")
-    else:
-        hit = next((term for term in _SENTENCE_TERMS if term in sentence), None)
-        if hit and hit not in t:
-            probs.append(f"判决与资料不符：缺少资料给定的刑种“{hit}”（{sentence}）")
-    return probs
-
-
-def _crime_correction_note(problems, data):
-    """违规重生成时追加到提示词末尾的纠正说明。"""
-    ctype = _crime_type_zh(data) or "本案"
-    note = (
-        "【一致性警告】上一版内容存在与资料冲突：\n"
-        + "\n".join(f"- {p}" for p in problems)
-        + f"\n请注意：本案为资料给定的「一桩{ctype}案」，非暴力案件按非暴力处理，"
-          "受害者、凶手、证人的身份与结局以资料为准；"
-          "庭审与判决统一按资料给定内容照写（判决由《法网与衙门》板块表述）。"
-    )
-    m = (data.get("magazine") or {})
-    sentence = (m.get("crime") or {}).get("outcome") or {}
-    sentence = sentence.get("sentence")
-    if sentence:
-        note += f"资料给定判决：{sentence}"
-    note += "\n请重写本板块，保持与资料及全篇一致。"
-    return note
-
-
-# ---------------------------------------------------------------------------
 # B1: 罪案事实卡 (开篇正文 → 3~5 行结构化卡片, 供后续板块对齐)
 # ---------------------------------------------------------------------------
 
@@ -1525,14 +1646,16 @@ def build_crime_card_messages(article, data, lead_text):
         "- 只使用正文与资料中已出现的事实。\n"
         "- 案件类型、案发地、案发现场、三角色身份与判决以资料为准。\n"
         "- 若正文与资料冲突，以资料为准，并在卡片末行注明「正文偏差」。\n"
-        "- 非暴力案件（勒索/盗窃等）按资料结局处理；若正文写了死亡，卡片按资料"
-        "纠正为未死亡，并注明正文违规。\n"
+        "- 非暴力案（盗窃/勒索/欺诈/走私/贪腐等）按资料的非暴力性质处理，"
+        "绑架/政治绑架案受害者获救或放归；卡片以资料的结局为准，正文与资料冲突时"
+        "以资料为准并在末行注明「正文偏差」（绑架案可写胁迫、囚禁、赎金与解救）。\n"
         "输出格式（严格按行，最多5行，无标题或多余文字）：\n"
         "1. 案件类型：…；案发地：…；案发现场：…\n"
-        "2. 三角色：受害者=姓名/身份；凶手=姓名/身份；证人=姓名/身份\n"
+        "2. 三角色：受害者=姓名/身份；犯罪嫌疑人=姓名/身份；证人=姓名/身份\n"
         "3. 案发经过：…（2–3句，按正文概括，正文缺失则按资料类型简述）\n"
-        "4. 结局：…（受害者是否存活；是否破案；凶手是否归案）\n"
-        "5. 判决：…（资料给出的判决原文；未给出写「未定」）"
+        "4. 结局：…（受害者是否存活；是否破案；犯罪嫌疑人是否归案）\n"
+        "5. 判决：…（资料给出的判决原文；未给出写「未定」）\n"
+        + CRIME_TERM_RULE
     )
     user_msg = (
         f"【资料事实-案件概要】\n{case_facts}\n\n"
@@ -1543,10 +1666,10 @@ def build_crime_card_messages(article, data, lead_text):
             {"role": "user", "content": user_msg}]
 
 
-def _crime_card_fallback(data):
+def _crime_card_fallback(data, key="crime"):
     """事实卡抽取失败时的确定性兜底: 直接从资料拼 3–5 行卡片。"""
     m = (data.get("magazine") or {})
-    crime = m.get("crime") or {}
+    crime = m.get(key) or {}
     secs = crime.get("sections") or {}
     case_facts = secs.get("case") or ""
     lines = []
@@ -1559,7 +1682,7 @@ def _crime_card_fallback(data):
     if scene:
         head += "；案发现场：" + scene.group(1).strip()
     lines.append(head)
-    roles = re.findall(r"【(受害者|凶手|证人)】([^，,\n]+)", case_facts)
+    roles = re.findall(r"【(受害者|犯罪嫌疑人|证人)】([^，,\n]+)", case_facts)
     if roles:
         lines.append("三角色：" + "；".join(f"{k}={v.strip()}" for k, v in roles))
     lines.append("案发经过：以资料给出的案件类型与案发现场为准，详见开篇正文。")
@@ -1572,7 +1695,7 @@ def _crime_card_fallback(data):
     return "\n".join(lines[:5])
 
 
-def _extract_crime_card(text, data=None):
+def _extract_crime_card(text, data=None, key="crime"):
     """把模型输出规整为最多5行的案件事实卡; 空输出时退回资料摘要兜底。"""
     lines = []
     for ln in (text or "").split("\n"):
@@ -1583,7 +1706,7 @@ def _extract_crime_card(text, data=None):
         if len(lines) >= 5:
             break
     if not lines:
-        return _crime_card_fallback(data) if data else ""
+        return _crime_card_fallback(data, key=key) if data else ""
     return "\n".join(lines)
 
 
@@ -1593,7 +1716,7 @@ def _build_crime_card(article, data, lead_text, cfg):
     card_cfg = dict(cfg)
     card_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 1200)
     text = journal.call_deepseek(msg, card_cfg).strip()
-    return _extract_crime_card(text, data)
+    return _extract_crime_card(text, data, key=article["key"])
 
 
 def build_intro_messages(data):
@@ -1602,6 +1725,12 @@ def build_intro_messages(data):
     govt_zh = data.get("govt_zh") or data.get("govt") or "未知"
     year = data.get("year", "?")
     preview = _intro_article_preview(data)
+    pool = (data.get("magazine") or {}).get("pool") or {}
+    special_note = ""
+    if pool.get("special"):
+        special_note = ("\n\n本期为《社会与法》专版：头版大案 + 两则案情简报。"
+                        "导言须点明专版定位，预告大案与两则简报，并说明本期"
+                        "三篇特稿同为罪案报道。")
     # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国); 政体字段随之从抬头移除
     full = journal.full_country_name(country, govt_zh)
     sys_msg = (
@@ -1611,7 +1740,7 @@ def build_intro_messages(data):
         f"【国名】{country}（合并政体后的正式国名：{full}）\n"
         f"【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
         f"本刊基调:\n{_voice(data)}\n\n"
-        f"三篇特稿: {preview}。\n\n"
+        f"三篇特稿: {preview}。{special_note}\n\n"
         f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}\n"
         "请先拟定刊名(据都城/国名+政体惯例, 如《巴黎纪事月刊》), 撰写杂志导言: "
         "概括本年度大势, 预告三篇特稿, 并点明本刊的政体立场。"
@@ -1677,12 +1806,19 @@ def build_lead_messages(article, data, intro):
         "注意：本期三篇文章标题各不相同、各具面目。\n\n"
         f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}"
     )
+    if _article_has_flavor(data, article["key"]):
+        sys_msg += f"\n{STATE_FLAVOR_RULE}"
+    if article["key"] in _CRIME_KEYS:
+        sys_msg += f"\n{CRIME_TERM_RULE}"
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
         f"请先为全篇文章拟一个与本刊文风相称的标题，再写开篇板块《{sec['title']}》正文。"
         f"相关数据如下(涉及国名请用【国名】={country}):\n"
         f"{facts}\n\n输出格式：第一行直接输出文章标题（无井号、无『标题：』前缀，"
         f"不超过24字），空一行后输出开篇板块正文，正文使用 Markdown 格式。"
+        "开篇正文须分为 2~4 个自然段（每段聚焦一个场景或时序），"
+        "段与段之间必须用空行分隔（Markdown 段落），不得写成单段长文，"
+        "也不得以单换行代替分段。"
     )
     return [{"role": "system", "content": sys_msg},
             {"role": "user", "content": user_msg}]
@@ -1699,9 +1835,13 @@ def build_section_messages(article, section, data, intro, lead_text,
         f"篇幅要求：板块正文控制在1200–1800字。\n\n"
         f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}"
     )
+    if _article_has_flavor(data, article["key"]):
+        sys_msg += f"\n{STATE_FLAVOR_RULE}"
+    if article["key"] in _CRIME_KEYS:
+        sys_msg += f"\n{CRIME_TERM_RULE}"
     lead_head = (f"本文开篇板块《{article['sections'][0]['title']}》内容摘要"
                  f"（以下为摘要，全文较长）:\n")
-    if article["key"] == "crime" and crime_card:
+    if article["key"] in ("crime", "crime_big") and crime_card:
         digest = _lead_digest(lead_text, limit=600)
         user_msg = (
             f"本期杂志导言:\n{intro}\n\n"
@@ -1775,6 +1915,11 @@ def _normalize_section(text, title):
             s = re.sub(r"^(#{1,6})\s+", "### ", s)
         out.append(s)
     body = _strip_markdown_tables("\n".join(out)).strip()
+    # 模型偶尔重复写板块标题并以 --- 分隔 (如 ### 案件卷宗\n\n---\n### 案件卷宗),
+    # 折叠为单个标题, 避免正文出现空板块头。
+    body = re.sub(
+        rf"^### {re.escape(title)}\s*\n\s*---\s*\n\s*### {re.escape(title)}\s*\n?",
+        f"### {title}\n\n", body, count=1)
     first = next((ln for ln in body.split("\n") if ln.strip()), "")
     if not _MAG_HEAD_RE.match(first):
         return f"### {title}\n\n{body}"
@@ -1894,7 +2039,6 @@ def generate_magazine(data, cfg, force=True):
     intro = journal.call_deepseek(build_intro_messages(data), intro_cfg).strip()
     sec_cfg = dict(cfg)
     sec_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 4000)
-    crime_retries = 2  # B2: 罪案板块违规重生成次数
 
     def _parse_article_title(text, fallback):
         """首板块输出第一行 → 文章标题; 解析失败回退 default_title。"""
@@ -1918,25 +2062,15 @@ def generate_magazine(data, cfg, force=True):
             fallback = (article.get("default_title")
                         or article.get("title") or article["key"])
             title, body = _parse_article_title(text, fallback)
+            if article["key"] in _CRIME_KEYS:
+                # 罪案称谓安全网: 提示词已要求, 此处兜底硬性词汇要求
+                title = title.replace("凶手", "嫌疑人")
+                body = (body or "").replace("凶手", "嫌疑人")
             body = _normalize_section(body or text,
                                       article["sections"][0]["title"])
-            if article["key"] == "crime":
-                for attempt in range(crime_retries):
-                    probs = _crime_section_problems("case", body, data)
-                    if not probs:
-                        break
-                    journal.log(f"[{year}年] 罪案开篇《{article['sections'][0]['title']}》"
-                                f"违规: {'; '.join(probs)} (第{attempt + 1}次重生成)")
-                    msg2 = list(msg)
-                    msg2[-1] = dict(msg2[-1])
-                    msg2[-1]["content"] += "\n\n" + _crime_correction_note(probs, data)
-                    text = journal.call_deepseek(msg2, sec_cfg).strip()
-                    title, body = _parse_article_title(text, fallback)
-                    body = _normalize_section(body or text,
-                                              article["sections"][0]["title"])
-                probs = _crime_section_problems("case", body, data)
-                if probs:
-                    journal.log(f"[{year}年] 罪案开篇重试后仍违规: {'; '.join(probs)}")
+            # 开篇板块: 模型常以单换行代替分段 (Markdown 下仍是一段),
+            # 统一转为空行分隔的段落。
+            body = re.sub(r"(?<!\n)\n(?!\n)", "\n\n", body)
             return article["key"], title, body
         except Exception as e:
             journal.log(f"首板块《{article['sections'][0]['title']}》生成失败: {e}")
@@ -1955,17 +2089,20 @@ def generate_magazine(data, cfg, force=True):
             titles[k] = t
 
     # B1: 罪案开篇生成后抽取「案件事实卡」, 供后续板块对齐
+    # (普通罪案与大案均生成; 小案靠首板块摘要对齐, 不生成事实卡)
     crime_cards = {}
-    crime_article = next((a for a in articles if a["key"] == "crime"), None)
+    crime_article = next((a for a in articles
+                          if a["key"] in ("crime", "crime_big")), None)
     if crime_article:
+        ck = crime_article["key"]
         try:
-            card = _build_crime_card(crime_article, data, leads["crime"], sec_cfg)
+            card = _build_crime_card(crime_article, data, leads[ck], sec_cfg)
             if card:
-                crime_cards["crime"] = card
+                crime_cards[ck] = card
                 journal.log(f"[{year}年] 罪案事实卡已生成 ({len(card)} 字)")
         except Exception as e:
             journal.log(f"[{year}年] 罪案事实卡生成失败, 退回资料摘要: {e}")
-            crime_cards["crime"] = _crime_card_fallback(data)
+            crime_cards[ck] = _crime_card_fallback(data, key=ck)
 
     def _gen_section(article, section):
         try:
@@ -1974,29 +2111,15 @@ def generate_magazine(data, cfg, force=True):
             if section["key"] == "newhome":
                 sec2["max_tokens"] = min(cfg.get("max_tokens", 8000), 6000)
             card = (crime_cards.get(article["key"])
-                    if article["key"] == "crime" else None)
+                    if article["key"] in ("crime", "crime_big") else None)
             msg = build_section_messages(article, section, data, intro,
                                          leads[article["key"]],
                                          article_title=titles.get(article["key"]),
                                          crime_card=card)
             text = journal.call_deepseek(msg, sec2).strip()
+            if article["key"] in _CRIME_KEYS:
+                text = text.replace("凶手", "嫌疑人")
             body = _normalize_section(text, section["title"])
-            if article["key"] == "crime":
-                for attempt in range(crime_retries):
-                    probs = _crime_section_problems(section["key"], body, data)
-                    if not probs:
-                        break
-                    journal.log(f"[{year}年] 罪案板块《{section['title']}》违规: "
-                                f"{'; '.join(probs)} (第{attempt + 1}次重生成)")
-                    msg2 = list(msg)
-                    msg2[-1] = dict(msg2[-1])
-                    msg2[-1]["content"] += "\n\n" + _crime_correction_note(probs, data)
-                    text = journal.call_deepseek(msg2, sec2).strip()
-                    body = _normalize_section(text, section["title"])
-                probs = _crime_section_problems(section["key"], body, data)
-                if probs:
-                    journal.log(f"[{year}年] 罪案板块《{section['title']}》重试后仍违规: "
-                                f"{'; '.join(probs)}")
             return article["key"], section["key"], body
         except Exception as e:
             journal.log(f"板块《{section['title']}》生成失败: {e}")
@@ -2010,29 +2133,6 @@ def generate_magazine(data, cfg, force=True):
         for f in futures:
             ak, sk, t = f.result()
             sections[(ak, sk)] = t
-
-    # B2 兜底: 罪案文章全篇一致性复查 (各板块单查之后的最终闸门)
-    if crime_article:
-        try:
-            all_text = "\n".join([leads["crime"]] + [
-                sections.get(("crime", s["key"]), "")
-                for s in crime_article["sections"][1:]])
-            problems = []
-            if _crime_is_nonviolent(data):
-                strong = _DEATH_STRONG_RE.search(all_text)
-                weak = _DEATH_WEAK_RE.search(all_text)
-                if strong or weak:
-                    problems.append("全篇仍含死亡/杀伤描写（非暴力案件）")
-            oc = ((data.get("magazine") or {}).get("crime") or {})
-            oc = oc.get("outcome") or {}
-            if oc.get("sentence") and "罚金" in oc["sentence"]:
-                jt = sections.get(("crime", "justice"), "")
-                if "罚金" not in jt:
-                    problems.append("《法网与衙门》缺少资料给定的罚金判决")
-            if problems:
-                journal.log(f"[{year}年] 罪案文章全篇一致性复查未通过: {'; '.join(problems)}")
-        except Exception as e:
-            journal.log(f"[{year}年] 罪案文章全篇一致性复查异常: {e}")
 
     text = _assemble(intro, leads, sections, data, articles=articles,
                      titles=titles)
