@@ -1089,6 +1089,14 @@ SECTION_DEFS = [
      "也可为文学沙龙、社科研讨会、新政晓谕、学堂启事等非商品形式；至少一条须直接体现科技，富有时代气息。"),
 ]
 
+# 报纸板块 → HTML 图表占位标记 (htmlview.py 重建时替换为内嵌 SVG 图表:
+# comment=宏观经济折线图, stock=个股年K线蜡烛图)。占位由生成端确定性追加,
+# 不依赖模型自觉, 图表数据来自 data/raw_*.json 的历史序列。
+_SECTION_CHART_PLACEHOLDERS = {
+    "comment": "<!--CHART macro-->",
+    "stock": "<!--CHART stock-->",
+}
+
 # 所有风格共用的「数据解读规则」：与具体风格无关, 保证各风格拿到的事实口径一致
 FACT_GUIDE = (
     "报道政界动态时以执政集团为核心，结合其力量消长说明朝局与施政倾向。"
@@ -2989,8 +2997,12 @@ def generate_newspaper(data, cfg, history=None):
         try:
             msg = build_section_messages(key, data, cfg, history, masthead, style=st)
             text = call_deepseek(msg, section_cfg).strip()
-            return _normalize_section_text(text, title, use_separators=use_sep,
+            body = _normalize_section_text(text, title, use_separators=use_sep,
                                            paper_name=paper_name)
+            ph = _SECTION_CHART_PLACEHOLDERS.get(key)
+            if ph:
+                body = body.rstrip() + "\n\n" + ph
+            return body
         except Exception as e:
             log(f"板块「{title}」生成失败: {e}")
             return f"## {title}\n\n(本板块生成失败)"

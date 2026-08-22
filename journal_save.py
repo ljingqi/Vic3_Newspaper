@@ -8028,6 +8028,25 @@ def _crime_signature_good(profile, freq, min_weight=0.4):
                                     -g.get("weight", 0)))
 
 
+def _crime_related_top_good(profiles):
+    """案件相关者最常购买的商品: 三角色 (含其余受害者) 消费画像权重聚合,
+    取总权重最高者; 并列时取出现人数多者, 再按 key 字典序 (确定性)。
+    供「只有嫌疑人的常购行, 且商品取相关者最常购买的那类」使用。"""
+    agg = {}
+    cnt = {}
+    for _k, prof in (profiles or {}).items():
+        for g in (prof.get("goods") or []):
+            k = g.get("key")
+            if not k:
+                continue
+            w = g.get("weight", 0) or 0
+            agg[k] = agg.get(k, 0.0) + w
+            cnt[k] = cnt.get(k, 0) + 1
+    if not agg:
+        return None
+    return max(sorted(agg), key=lambda k: (agg[k], cnt[k]))
+
+
 def _crime_good_evidence_text(gkey, gm):
     """商品 → (物证演绎, 在场证明地点); 未知商品给通用占位。"""
     if not gkey:
@@ -8086,7 +8105,8 @@ def _crime_state_industry_zh(ctx, sid, objs):
 
 
 def _crime_top_price_dev(price_map):
-    """本季物价异动最大商品 → 自然语言行 (市价 vs 基准价)。"""
+    """本季物价异动最大商品 → 自然语言行 (只写方向, 不带百分比, 防止
+    模型借人物之口报出「较基准低X%」这类破墙数字)。"""
     gm = build_goods_map()
     best = None
     for gid, price in (price_map or {}).items():
@@ -8110,14 +8130,14 @@ def _crime_top_price_dev(price_map):
     name = gm["zh"].get(best[0], best[0])
     d = best[1]
     if d > 0:
-        return f"本季物价：{name}市价较基准高{d}%。"
+        return f"本季物价：{name}市价走高。"
     if d < 0:
-        return f"本季物价：{name}市价较基准低{abs(d)}%。"
+        return f"本季物价：{name}市价走低。"
     return None
 
 
 def _crime_top_smuggle_good(price_map):
-    """走私货物: 走私候选池内市价偏离绝对值最大的商品。"""
+    """走私货物: 走私候选池内市价偏离绝对值最大的商品 (只写方向, 不带百分比)。"""
     gm = build_goods_map()
     best = None
     for gid, price in (price_map or {}).items():
@@ -8142,8 +8162,8 @@ def _crime_top_smuggle_good(price_map):
         return None
     name = gm["zh"].get(best[0], best[0])
     d = best[1]
-    return (f"私运货物：{name}（市价较基准"
-            + ("高" if d >= 0 else "低") + f"{abs(d)}%）。")
+    return (f"私运货物：{name}（市价"
+            + ("偏高" if d >= 0 else "偏低") + "）。")
 
 
 def _crime_type_motive_text(crime_type, victim, murderer, rnd, unit=None):
@@ -8225,7 +8245,7 @@ def _crime_evidence_outcome(outcome, trick, forensics):
 
 def _crime_evidence_lines(case, profiles, freq, price_map, objs, vbid, ctx,
                           techs, laws, outcome, trick, gm, scope="full"):
-    """方案A 组合证据卡: 签名商品/市价偏离/在场证明/现场实物/勘验结局。
+    """方案A 组合证据卡: 常购商品/物证/在场证明/现场实物/勘验结局。
     scope: full=三角色全卡 (开篇/简报), suspect=仅嫌疑人+现场 (其余板块),
     impact=仅现场实物+结局 (判决之后)。"""
     lines = ["物证与在场证明（资料）："] if scope != "impact" else []
@@ -8234,25 +8254,31 @@ def _crime_evidence_lines(case, profiles, freq, price_map, objs, vbid, ctx,
     roles_used = (role_map if scope == "full"
                   else (("犯罪嫌疑人", "murderer"),) if scope == "suspect"
                   else ())
+    # 常购商品只给嫌疑人, 且取相关者最常购买的那类 (不再每人一行、不再带
+    # 市价偏离百分比, 避免模型借人物之口报「较基准低X%」式价格, 打破第四面墙)
+    rel_top_key = _crime_related_top_good(profiles)
+    rel_top_name = (gm["zh"].get(rel_top_key, rel_top_key)
+                    if rel_top_key else None)
     for role, key in roles_used:
-        pop = case[key][1]
-        prof = profiles.get(key) or {}
-        goods = prof.get("goods") or []
-        if not goods:
+        if key == "murderer":
+            gkey = rel_top_key
+            name = rel_top_name
+        else:
+            prof = profiles.get(key) or {}
+            goods = prof.get("goods") or []
+            if not goods:
+                continue
+            sig = _crime_signature_good(prof, freq)
+            if not sig:
+                continue
+            gkey = sig.get("key")
+            name = sig.get("name") or gm["zh"].get(gkey, gkey)
+        if not gkey:
             continue
-        sig = _crime_signature_good(prof, freq)
-        if not sig:
-            continue
-        gkey = sig.get("key")
-        name = sig.get("name") or gm["zh"].get(gkey, gkey)
         ev, place = _crime_good_evidence_text(gkey, gm)
-        dev = sig.get("dev_pct")
-        dev_txt = ""
-        if dev is not None:
-            dev_txt = ("（市价较基准"
-                       + ("高" if dev >= 0 else "低")
-                       + f"{abs(dev)}%）")
-        bits = [f"常购{name}{dev_txt}"]
+        bits = []
+        if key == "murderer" and name:
+            bits.append(f"常购{name}")
         if ev:
             bits.append(f"可作物证：{ev}")
         if place:
@@ -12219,7 +12245,7 @@ def _article_natural(article_type, fname, sname, meta):
                 s = s.replace("$concept_ship$", gz)
         elif kind == "state" and article_type == "treaty_port":
             st = meta.get("state") or "该州"
-            s = s.replace("$concept_treaty_port$", f"位于{st}的条约港")
+            s = s.replace("$concept_treaty_port$", f"{st}（条约港）")
         elif kind == "state" and article_type == "state_transfer":
             s = s.replace("将一个$concept_state$", f"将{meta.get('state') or '一个州'}")
         elif kind == "law" and article_type == "law_commitment":
@@ -12357,6 +12383,30 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
             _hubs_loaded[0] = True
         return _region_hubs
 
+    def resolve_state_zh(sid, article_type):
+        """条款里的州 id → 中文名。
+
+        条约港优先取该州港口 hub 名 (游戏内条约港即显示港口名, 如 STATE_LARISTAN
+        的「伦格港」), 回退城市 hub 名; 其余条款取州域名。数字 id 一律解析,
+        不再把「805」这类裸 id 漏进正文。"""
+        try:
+            sid = int(sid)
+        except (TypeError, ValueError):
+            return None
+        sobj = _state_object(data, sid)
+        if article_type == "treaty_port":
+            hubs = _hub_names(sobj) if sobj else []
+            for h in (hubs[1] if len(hubs) > 1 else None,
+                      hubs[0] if hubs else None):
+                if h:
+                    return h
+        if sobj and sobj.get("region"):
+            return _load_loc_all().get(sobj["region"]) or sobj["region"]
+        rk = _state_region_key(data, sid)
+        if rk:
+            return _load_loc_all().get(rk) or rk
+        return None
+
     tm = data.find(b'"treaty_manager"')
     if tm < 0:
         return treaties
@@ -12434,6 +12484,16 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
             src = a.get("source_country")
             tgt = a.get("target_country")
             detail, meta = _article_detail(a)
+            # 数字州 id 条款: 解析成本地名 (条约港→港口名, 其余→州域名),
+            # 杜绝「州805」这类裸 ID 泄漏。
+            if meta and meta.get("kind") == "state":
+                sk = meta.get("state_key")
+                if isinstance(sk, (int, str)) and str(sk).lstrip("-").isdigit():
+                    zh = resolve_state_zh(sk, article_type)
+                    if zh:
+                        meta = dict(meta, state=zh)
+                        detail = (zh if article_type == "treaty_port"
+                                  else f"州{zh}")
             f_a = (names.get((index.get(src) or {}).get("definition"), str(src))
                    if src and src != 4294967295 else None)
             t_a = (names.get((index.get(tgt) or {}).get("definition"), str(tgt))
@@ -12624,14 +12684,29 @@ def _extract_interest_groups(data, player_id, chars=None):
 # 报纸采访板块与杂志各文章池共用同一份「州情速写」, 保证口径一致。
 # ---------------------------------------------------------------------------
 
-# 路网档位: 条件为「基础设施 ≥ 阈值」, 命中后取最后一档; ≥100 或存在运营铁路为铁路通衢。
+# 路网档位: 道路 4 级按「基础设施 ≥ 阈值」判定; 铁路另起 4 级按运营铁路建筑
+# 的生产方法判定, 道路与铁路双维度并存, 不再用铁路整体覆盖道路档位。
 _STATE_ROAD_BANDS = (
     (10,  "road_trail",    "荒径野道", "无像样官道，商旅多行土路，雨季泥泞难行"),
     (25,  "road_post",     "驿路初通", "驿路土道初通，骡马车队是主要运力"),
     (60,  "road_highway",  "商路纵横", "大道纵横，车马络绎，沿途驿站货栈渐多"),
     (100, "road_turnpike", "通衢大道", "官道宽阔，码头货栈相连，人流货流不断"),
 )
-_STATE_ROAD_RAIL = ("road_rail", "铁路通衢", "铁轨干线贯穿，蒸汽机车与站台成为州景")
+# 铁路 4 级 (对应游戏生产方法 pm_early_trains / pm_steam_trains /
+# pm_electric_trains / pm_diesel_trains, common/production_methods/
+# 11_private_infrastructure.txt); 州档取该州运营铁路建筑的最高一级。
+_STATE_RAIL_BANDS = (
+    ("pm_early_trains",    "rail_early",    "铁轨初通",   "蒸汽机车初现，站台与货栈尚简"),
+    ("pm_steam_trains",    "rail_steam",    "蒸汽干线",   "蒸汽机车干线贯穿，客货运输繁忙"),
+    ("pm_electric_trains", "rail_electric", "电气化干线", "电气化铁路干线，机车牵引力大增"),
+    ("pm_diesel_trains",   "rail_diesel",   "柴油干线",   "柴油机车干线，运力与里程居先"),
+)
+# 城镇中心公共交通生产方法 → 风味 (06_urban_center.txt 的
+# pm_no_public_transport / pm_public_trams / pm_public_motor_carriages)
+_STATE_URBAN_TRAM_PMS = (
+    ("pm_public_trams", "电车穿行"),
+    ("pm_public_motor_carriages", "公共马车与汽车穿行"),
+)
 _STATE_ROAD_SAT_BANDS = (
     (0.6,  "sat_open", "通衢", "车马畅行无阻"),
     (0.9,  "sat_busy", "繁忙", "大道繁忙，时有拥堵"),
@@ -12819,16 +12894,23 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
     # ---- 路网 ----
     infra = sobj.get("infrastructure") or 0
     usage = sobj.get("infrastructure_usage") or 0
-    has_rail = any(bmap.get(b) == "building_railway"
-                   and (objs.get(b) or {}).get("staffing", 0) > 0
-                   for b in by_state.get(sid, []))
-    if infra >= 100 or has_rail:
-        rb_key, rb_zh, rb_desc = _STATE_ROAD_RAIL
-    else:
-        rb_key, rb_zh, rb_desc = _STATE_ROAD_BANDS[0][1:]
-        for th, k, z, d in _STATE_ROAD_BANDS:
-            if infra >= th:
-                rb_key, rb_zh, rb_desc = k, z, d
+    rb_key, rb_zh, rb_desc = _STATE_ROAD_BANDS[0][1:]
+    for th, k, z, d in _STATE_ROAD_BANDS:
+        if infra >= th:
+            rb_key, rb_zh, rb_desc = k, z, d
+    # 铁路档位: 州内运营铁路建筑的最高生产方法级 (无运营铁路则不写铁路)
+    rail = None
+    for b in by_state.get(sid, []):
+        if bmap.get(b) != "building_railway":
+            continue
+        o = objs.get(b) or {}
+        if not (o.get("staffing") or 0) > 0:
+            continue
+        pms = set(o.get("production_methods") or [])
+        for idx, (pm, _k, _z, _d) in enumerate(_STATE_RAIL_BANDS):
+            if pm in pms and (rail is None or idx > rail[0]):
+                rail = (idx, _k, _z, _d)
+    rail_txt = f"；{rail[2]}（{rail[3]}）" if rail else ""
     sat_ratio = (usage / infra) if infra > 0 else 99.0
     if sat_ratio > 1.05:
         sat_key, sat_zh, sat_desc = _STATE_ROAD_SAT_JAM
@@ -12840,10 +12922,10 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
     incorp = sobj.get("incorporation")
     if incorp is not None and incorp < 1:
         lines.append(f"- 州情·路网：{state_zh}尚未完全并入本土，{rb_zh}（{rb_desc}），"
-                     f"{sat_zh}（{sat_desc}）。")
+                     f"{sat_zh}（{sat_desc}）{rail_txt}。")
     else:
         lines.append(f"- 州情·路网：{state_zh}{rb_zh}（{rb_desc}），"
-                     f"{sat_zh}（{sat_desc}）。")
+                     f"{sat_zh}（{sat_desc}）{rail_txt}。")
     # ---- 行政 ----
     cover = _admin_cover(melted, ctx, snap, cid, state_ids)
     ab_key, ab_zh, ab_desc = cover["band"]
@@ -12906,10 +12988,21 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
                    for b in by_state.get(sid, [])
                    if bmap.get(b) == "building_urban_center")
     hubs = _hub_names(sobj) or []
+    tram_txt = ""
+    for b in by_state.get(sid, []):
+        if bmap.get(b) != "building_urban_center":
+            continue
+        pms = set((objs.get(b) or {}).get("production_methods") or [])
+        for pm, zh2 in _STATE_URBAN_TRAM_PMS:
+            if pm in pms:
+                tram_txt = f"；城中已有{zh2}"
+                break
+        if tram_txt:
+            break
     if urban_lv >= 10 or any(hubs):
-        lines.append(f"- 州情·城邑：城镇中心约{urban_lv}级，市镇街巷渐成规模。")
+        lines.append(f"- 州情·城邑：城镇中心约{urban_lv}级，市镇街巷渐成规模{tram_txt}。")
     elif urban_lv:
-        lines.append(f"- 州情·城邑：城镇中心约{urban_lv}级，城邑初兴。")
+        lines.append(f"- 州情·城邑：城镇中心约{urban_lv}级，城邑初兴{tram_txt}。")
     else:
         lines.append("- 州情·城邑：多为乡村聚落，城邑寥落。")
     mosaic = _state_pop_mosaic(pops, sid)
@@ -13350,6 +13443,28 @@ def _local_enterprise_name(state_zh, good_key):
     return f"{state_zh}{suffix}"
 
 
+_STOCK_OHLC_SPREAD = 0.05  # 年K线影线最大随机幅度 (±5%)
+
+
+def _stock_ohlc(name, year, open_, close_):
+    """个股年K线四值: open=上年收盘 (新设上市 100), close=本报指数;
+    high/low 在 max/min(open,close) 外再外扩 0~±5% 的确定性随机幅度。
+    行情本身是程序模拟口径, 影线幅度同样由种子决定, 同年同股稳定可复现。"""
+    if open_ is None or close_ is None:
+        return None
+    rnd = random.Random(f"{year}|stock|ohlc|{name}")
+    up = rnd.uniform(0.0, _STOCK_OHLC_SPREAD)
+    down = rnd.uniform(0.0, _STOCK_OHLC_SPREAD)
+    hi = max(open_, close_) * (1.0 + up)
+    lo = min(open_, close_) * (1.0 - down)
+    return {
+        "open": round(open_, 1),
+        "close": round(close_, 1),
+        "high": round(hi, 1),
+        "low": round(lo, 1),
+    }
+
+
 def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
     """股市动态数据 (国家级公司 + 地方企业), 无科技/无公司时返回 None。
 
@@ -13416,6 +13531,10 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
         gids = sorted((weights or {}).keys())
         basket_zh = "、".join(zh.get(order[g], g) for g in gids[:4]) if gids else None
         note2 = _prosperity_band(cobj.get("prosperity"))
+        ohlc = _stock_ohlc(
+            name, year,
+            prev_i if isinstance(prev_i, (int, float)) and prev_i > 0 else 100.0,
+            index)
         comps.append({
             "kind": "national", "name": name, "state": st_zh,
             "industries": ind or basket_zh or "未知行业",
@@ -13424,6 +13543,10 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
             "change_pct": (round(change, 1) if change is not None else None),
             "band": _stock_band(change),
             "note": (note + "；" + note2) if (note and note2) else (note or note2 or ""),
+            "open": ohlc["open"] if ohlc else None,
+            "high": ohlc["high"] if ohlc else None,
+            "low": ohlc["low"] if ohlc else None,
+            "close": ohlc["close"] if ohlc else None,
         })
     # 地方企业: 上年已创建者保留 (州仍在国且仍产该商品), 名额补足新设
     target = int(_cfg.get("stock_local_enterprise_count", 5) or 5)
@@ -13451,6 +13574,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
         raw = max(-_STOCK_YOY_CLAMP,
                   min(_STOCK_YOY_CLAMP, d + rnd.uniform(-0.03, 0.03)))
         index = float(c.get("index") or 100.0) * (1.0 + raw)
+        ohlc = _stock_ohlc(c["name"], year, float(c.get("index") or 100.0), index)
         comps.append({
             "kind": "local", "name": c["name"], "state": c.get("state"),
             "industries": c.get("industries") or c.get("goods_basket") or "地方产业",
@@ -13459,15 +13583,24 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
             "change_pct": round(raw * 100.0, 1),
             "band": _stock_band(raw * 100.0),
             "note": c.get("note") or "",
+            "open": ohlc["open"] if ohlc else None,
+            "high": ohlc["high"] if ohlc else None,
+            "low": ohlc["low"] if ohlc else None,
+            "close": ohlc["close"] if ohlc else None,
         })
     for r in new_rows:
         nm = _local_enterprise_name(r["state"], r["good"])
         goods_zh = r.get("zh") or zh.get(r["good"], r["good"])
+        ohlc = _stock_ohlc(nm, year, 100.0, 100.0)
         comps.append({
             "kind": "local", "name": nm, "state": r["state"],
             "industries": f"{goods_zh}产销", "goods_basket": goods_zh,
             "gid": r["gid"], "good": r["good"], "index": 100.0,
             "change_pct": None, "band": "新设上市", "note": "新设上市",
+            "open": ohlc["open"] if ohlc else None,
+            "high": ohlc["high"] if ohlc else None,
+            "low": ohlc["low"] if ohlc else None,
+            "close": ohlc["close"] if ohlc else None,
         })
     if not comps:
         return None

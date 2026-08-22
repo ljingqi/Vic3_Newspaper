@@ -116,6 +116,12 @@ def md_to_html(text):
     while i < n:
         ln = lines[i]
         s = ln.strip()
+        m_chart = re.fullmatch(r"<!--CHART\s+([a-z_]+)\s*-->", s)
+        if m_chart:
+            out.append(f'<div class="chart" data-chart="'
+                       f'{html.escape(m_chart.group(1))}"></div>')
+            i += 1
+            continue
         if not s or s.startswith("<!--"):
             i += 1
             continue
@@ -223,6 +229,15 @@ ul,ol{margin:0 0 14px;padding-left:2em;line-height:2}
 li{margin-bottom:4px}
 blockquote{margin:0 0 14px;padding:10px 18px;border-left:4px solid var(--gold);background:#f3ecd8;color:var(--ink-soft)}
 code{background:#efe7d3;border-radius:3px;padding:1px 5px;font-family:Consolas,monospace;font-size:.9em}
+.chart{margin:18px 0 22px}
+.chart-hint{color:#8a7a55;text-align:center;font-size:14px;padding:18px 0;border:1px dashed #c9b98f;border-radius:4px}
+.chart-title{font-weight:700;color:var(--accent);margin:0 0 4px;font-size:15px}
+.chart-sub{color:var(--ink-soft);font-size:12px;margin:0 0 8px}
+.chart svg{display:block;margin:0 auto;max-width:100%;height:auto}
+.chart svg text{font-family:inherit;fill:var(--ink-soft)}
+.chart svg text.val{fill:var(--ink);font-size:10px}
+.chart svg text.axis{font-size:11px}
+.chart svg text.legend{font-size:12px;font-weight:700}
 
 /* 报纸版式 */
 .view-newspaper .masthead{font-family:"STKaiti","KaiTi","SimSun",serif;text-align:center;font-size:42px;letter-spacing:8px;font-weight:700;border-top:3px double #3a2c16;border-bottom:3px double #3a2c16;padding:16px 0 12px;margin:0 0 12px}
@@ -268,12 +283,142 @@ code{background:#efe7d3;border-radius:3px;padding:1px 5px;font-family:Consolas,m
 <div id="meta-line"></div>
 <script>
 const ARTICLES = __ARTICLES__;
+const CHARTS = __CHARTS__;
 const kinds = ["报纸", "杂志"];
 const tabsEl = document.getElementById("tabs");
 const yearSelect = document.getElementById("year-select");
 const stage = document.getElementById("stage");
 const metaLine = document.getElementById("meta-line");
 let type = null, year = null;
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function lineChartSvg(series) {
+  const W = 340, H = 170, ml = 46, mr = 12, mt = 16, mb = 26;
+  const pw = W - ml - mr, ph = H - mt - mb;
+  let html = "";
+  series.forEach(s => {
+    const pts = s.points;
+    if (!pts.length) return;
+    const ys = pts.map(p => p.y);
+    let lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+    if (hi === lo) { hi += 1; lo -= 1; }
+    const padY = (hi - lo) * 0.12;
+    lo -= padY; hi += padY;
+    const X = i => pts.length === 1 ? ml + pw / 2 : ml + pw * i / (pts.length - 1);
+    const Y = v => mt + ph - (v - lo) / (hi - lo) * ph;
+    let grid = "";
+    for (let t = 0; t < 4; t++) {
+      const v = lo + (hi - lo) * t / 3;
+      const y = Y(v);
+      grid += `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}" stroke="#d8cba7" stroke-width="1"/>`;
+      grid += `<text class="axis" x="${ml - 5}" y="${y + 4}" text-anchor="end">${s.fmt(v)}</text>`;
+    }
+    let line = "", dots = "", vals = "", years = "";
+    pts.forEach((p, i) => {
+      const x = X(i), y = Y(p.y);
+      line += (i ? "L" : "M") + x + "," + y;
+      dots += `<circle cx="${x}" cy="${y}" r="2.8" fill="${s.color}"/>`;
+      vals += `<text class="val" x="${x}" y="${y - 7}" text-anchor="middle">${s.fmt(p.raw)}</text>`;
+      years += `<text class="axis" x="${x}" y="${H - 8}" text-anchor="middle">${p.x}</text>`;
+    });
+    const poly = `<path d="${line}" fill="none" stroke="${s.color}" stroke-width="1.8"/>`;
+    html += `<div class="mini-chart">
+      <div class="chart-title">${esc(s.label)}${s.unit ? "（" + esc(s.unit) + "）" : ""}</div>
+      <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">${grid}${poly}${dots}${vals}${years}</svg>
+    </div>`;
+  });
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">${html}</div>`;
+}
+
+function renderMacroChart(div, curYear) {
+  const macro = (CHARTS.macro || [])
+    .filter(r => r.year <= curYear).sort((a, b) => a.year - b.year);
+  if (macro.length < 2) {
+    div.innerHTML = '<p class="chart-hint">本馆历年数据不足（需两年以上），图表自第二年起显示。</p>';
+    return;
+  }
+  const currency = CHARTS.currency || "";
+  const num = v => Math.round(v).toLocaleString("en-US");
+  const series = [
+    { label: "GDP", unit: currency, color: "#7a3b2e", fmt: num,
+      points: macro.map(r => ({ x: r.year, y: r.gdp, raw: r.gdp })) },
+    { label: "人口", unit: "人", color: "#2f5d50", fmt: num,
+      points: macro.map(r => ({ x: r.year, y: r.pop, raw: r.pop })) },
+    { label: "生活水平", unit: "", color: "#8c6d1f",
+      fmt: v => Number(v).toFixed(2),
+      points: macro.map(r => ({ x: r.year, y: r.sol, raw: r.sol })) },
+    { label: "识字率", unit: "%", color: "#4a6f8a",
+      fmt: v => Number(v).toFixed(2) + "%",
+      points: macro.map(r => ({ x: r.year, y: r.literacy, raw: r.literacy })) },
+  ].filter(s => s.points.every(p => p.y != null));
+  div.innerHTML = lineChartSvg(series);
+}
+
+function candleChartSvg(rows) {
+  const W = 420, H = 178, ml = 50, mr = 14, mt = 22, mb = 26;
+  const pw = W - ml - mr, ph = H - mt - mb;
+  const years = [];
+  for (let y = rows[0].year; y <= rows[rows.length - 1].year; y++) years.push(y);
+  const lows = rows.map(r => r.low), highs = rows.map(r => r.high);
+  let lo = Math.min.apply(null, lows), hi = Math.max.apply(null, highs);
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const padY = (hi - lo) * 0.1;
+  lo -= padY; hi += padY;
+  const span = (years.length - 1) || 1;
+  const X = y => ml + pw * (y - years[0]) / span;
+  const Y = v => mt + ph - (v - lo) / (hi - lo) * ph;
+  const UP = "#1e7d46", DOWN = "#b03a2e";
+  const band = pw / years.length;
+  const cw = Math.max(5, Math.min(16, band * 0.55));
+  let wicks = "", bodies = "", labels = "";
+  rows.forEach(r => {
+    const x = X(r.year);
+    const col = r.close >= r.open ? UP : DOWN;
+    const y1 = Y(Math.max(r.open, r.close));
+    const y2 = Y(Math.min(r.open, r.close));
+    const h = Math.max(1.2, y2 - y1);
+    wicks += `<line x1="${x}" y1="${Y(r.high)}" x2="${x}" y2="${Y(r.low)}" stroke="${col}" stroke-width="1"/>`;
+    bodies += `<rect x="${x - cw / 2}" y="${y1}" width="${cw}" height="${h}" fill="${col}"/>`;
+  });
+  years.forEach(y => {
+    labels += `<text class="axis" x="${X(y)}" y="${H - 8}" text-anchor="middle">${y}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">${wicks}${bodies}${labels}</svg>`;
+}
+
+function renderStockChart(div, curYear) {
+  const stocks = (CHARTS.stock || [])
+    .filter(s => s.rows.some(r => r.year <= curYear));
+  if (!stocks.length) {
+    div.innerHTML = '<p class="chart-hint">本期无个股行情数据，图表自交易所开市次年起显示。</p>';
+    return;
+  }
+  let html = '<div class="chart-title">个股年K线（绿涨红跌）</div>';
+  html += '<p class="chart-sub">每年一根年K线：开盘=上年收盘（新设上市100点），收盘=本报指数，影线为年内确定性随机波动。</p>';
+  stocks.forEach(s => {
+    const rows = s.rows.filter(r => r.year <= curYear);
+    if (!rows.length) return;
+    html += `<div class="stock-chart"><div class="chart-title">${esc(s.name)}</div>`;
+    const sub = [s.kind === "national" ? "国家级公司" : "地方企业",
+                 s.state, s.industries ? "主营" + s.industries : ""]
+      .filter(Boolean).join(" · ");
+    if (sub) html += `<p class="chart-sub">${esc(sub)}</p>`;
+    html += candleChartSvg(rows) + "</div>";
+  });
+  div.innerHTML = html;
+}
+
+function renderCharts(root) {
+  root.querySelectorAll(".chart").forEach(div => {
+    const kind = div.dataset.chart;
+    if (kind === "macro") renderMacroChart(div, year);
+    else if (kind === "stock") renderStockChart(div, year);
+  });
+}
 
 function yearsOf(k) {
   return ARTICLES.filter(a => a.type === k).map(a => a.year).sort((x, y) => x - y);
@@ -316,6 +461,7 @@ function render() {
   }
   const theme = type === "报纸" ? "newspaper" : "magazine";
   stage.innerHTML = `<article class="paper view-${theme}">${art.html}</article>`;
+  renderCharts(stage);
   metaLine.textContent = art.meta || "";
 }
 
@@ -374,17 +520,92 @@ def _collect_entries(base_dir):
     return entries
 
 
+def _parse_literacy(v):
+    """识字率字段 ("9.58%" 或数值) → 浮点; 失败返回 None。"""
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        try:
+            return float(v.rstrip("%").strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _collect_chart_data(base_dir):
+    """读取会话 data/raw_*.json, 汇总图表历史:
+    macro: 逐年 GDP/人口/生活水平/识字率;
+    stock: 各标的逐年开收高低 (journal_save 已按确定性种子生成)。
+    返回 {"macro": [...], "stock": [...], "currency": "..."}。"""
+    data_dir = os.path.join(base_dir, "data")
+    macro = []
+    stock = {}
+    currency = ""
+    if not os.path.isdir(data_dir):
+        return {"macro": macro, "stock": [], "currency": currency}
+    for fn in sorted(os.listdir(data_dir)):
+        m = re.fullmatch(r"raw_(\d{4})\.json", fn)
+        if not m:
+            continue
+        try:
+            with open(os.path.join(data_dir, fn), encoding="utf-8") as f:
+                raw = json.load(f)
+        except (OSError, ValueError):
+            continue
+        year = int(m.group(1))
+        currency = currency or (raw.get("currency") or "")
+        lit = _parse_literacy(raw.get("literacy"))
+        macro.append({
+            "year": year,
+            "gdp": raw.get("gdp"),
+            "pop": raw.get("pop"),
+            "sol": raw.get("sol"),
+            "literacy": lit,
+        })
+        for c in (raw.get("stock_market") or {}).get("companies") or []:
+            name = c.get("name")
+            if not name:
+                continue
+            rec = stock.setdefault(name, {
+                "name": name, "kind": c.get("kind"),
+                "state": c.get("state"), "industries": c.get("industries"),
+                "rows": [],
+            })
+            if rec.get("kind") is None:
+                rec["kind"] = c.get("kind")
+            if rec.get("state") is None:
+                rec["state"] = c.get("state")
+            if rec.get("industries") is None:
+                rec["industries"] = c.get("industries")
+            if all(c.get(k) is not None
+                   for k in ("open", "high", "low", "close")):
+                rec["rows"].append({
+                    "year": year,
+                    "open": c["open"], "high": c["high"],
+                    "low": c["low"], "close": c["close"],
+                    "change_pct": c.get("change_pct"),
+                    "band": c.get("band"), "note": c.get("note"),
+                })
+    macro.sort(key=lambda r: r["year"])
+    for rec in stock.values():
+        rec["rows"].sort(key=lambda r: r["year"])
+    return {"macro": macro, "stock": list(stock.values()),
+            "currency": currency}
+
+
 def rebuild_session(journal_dir, folder):
     """为单个会话文件夹生成/更新 index.html; 无任何 md 时返回 None。"""
     base = os.path.join(journal_dir, folder)
     entries = _collect_entries(base)
     if not entries:
         return None
+    charts = _collect_chart_data(base)
     title = f"{folder} · 报纸/杂志阅读页"
     out = (TEMPLATE
            .replace("__TITLE__", html.escape(title))
            .replace("__FOLDER__", html.escape(folder))
-           .replace("__ARTICLES__", json.dumps(entries, ensure_ascii=False)))
+           .replace("__ARTICLES__", json.dumps(entries, ensure_ascii=False))
+           .replace("__CHARTS__", json.dumps(charts, ensure_ascii=False)))
     path = os.path.join(base, "index.html")
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
