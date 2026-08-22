@@ -108,10 +108,24 @@ def _is_ol(ln):
     return bool(re.match(r"^\s*\d+[.)]\s+", ln))
 
 
+# 加粗回显板块标题行 (如 **《乡里访谈》** / **头版导语：**) 的渲染兜底:
+# 生成端 (journal.py/magazine.py) 已归一化, 此处处理存量 md (未重生成的年份),
+# 避免「板块名出现在正文」。
+_BOLD_ONLY_RE = re.compile(r"^\*\*(.+?)[:：]?\*\*[:：]?\s*$")
+
+
+def _norm_title(t):
+    t = (t or "").strip().strip("《》「」").strip().rstrip("：:")
+    if t.endswith("导语"):
+        t = t[:-2]
+    return t.strip()
+
+
 def md_to_html(text):
     """整篇 Markdown → HTML 片段 (不含 <html> 外壳)。"""
     lines = text.split("\n")
     out = []
+    seen_headings = set()
     i, n = 0, len(lines)
     while i < n:
         ln = lines[i]
@@ -134,6 +148,11 @@ def md_to_html(text):
             level = len(m.group(1))
             cls = ' class="masthead"' if level == 1 else ""
             out.append(f"<h{level}{cls}>{_inline(m.group(2))}</h{level}>")
+            seen_headings.add(_norm_title(m.group(2)))
+            i += 1
+            continue
+        m_bold = _BOLD_ONLY_RE.match(s)
+        if m_bold and _norm_title(m_bold.group(1)) in seen_headings:
             i += 1
             continue
         if _is_table_row(ln):
@@ -238,6 +257,16 @@ code{background:#efe7d3;border-radius:3px;padding:1px 5px;font-family:Consolas,m
 .chart svg text.val{fill:var(--ink);font-size:10px}
 .chart svg text.axis{font-size:11px}
 .chart svg text.legend{font-size:12px;font-weight:700}
+/* 个股年K线: TradingView 风格坐标轴/网格/悬停 */
+.stock-chart{position:relative;margin:0 0 16px}
+.chart svg .grid{stroke:#d8cba7;stroke-width:1}
+.chart svg .grid-v{stroke:#e6dbbd;stroke-width:1}
+.chart svg .axis-line{stroke:#b7a67e;stroke-width:1.2}
+.chart svg .candle{cursor:crosshair}
+.candle-tip{position:absolute;display:none;pointer-events:none;background:rgba(38,32,22,.94);color:#f0e6d2;font-size:12px;line-height:1.7;padding:6px 10px;border-radius:4px;z-index:5;white-space:nowrap;box-shadow:0 2px 8px rgba(30,22,8,.35)}
+.candle-tip b{color:var(--gold)}
+.candle-tip .up{color:#7fd4a2}
+.candle-tip .down{color:#f0a49a}
 
 /* 报纸版式 */
 .view-newspaper .masthead{font-family:"STKaiti","KaiTi","SimSun",serif;text-align:center;font-size:42px;letter-spacing:8px;font-weight:700;border-top:3px double #3a2c16;border-bottom:3px double #3a2c16;padding:16px 0 12px;margin:0 0 12px}
@@ -358,36 +387,101 @@ function renderMacroChart(div, curYear) {
   div.innerHTML = lineChartSvg(series);
 }
 
-function candleChartSvg(rows) {
-  const W = 420, H = 178, ml = 50, mr = 14, mt = 22, mb = 26;
+function niceStep(range, target) {
+  if (!(range > 0)) return 1;
+  const rough = range / target;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  const n = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10;
+  return n * mag;
+}
+
+function candleGeom(rows) {
+  const W = 470, H = 232, ml = 54, mr = 58, mt = 22, mb = 30;
   const pw = W - ml - mr, ph = H - mt - mb;
   const years = [];
   for (let y = rows[0].year; y <= rows[rows.length - 1].year; y++) years.push(y);
-  const lows = rows.map(r => r.low), highs = rows.map(r => r.high);
-  let lo = Math.min.apply(null, lows), hi = Math.max.apply(null, highs);
+  let lo = Math.min.apply(null, rows.map(r => r.low));
+  let hi = Math.max.apply(null, rows.map(r => r.high));
   if (hi === lo) { hi += 1; lo -= 1; }
-  const padY = (hi - lo) * 0.1;
+  const padY = (hi - lo) * 0.12;
   lo -= padY; hi += padY;
   const span = (years.length - 1) || 1;
   const X = y => ml + pw * (y - years[0]) / span;
   const Y = v => mt + ph - (v - lo) / (hi - lo) * ph;
+  return { W, H, ml, mr, mt, mb, pw, ph, years, lo, hi, X, Y };
+}
+
+function candleChartSvg(rows) {
+  const g = candleGeom(rows);
+  const { W, H, ml, mr, mt, mb, pw, years, lo, hi, X, Y } = g;
   const UP = "#1e7d46", DOWN = "#b03a2e";
+  const fmt = v => Number(v).toFixed(0);
+  const step = niceStep(hi - lo, 4);
+  const t0 = Math.ceil(lo / step) * step;
+  let grid = "", labels = "";
+  for (let v = t0; v <= hi + 1e-9; v += step) {
+    const y = Y(v);
+    grid += `<line class="grid" x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}"/>`;
+    labels += `<text class="axis" x="${ml - 8}" y="${y + 4}" text-anchor="end">${fmt(v)}</text>`;
+    labels += `<text class="axis" x="${W - mr + 8}" y="${y + 4}" text-anchor="start">${fmt(v)}</text>`;
+  }
+  years.forEach(y => {
+    const x = X(y);
+    grid += `<line class="grid-v" x1="${x}" y1="${mt}" x2="${x}" y2="${H - mb}"/>`;
+    labels += `<text class="axis" x="${x}" y="${H - 10}" text-anchor="middle">${y}</text>`;
+  });
+  grid += `<line class="axis-line" x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}"/>`;
+  grid += `<line class="axis-line" x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}"/>`;
   const band = pw / years.length;
-  const cw = Math.max(5, Math.min(16, band * 0.55));
-  let wicks = "", bodies = "", labels = "";
+  const cw = Math.max(4, Math.min(20, band * 0.55));
+  let candles = "";
   rows.forEach(r => {
     const x = X(r.year);
     const col = r.close >= r.open ? UP : DOWN;
     const y1 = Y(Math.max(r.open, r.close));
     const y2 = Y(Math.min(r.open, r.close));
-    const h = Math.max(1.2, y2 - y1);
-    wicks += `<line x1="${x}" y1="${Y(r.high)}" x2="${x}" y2="${Y(r.low)}" stroke="${col}" stroke-width="1"/>`;
-    bodies += `<rect x="${x - cw / 2}" y="${y1}" width="${cw}" height="${h}" fill="${col}"/>`;
+    const h = Math.max(2, y2 - y1);
+    candles += `<g class="candle" data-year="${r.year}" data-o="${r.open}" data-h="${r.high}" data-l="${r.low}" data-c="${r.close}">`;
+    candles += `<line x1="${x}" y1="${Y(r.high)}" x2="${x}" y2="${Y(r.low)}" stroke="${col}" stroke-width="1"/>`;
+    candles += `<rect x="${x - cw / 2}" y="${y1}" width="${cw}" height="${h}" fill="${col}" rx="0.5"/>`;
+    candles += `</g>`;
   });
-  years.forEach(y => {
-    labels += `<text class="axis" x="${X(y)}" y="${H - 8}" text-anchor="middle">${y}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" class="candle-svg">${grid}${labels}${candles}</svg>`;
+}
+
+function attachCandleTip(svg, rows) {
+  const wrap = svg.closest(".stock-chart");
+  if (!wrap) return;
+  let tip = wrap.querySelector(".candle-tip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.className = "candle-tip";
+    wrap.appendChild(tip);
+  }
+  const g = candleGeom(rows);
+  const band = g.pw / g.years.length;
+  const cw = Math.max(4, Math.min(20, band * 0.55));
+  svg.addEventListener("mousemove", ev => {
+    const rect = svg.getBoundingClientRect();
+    const sx = g.W / rect.width, sy = g.H / rect.height;
+    const mx = (ev.clientX - rect.left) * sx;
+    const my = (ev.clientY - rect.top) * sy;
+    let best = null, bestD = 1e18;
+    rows.forEach(r => {
+      const d = Math.abs(g.X(r.year) - mx);
+      if (d < bestD) { bestD = d; best = r; }
+    });
+    if (!best || bestD > cw / 2 + 8) { tip.style.display = "none"; return; }
+    const chg = best.change_pct == null
+      ? "<span class='up'>新设上市</span>"
+      : `<span class="${best.change_pct >= 0 ? 'up' : 'down'}">${best.change_pct >= 0 ? "涨" : "跌"} ${Math.abs(best.change_pct).toFixed(1)}%</span>`;
+    tip.innerHTML = `<b>${best.year}年</b> 开 ${best.open} · 收 ${best.close} · 高 ${best.high} · 低 ${best.low}　${chg}`;
+    tip.style.display = "block";
+    tip.style.left = Math.min(mx / sx + 14, wrap.clientWidth - 200) + "px";
+    tip.style.top = Math.max(6, my / sy - 8) + "px";
   });
-  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">${wicks}${bodies}${labels}</svg>`;
+  svg.addEventListener("mouseleave", () => { tip.style.display = "none"; });
 }
 
 function renderStockChart(div, curYear) {
@@ -398,11 +492,13 @@ function renderStockChart(div, curYear) {
     return;
   }
   let html = '<div class="chart-title">个股年K线（绿涨红跌）</div>';
-  html += '<p class="chart-sub">每年一根年K线：开盘=上年收盘（新设上市100点），收盘=本报指数，影线为年内确定性随机波动。</p>';
+  html += '<p class="chart-sub">每年一根年K线：开盘=上年收盘（新设上市以100点为基准），收盘=本报指数，影线为年内确定性随机波动；悬停蜡烛可查看开收高低。</p>';
   stocks.forEach(s => {
     const rows = s.rows.filter(r => r.year <= curYear);
     if (!rows.length) return;
-    html += `<div class="stock-chart"><div class="chart-title">${esc(s.name)}</div>`;
+    const last = rows[rows.length - 1];
+    const title = s.orig && s.orig !== s.name ? `${esc(s.name)}（前身${esc(s.orig)}）` : esc(s.name);
+    html += `<div class="stock-chart"><div class="chart-title">${title}</div>`;
     const sub = [s.kind === "national" ? "国家级公司" : "地方企业",
                  s.state, s.industries ? "主营" + s.industries : ""]
       .filter(Boolean).join(" · ");
@@ -410,6 +506,11 @@ function renderStockChart(div, curYear) {
     html += candleChartSvg(rows) + "</div>";
   });
   div.innerHTML = html;
+  div.querySelectorAll(".stock-chart").forEach((chart, i) => {
+    const svg = chart.querySelector(".candle-svg");
+    const s = stocks[i];
+    if (svg && s) attachCandleTip(svg, s.rows.filter(r => r.year <= curYear));
+  });
 }
 
 function renderCharts(root) {
@@ -535,14 +636,18 @@ def _parse_literacy(v):
 def _collect_chart_data(base_dir):
     """读取会话 data/raw_*.json, 汇总图表历史:
     macro: 逐年 GDP/人口/生活水平/识字率;
-    stock: 各标的逐年开收高低 (journal_save 已按确定性种子生成)。
-    返回 {"macro": [...], "stock": [...], "currency": "..."}。"""
+    stock: 各标的逐年开收高低 (按 enterprise_id 分组, 兼容旧格式按 name);
+    market: 逐年大盘概况 (涨跌家数/均值/领涨领跌/市场事件)。
+    返回 {"macro": [...], "stock": [...], "market": [...], "currency": "..."}。
+    结果同时落盘为 data/history.json (供程序直接读取)。"""
     data_dir = os.path.join(base_dir, "data")
     macro = []
     stock = {}
+    market = []
     currency = ""
     if not os.path.isdir(data_dir):
-        return {"macro": macro, "stock": [], "currency": currency}
+        return {"macro": macro, "stock": [], "market": market,
+                "currency": currency}
     for fn in sorted(os.listdir(data_dir)):
         m = re.fullmatch(r"raw_(\d{4})\.json", fn)
         if not m:
@@ -562,15 +667,33 @@ def _collect_chart_data(base_dir):
             "sol": raw.get("sol"),
             "literacy": lit,
         })
-        for c in (raw.get("stock_market") or {}).get("companies") or []:
+        sm = raw.get("stock_market") or {}
+        market.append({
+            "year": year,
+            "advancers": sm.get("advancers"),
+            "decliners": sm.get("decliners"),
+            "avg_change": sm.get("avg_change"),
+            "top_gainer": sm.get("top_gainer"),
+            "top_loser": sm.get("top_loser"),
+            "first_year": sm.get("first_year"),
+            "events": sm.get("events") or [],
+        })
+        for c in sm.get("companies") or []:
             name = c.get("name")
             if not name:
                 continue
-            rec = stock.setdefault(name, {
-                "name": name, "kind": c.get("kind"),
+            key = c.get("enterprise_id") or name
+            rec = stock.setdefault(key, {
+                "id": key, "name": name, "orig": None,
+                "kind": c.get("kind"),
                 "state": c.get("state"), "industries": c.get("industries"),
                 "rows": [],
             })
+            rec["name"] = name   # 企业改名后图表沿用最新名
+            # 企业改名后标注前身名
+            nh = c.get("name_history") or []
+            if nh and nh[0].get("name") != name and not rec.get("orig"):
+                rec["orig"] = nh[0].get("name")
             if rec.get("kind") is None:
                 rec["kind"] = c.get("kind")
             if rec.get("state") is None:
@@ -587,19 +710,43 @@ def _collect_chart_data(base_dir):
                     "band": c.get("band"), "note": c.get("note"),
                 })
     macro.sort(key=lambda r: r["year"])
+    market.sort(key=lambda r: r["year"])
     for rec in stock.values():
         rec["rows"].sort(key=lambda r: r["year"])
     return {"macro": macro, "stock": list(stock.values()),
-            "currency": currency}
+            "market": market, "currency": currency}
+
+
+def _write_history_json(base_dir, charts):
+    """把汇总图表历史落盘为 data/history.json, 供程序直接读取 (需求4)。"""
+    import datetime
+    data_dir = os.path.join(base_dir, "data")
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+    except OSError:
+        return None
+    out = dict(charts)
+    out["stocks"] = out.pop("stock", [])   # 对外 API 用 stocks, 内部 JS 沿用 stock
+    out["updated"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    path = os.path.join(data_dir, "history.json")
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except OSError:
+        return None
+    return path
 
 
 def rebuild_session(journal_dir, folder):
-    """为单个会话文件夹生成/更新 index.html; 无任何 md 时返回 None。"""
+    """为单个会话文件夹生成/更新 index.html 与 data/history.json; 无任何 md 时返回 None。"""
     base = os.path.join(journal_dir, folder)
     entries = _collect_entries(base)
     if not entries:
         return None
     charts = _collect_chart_data(base)
+    _write_history_json(base, charts)
     title = f"{folder} · 报纸/杂志阅读页"
     out = (TEMPLATE
            .replace("__TITLE__", html.escape(title))

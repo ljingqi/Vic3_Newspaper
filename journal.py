@@ -123,6 +123,11 @@ DEFAULT_CONFIG = {
     "stock_market_enabled": True,
     # 股市专栏中地方企业数量 (按各州商品生产量生成, 州名+商品名命名)
     "stock_local_enterprise_count": 5,
+    # 地方企业年度并购概率 (每年掷一次, 命中则强者兼并弱者; 0~1)
+    "stock_merger_chance": 0.5,
+    # 传给模型的传输口径: 地方企业只发 涨幅前3 + 跌幅前3 (+ 本年新设上市),
+    # 其余仅记录在 JSON (K线图仍展示全部)
+    "stock_transmit_top_n": 3,
     # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
     "parallel_generation_enabled": True,
     # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
@@ -1581,11 +1586,21 @@ def _pct_value(v):
     except (TypeError, ValueError):
         return None
 
-def render_stock(data):
-    """股市动态: 证券交易所开市后, 国家级公司 + 地方企业的本报指数行情。"""
+def render_stock(data, cfg=None):
+    """股市动态: 证券交易所开市后, 国家级公司 + 地方企业的本报指数行情。
+
+    传输口径 (需求5): 国家级公司全量; 地方企业只发 涨幅前N + 跌幅前N
+    (+ 本年新设上市), 其余仅记录在 JSON (K线图仍展示全部)。
+    并购/退市/新设事件 (stock_market.events) 一并传输, 供正文报道。"""
     sm = data.get("stock_market")
     if not sm:
         return "- (资料缺失：本期未开设证券交易所)"
+    if cfg is None:
+        try:
+            cfg = load_config()
+        except Exception:
+            cfg = {}
+    top_n = int(cfg.get("stock_transmit_top_n", 3) or 3)
     L = []
     if sm.get("first_year"):
         L.append(f"- 本期为证券交易所开市之年（{sm.get('year')}年），"
@@ -1598,7 +1613,29 @@ def render_stock(data):
         (f"领涨：{sm.get('top_gainer')}" if sm.get('top_gainer') else None),
         (f"领跌：{sm.get('top_loser')}" if sm.get('top_loser') else None),
     ])) + "。")
-    for c in sm.get("companies") or []:
+    events = sm.get("events") or []
+    if events:
+        L.append("- 本年市场事件：")
+        for ev in events:
+            L.append(f"  - {ev.get('desc', '')}")
+    # 传输过滤: 国家级全量 + 地方企业 前N涨/前N跌/新设
+    comps = sm.get("companies") or []
+    nationals = [c for c in comps if c.get("kind") == "national"]
+    locals_ = [c for c in comps if c.get("kind") != "national"]
+    with_chg = [c for c in locals_ if c.get("change_pct") is not None]
+    fresh = [c for c in locals_ if c.get("change_pct") is None]
+    ranked = sorted(with_chg, key=lambda c: c["change_pct"], reverse=True)
+    selected = []
+    for c in nationals:
+        if c not in selected:
+            selected.append(c)
+    for c in ranked[:top_n] + ranked[-top_n:]:
+        if c not in selected:
+            selected.append(c)
+    for c in fresh:
+        if c not in selected:
+            selected.append(c)
+    for c in selected:
         name = c.get("name") or "未知公司"
         kind = "国家级公司" if c.get("kind") == "national" else "地方企业"
         where = c.get("state") or "未知州"
@@ -1613,7 +1650,7 @@ def render_stock(data):
             bits.append(idx_s)
         if c.get("band"):
             bits.append(f"行情：{c['band']}")
-        if c.get("note"):
+        if c.get("note") and c["note"] != c.get("band"):
             bits.append(c["note"])
         L.append("；".join(bits) + "。")
     L.append("正文以给定公司/企业、指数与涨跌为唯一依据，行情之外的个股消息不得编造。")
@@ -2944,19 +2981,55 @@ _MASTHEAD_ECHO_RE = re.compile(r"^#\s*《.+》\s*$")
 _HEADER_INFO_RE = re.compile(
     r"^\*{0,2}国名：.+｜都城：.+｜(?:政体：.+｜)?年份：\d{4}\*{0,2}\s*$")
 _HEAD_RE = re.compile(r"^#{1,6}\s+")
+# 模型偶尔把板块标题写成加粗行 (**邦交纪要** / **头版导语：** / **《乡里访谈》**),
+# 而非 ## 标题, 导致板块名以正文段落形式出现在 HTML 里。此正则把这类行归一化为标题。
+# 冒号可能在星号内 (**头版导语：**) 也可能在星号外 (**头版导语**：)。
+_BOLD_ECHO_RE = re.compile(r"^\*\*(.+?)[:：]?\*\*[:：]?\s*$")
+
+
+def _bold_echo_heading(line, title):
+    """加粗回显行 → 规范的板块标题; 不是本板块标题的回显返回 None。
+    兼容 `**头版导语：**`(去「导语」) 与 `**《乡里访谈》**`(去书名号)。"""
+    m = _BOLD_ECHO_RE.match(line)
+    if not m:
+        return None
+    name = m.group(1).strip().strip("《》「」").strip().rstrip("：:")
+    if name == title:
+        return f"## {title}"
+    if title and name == title + "导语":
+        return f"## {title}"
+    return None
 
 def _normalize_section_text(text, title, use_separators=False, paper_name=None):
     """规范化板块正文的标题层级:
     - 剔除模型回显的报名(# 《报名》)与抬头信息行(**国名：...｜都城：...**), 避免正文重复报头;
+    - 加粗回显标题行 (**板块名** / **板块名导语：**) 归一化为 ## 板块名;
+      若本板块已有同标题则整行删除 (消除重复标题与「板块名进正文」);
     - 板块内的一级标题一律降为二级(保证 # 只留给报名);
     - 正文没有标题时补上规范的 ## 板块名。"""
     out = []
+    saw_title_heading = False
     for raw in (text or "").split("\n"):
         s = raw.strip()
         if not s:
             out.append("")
             continue
         if _MASTHEAD_ECHO_RE.match(s) or _HEADER_INFO_RE.match(s):
+            continue
+        if _HEAD_RE.match(s) and title in s:
+            saw_title_heading = True
+        if not _HEAD_RE.match(s) and not _BOLD_ECHO_RE.match(s):
+            out.append(s)
+            continue
+        head = _bold_echo_heading(s, title)
+        if head is not None:
+            if saw_title_heading:
+                continue          # 已有 ## 标题, 重复回显行直接删除
+            saw_title_heading = True
+            out.append(head)
+            continue
+        if _BOLD_ECHO_RE.match(s):
+            out.append(s)         # 非本板块标题的加粗行保留原样
             continue
         if s.startswith("# "):
             s = "## " + s[2:]

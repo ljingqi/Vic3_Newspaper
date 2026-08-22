@@ -1905,15 +1905,31 @@ def _strip_markdown_tables(text):
 
 
 def _normalize_section(text, title):
-    """板块正文规范化: 所有标题降为 ###, 表格转自然语言, 无标题时补 ### 板块名。"""
+    """板块正文规范化: 所有标题降为 ###, 表格转自然语言, 无标题时补 ### 板块名。
+    加粗回显标题行 (**案件卷宗** / **案件卷宗：**) 归一化为 ### 标题, 已有时删除。"""
+    _bold = re.compile(r"^\*\*(.+?)[:：]?\*\*[:：]?\s*$")
     out = []
+    saw_title = False
     for raw in (text or "").split("\n"):
         s = raw.strip()
         if not s:
             out.append("")
             continue
         if s.startswith("#"):
+            if title in s:
+                saw_title = True
             s = re.sub(r"^(#{1,6})\s+", "### ", s)
+            out.append(s)
+            continue
+        m = _bold.match(s)
+        if m:
+            name = m.group(1).strip().strip("《》「」").strip().rstrip("：:")
+            if name == title:
+                if saw_title:
+                    continue
+                saw_title = True
+                out.append(f"### {title}")
+                continue
         out.append(s)
     body = _strip_markdown_tables("\n".join(out)).strip()
     # 模型偶尔重复写板块标题并以 --- 分隔 (如 ### 案件卷宗\n\n---\n### 案件卷宗),
