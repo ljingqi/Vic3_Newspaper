@@ -121,10 +121,16 @@ DEFAULT_CONFIG = {
     "state_flavor_enabled": True,
     # 报纸「股市动态」专栏: 研发证券交易所后出现; 每年按商品价格涨跌
     "stock_market_enabled": True,
-    # 股市专栏中地方企业数量 (按各州商品生产量生成, 州名+商品名命名)
+    # 股市专栏中地方企业数量 (按各州商品生产量生成)
     "stock_local_enterprise_count": 5,
     # 地方企业年度并购概率 (每年掷一次, 命中则强者兼并弱者; 0~1)
     "stock_merger_chance": 0.5,
+    # 新设上市定价: 发行价 = 家乡州年产出规模×系数 ÷ 发行股数
+    # (州产出为存档建筑产出合计的周度口径, 代码内 ×52 年化; 过小州用兜底规模)
+    "stock_ipo_mcap_factor": 3.0,
+    "stock_ipo_shares_min": 10000,
+    "stock_ipo_shares_max": 100000,
+    "stock_ipo_min_scale": 50000,
     # 传给模型的传输口径: 地方企业只发 涨幅前3 + 跌幅前3 (+ 本年新设上市),
     # 其余仅记录在 JSON (K线图仍展示全部)
     "stock_transmit_top_n": 3,
@@ -1063,9 +1069,10 @@ SECTION_DEFS = [
     ("diplo", "外交风云", "报道本国与列强的外交：同盟/敌对/禁运等条约关系、附庸国、世界八强态势。"),
     ("econ", "经济要闻", "报道本国经济：生产总值、人口、生活水平、识字率。"),
     ("stock", "股市动态", "报道证券交易所开市以来的行情：仅报道资料给出的各公司/企业"
-     "（含国家级公司与地方企业）的名称、所在州域、主营商品、本报指数、年度涨跌幅与"
-     "景气概况；指数与涨跌幅为资料给定的「本报指数」口径，一律照抄，不得编造行情"
-     "之外的个股消息；新上市企业须注明「新设上市」。"),
+     "（含国家级公司与地方企业）的名称、所在州域、主营商品、现价、年度涨跌幅与"
+     "景气概况，并报道资料给出的交易所指数；现价、涨跌与指数为资料给定口径，"
+     "一律照抄，不得编造行情之外的个股消息，亦不得复述行情档位词（平盘/上涨等）；"
+     "新上市企业须注明「新设上市」。"),
     ("politics", "政界动态", "报道政体、统治者、当前执政利益集团（标注「执政」者即组阁集团，"
      "数据含其政治力量占比、首领姓名与首领个人意识形态）、主要利益集团力量格局、"
      "当前影响最大的政治运动，"
@@ -1587,11 +1594,13 @@ def _pct_value(v):
         return None
 
 def render_stock(data, cfg=None):
-    """股市动态: 证券交易所开市后, 国家级公司 + 地方企业的本报指数行情。
+    """股市动态: 证券交易所开市后, 国家级公司 + 地方企业的现价行情。
 
     传输口径 (需求5): 国家级公司全量; 地方企业只发 涨幅前N + 跌幅前N
     (+ 本年新设上市), 其余仅记录在 JSON (K线图仍展示全部)。
-    并购/退市/新设事件 (stock_market.events) 一并传输, 供正文报道。"""
+    并购/退市/新设事件 (stock_market.events) 一并传输, 供正文报道。
+    行情档位词 (平盘等) 与涨跌数字重复, 不再传输, 避免模型过度关注;
+    新设上市标记通过 note 传输。"""
     sm = data.get("stock_market")
     if not sm:
         return "- (资料缺失：本期未开设证券交易所)"
@@ -1604,7 +1613,19 @@ def render_stock(data, cfg=None):
     L = []
     if sm.get("first_year"):
         L.append(f"- 本期为证券交易所开市之年（{sm.get('year')}年），"
-                 "下列公司/企业新设上市，本报指数以 100 点为基准。")
+                 "下列公司/企业新设上市，交易所指数以 100 点为基准，"
+                 "各股按发行价开市。")
+    ex = sm.get("exchange_index") or {}
+    if isinstance(ex, dict) and ex.get("close") is not None:
+        ex_s = f"交易所指数约{round(ex['close'], 1)}"
+        ex_chg = ex.get("change_pct")
+        if ex_chg is not None:
+            if abs(ex_chg) < 0.05:
+                ex_s += "，与上年基本持平"
+            else:
+                ex_s += (f"，较上年{'涨' if ex_chg >= 0 else '跌'}"
+                         f"约{abs(ex_chg):.1f}%")
+        L.append(f"- {ex_s}。")
     L.append("- 大盘概况：" + "、".join(filter(None, [
         f"{sm.get('advancers', 0)} 家上涨",
         f"{sm.get('decliners', 0)} 家下跌",
@@ -1641,19 +1662,18 @@ def render_stock(data, cfg=None):
         where = c.get("state") or "未知州"
         ind = c.get("industries") or c.get("goods_basket") or "未知行业"
         bits = [f"- 【{kind}】{name}（{where}，主营{ind}）"]
-        idx = c.get("index")
+        price = c.get("price")
         chg = c.get("change_pct")
-        if idx is not None:
-            idx_s = f"本报指数约{round(idx, 1)}"
+        if price is not None:
+            price_s = f"现价约{round(price, 2)}"
             if chg is not None:
-                idx_s += f"，较上年{'涨' if chg >= 0 else '跌'}约{abs(chg):.1f}%"
-            bits.append(idx_s)
-        if c.get("band"):
-            bits.append(f"行情：{c['band']}")
-        if c.get("note") and c["note"] != c.get("band"):
+                price_s += f"，较上年{'涨' if chg >= 0 else '跌'}约{abs(chg):.1f}%"
+            bits.append(price_s)
+        if c.get("note"):
             bits.append(c["note"])
         L.append("；".join(bits) + "。")
-    L.append("正文以给定公司/企业、指数与涨跌为唯一依据，行情之外的个股消息不得编造。")
+    L.append("正文以给定公司/企业、现价、涨跌与交易所指数为唯一依据，"
+             "行情之外的个股消息不得编造。")
     return "\n".join(L)
 
 

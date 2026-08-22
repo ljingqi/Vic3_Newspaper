@@ -12703,8 +12703,9 @@ _STATE_RAIL_BANDS = (
 )
 # 城镇中心公共交通生产方法 → 风味 (06_urban_center.txt 的
 # pm_no_public_transport / pm_public_trams / pm_public_motor_carriages)
+# 注: 早期 trams 实为马拉公交, 电力未发明前不得写成「电车」, 故用公共马车口径。
 _STATE_URBAN_TRAM_PMS = (
-    ("pm_public_trams", "电车穿行"),
+    ("pm_public_trams", "公共马车穿行"),
     ("pm_public_motor_carriages", "公共马车与汽车穿行"),
 )
 _STATE_ROAD_SAT_BANDS = (
@@ -13117,8 +13118,10 @@ def _load_prev_year_snapshot(journal_dir, year, player=None):
 
 # ---------------------------------------------------------------------------
 # 股市动态: 国家级公司 (玩家创建/特许公司) + 地方企业 (按商品生产量生成)
-# 指数为「本报指数」模拟口径: 基准 100, 年涨跌 = 商品篮子 + 公司景气 + 扰动,
-# 钳制 ±25%; 跨年用快照缓存续算, 企业名以 州名+商品名 生成后不再变化。
+# 每股为真实股价: 发行价 = 家乡州产出规模×系数÷发行股数 (确定性种子);
+# 年涨跌 = 商品篮子 + 公司景气 + 扰动, 钳制 ±25%, 现价在发行价上逐年续算;
+# 交易所指数 = 市值加权链式 (开市年 100, 自开市年起连续);
+# 跨年用快照缓存续算, 企业名按东亚/西方两套模板生成后不再变化。
 # ---------------------------------------------------------------------------
 
 # 商品 → 地方企业后缀 (州名+后缀 = 企业名, 如 山西煤业 / 路易斯安那农垦集团)
@@ -13148,12 +13151,35 @@ _STOCK_BAND_MAX = "大涨"
 _STOCK_YOY_CLAMP = 0.25
 
 # ---------------------------------------------------------------------------
-# 地方企业命名模板 (多种模板, 确定性播种, 创始年确定后跨年稳定):
-#   shophao 商号体: 吉祥字号×2 + 行业字号 (如 恒昌粮行 / 聚丰铁号)
-#   family  家族体: 商户姓氏 + 行业字号 (如 巴扎尔绸庄 / 米尔扎盐号)
-#   state   州名体: 州名 + 行业后缀 (如 马赞达兰林业, 旧模板保留)
-#   group   集团体: 兼并/扩张后升级 (如 恒昌粮行 → 恒昌实业)
+# 地方企业命名模板 (两套风格, 确定性播种, 创始年确定后跨年稳定):
+#   东亚风格 (east, 玩家为东亚国家时使用, 即原「现在这套」):
+#     shophao 商号体: 吉祥字号×2 + 行业字号 (如 恒昌粮行 / 聚丰铁号)
+#     family  家族体: 商户姓氏 + 行业字号 (如 巴扎尔绸庄 / 米尔扎盐号)
+#     state   州名体: 州名 + 行业后缀 (如 马赞达兰林业, 两套通用)
+#   西方风格 (west, 非东亚国家默认):
+#     west_family 姓氏体: 西式姓氏 + 公司尾缀 (如 史密斯父子公司 / 罗伯茨商行)
+#     west_company 字号体: 西式字号 + 行业公司 (如 联合谷物公司 / 皇家煤炭公司)
+#     state   州名体: 同东亚 (如 路易斯安那农垦集团)
+#   group 集团体: 兼并/扩张后升级 (东亚: 恒昌粮行 → 恒昌实业; 西方: 史密斯商行 → 史密斯联合公司)
+# 风格判定依据玩家国名, 见 _country_enterprise_style; 东亚风格沿用旧种子格式,
+# 保证已生成的东亚国家企业名跨版本不变。
 # ---------------------------------------------------------------------------
+# 东亚国家名单 (简体中文本地化国名, 子串命中任一即用东亚风格; 可扩充)
+_EAST_ASIAN_NAME_HINTS = ("大清", "日本", "德川", "朝鲜", "韩国", "大韩", "越南",
+                          "大南", "安南", "琉球", "西藏", "蒙古", "中华", "中国")
+_ENT_TPL_EAST = ("shophao", "family", "state")
+_ENT_TPL_WEST = ("west_family", "west_company", "state")
+
+
+def _country_enterprise_style(player_name):
+    """按玩家国名判定地方企业命名风格: 东亚国家 → "east", 其余 → "west" (默认)。"""
+    if player_name:
+        for hint in _EAST_ASIAN_NAME_HINTS:
+            if hint in player_name:
+                return "east"
+    return "west"
+
+
 _ENTERPRISE_AUSPICIOUS = (
     "恒昌", "聚丰", "永盛", "广源", "同泰", "和顺", "福隆", "宝兴",
     "泰和", "祥瑞", "万隆", "兴隆", "天益", "德昌", "茂记", "元亨",
@@ -13187,22 +13213,120 @@ _ENTERPRISE_FAMILY_TAILS = {
 }
 _ENTERPRISE_FAMILY_TAIL_DEFAULT = "商号"
 _ENTERPRISE_GROUP_TAILS = ("实业", "工商联合", "控股", "集团", "联合商号")
-_ENT_TPL = ("shophao", "family", "state")
+# 西方风格素材: 姓氏体 / 字号体 / 行业公司尾缀 / 集团升级尾缀
+_ENTERPRISE_WEST_SURNAMES = (
+    "史密斯", "约翰逊", "威廉姆斯", "布朗", "琼斯", "米勒", "戴维斯",
+    "罗伯茨", "威尔逊", "泰勒", "安德森", "托马斯", "杰克逊", "怀特",
+    "哈里斯", "马丁", "汤普森", "罗宾逊", "克拉克", "刘易斯", "沃克",
+    "霍尔", "艾伦", "扬", "金", "赖特", "斯科特", "格林", "贝克",
+    "亚当斯", "纳尔逊", "卡特", "米切尔", "特纳", "菲利普斯", "坎贝尔",
+    "帕克", "埃文斯", "爱德华兹", "柯林斯", "斯图尔特", "莫里斯",
+    "墨菲", "库克", "罗杰斯", "摩根", "彼得森", "库珀", "里德", "贝利",
+    "贝尔", "凯利", "霍华德", "沃德", "考克斯", "理查德森", "伍德",
+    "沃森", "布鲁克斯", "贝内特", "格雷", "詹姆斯", "休斯", "普赖斯",
+    "迈尔斯", "朗", "福斯特", "桑德斯", "罗斯", "鲍威尔", "沙利文",
+    "拉塞尔", "奥布莱恩", "汉密尔顿", "格雷厄姆", "麦克唐纳", "弗莱明",
+)
+_ENTERPRISE_WEST_FAMILY_TAILS = ("父子公司", "兄弟公司", "商行", "公司", "父子商行")
+_ENTERPRISE_WEST_PREFIXES = (
+    "皇家", "帝国", "联合", "通用", "中央", "北方", "大西洋", "西方",
+    "商业", "国家", "统一", "大陆", "东方",
+)
+_ENTERPRISE_WEST_TAILS = {
+    "grain": "谷物公司", "wheat": "谷物公司", "rice": "米业公司", "maize": "谷物公司",
+    "rye": "谷物公司", "livestock": "畜牧公司", "fish": "渔业公司", "meat": "肉业公司",
+    "fruit": "果品公司", "sugar": "糖业公司", "cotton": "棉业公司", "silk": "丝业公司",
+    "wool": "毛纺公司", "dye": "染料公司", "tobacco": "烟草公司", "tea": "茶叶公司",
+    "coffee": "咖啡公司", "opium": "鸦片公司", "liquor": "酿酒公司", "wine": "酿酒公司",
+    "groceries": "食品公司", "wood": "木材公司", "hardwood": "硬木公司",
+    "furniture": "家具公司", "luxury_furniture": "家具公司", "paper": "造纸公司",
+    "glass": "玻璃公司", "porcelain": "瓷器公司", "clothes": "成衣公司",
+    "luxury_clothes": "成衣公司", "fabric": "纺织公司", "coal": "煤炭公司",
+    "iron": "冶铁公司", "steel": "钢铁公司", "lead": "铅业公司", "sulfur": "硫磺公司",
+    "gold": "金矿公司", "oil": "石油公司", "stone": "石材公司", "clay": "陶土公司",
+    "salt": "盐业公司", "tools": "工具公司", "engines": "机械公司", "ships": "造船公司",
+    "small_arms": "军械公司", "ammunition": "弹药公司", "explosives": "火药公司",
+    "automobiles": "汽车公司", "aeroplanes": "航空工业公司", "radios": "无线电公司",
+    "telephones": "电话公司", "fertilizer": "化肥公司", "electricity": "电力公司",
+}
+_ENTERPRISE_WEST_TAIL_DEFAULT = "公司"
+_ENTERPRISE_WEST_GROUP_TAILS = ("联合公司", "综合公司", "控股公司", "总公司")
 
 
-def _enterprise_tpl(state_zh, good_key, founded_year):
-    """确定性挑选命名模板 (创始年确定后不变, 跨年稳定)。"""
-    rnd = random.Random(f"ent-tpl|{state_zh}|{good_key}|{founded_year}")
-    return rnd.choice(_ENT_TPL)
+def _state_homeland_surnames(melted, ctx, snap):
+    """地方企业所在州 → 本土文化姓氏池 (西方风格姓氏体用)。
+
+    州 → 州域 → add_homeland 本土文化 → 该文化 common/noble_last_names 姓池,
+    经 names_l 本地化为中文 (仅保留能中文化的姓, 保证报纸可读)。
+    返回 {州中文名: [(culture_key, [姓氏中文…]), …]}; 无本土文化/无姓池/无中译
+    的州缺席 (调用方回退固定姓池)。"""
+    out = {}
+    try:
+        hm = build_homeland_map()
+        names = build_culture_names()
+        loc = _load_loc_all()
+    except Exception:
+        return out
+    for sid in _pool_state_ids(snap):
+        rk = ctx.state_region_key(sid)
+        zh = ctx.state_zh(sid)
+        if not rk or not zh:
+            continue
+        pools = []
+        for ck in sorted(hm.get(rk) or ()):
+            lasts = (names.get(ck) or {}).get("last") or []
+            if not lasts:
+                continue
+            zh_pool = []
+            for s in lasts:
+                try:
+                    z = _localize_character_name("", s, loc, ck)
+                except Exception:
+                    z = None
+                if z and _is_cjk_text(z) and z not in zh_pool:
+                    zh_pool.append(z)
+            if zh_pool:
+                pools.append((ck, zh_pool))
+        if pools:
+            out[zh] = pools
+    return out
 
 
-def _enterprise_style_name(state_zh, good_key, founded_year, group=False,
-                           salt=0):
+def _west_style_surname(state_surnames, state_zh, good_key, founded_year,
+                        salt=0):
+    """西方姓氏体基础词: 从地方企业所在州的本土文化姓氏池确定性抽取
+    (种子含 州/商品/创始年, 跨年稳定); 州无本土文化/姓池/中译时回退固定西方姓池。
+    返回 (姓氏中文, culture_key 或 None)。"""
+    rnd = random.Random("ent-surname|west|%s|%s|%s|%s"
+                        % (state_zh, good_key, founded_year, salt))
+    pools = (state_surnames or {}).get(state_zh)
+    if pools:
+        ck, zpool = rnd.choice(pools)
+        return rnd.choice(zpool), ck
+    return rnd.choice(_ENTERPRISE_WEST_SURNAMES), None
+
+
+def _enterprise_tpl(style, state_zh, good_key, founded_year):
+    """确定性挑选命名模板 (创始年确定后不变, 跨年稳定)。
+    东亚风格沿用旧种子格式 (ent-tpl|州|商品|年), 保证旧会话企业名不变。"""
+    if style == "east":
+        rnd = random.Random(f"ent-tpl|{state_zh}|{good_key}|{founded_year}")
+        return rnd.choice(_ENT_TPL_EAST)
+    rnd = random.Random(f"ent-tpl|west|{state_zh}|{good_key}|{founded_year}")
+    return rnd.choice(_ENT_TPL_WEST)
+
+
+def _enterprise_style_name(style, state_zh, good_key, founded_year, group=False,
+                           salt=0, state_surnames=None, tpl=None):
     """按模板生成企业名; group=True 时用集团体尾缀 (兼并扩张后升级)。
-    salt 用于同名冲突时的确定性换名重试。"""
-    tpl = _enterprise_tpl(state_zh, good_key, founded_year)
-    rnd = random.Random("ent-name|%s|%s|%s|%s|%s"
-                        % (tpl, state_zh, good_key, founded_year, salt))
+    salt 用于同名冲突时的确定性换名重试。
+    tpl 显式指定模板 (同名冲突重试用); 缺省按 _enterprise_tpl 确定性派生,
+    保证创始年确定后名称不变 (旧会话兼容)。
+    state_surnames 供西方姓氏体: 从所在州本土文化姓池抽取姓氏。"""
+    if tpl is None:
+        tpl = _enterprise_tpl(style, state_zh, good_key, founded_year)
+    rnd = random.Random("ent-name|%s|%s|%s|%s|%s|%s"
+                        % (style, tpl, state_zh, good_key, founded_year, salt))
     if tpl == "shophao":
         base = rnd.choice(_ENTERPRISE_AUSPICIOUS)
         if group:
@@ -13217,24 +13341,42 @@ def _enterprise_style_name(state_zh, good_key, founded_year, group=False,
                               % (state_zh, good_key, founded_year, salt))
             return base + g.choice(_ENTERPRISE_GROUP_TAILS)
         return base + _ENTERPRISE_FAMILY_TAILS.get(good_key, _ENTERPRISE_FAMILY_TAIL_DEFAULT)
+    if tpl == "west_family":
+        base, _ck = _west_style_surname(state_surnames, state_zh, good_key,
+                                        founded_year, salt)
+        if group:
+            g = random.Random("ent-group|west_family|%s|%s|%s|%s"
+                              % (state_zh, good_key, founded_year, salt))
+            return base + g.choice(_ENTERPRISE_WEST_GROUP_TAILS)
+        return base + rnd.choice(_ENTERPRISE_WEST_FAMILY_TAILS)
+    if tpl == "west_company":
+        base = rnd.choice(_ENTERPRISE_WEST_PREFIXES)
+        if group:
+            g = random.Random("ent-group|west_company|%s|%s|%s|%s"
+                              % (state_zh, good_key, founded_year, salt))
+            return base + g.choice(_ENTERPRISE_WEST_GROUP_TAILS)
+        return base + _ENTERPRISE_WEST_TAILS.get(good_key, _ENTERPRISE_WEST_TAIL_DEFAULT)
     suffix = _LOCAL_ENTERPRISE_SUFFIX.get(good_key, _LOCAL_ENTERPRISE_SUFFIX_DEFAULT)
     if group:
         return "%s%s" % (state_zh, _ENTERPRISE_GROUP_TAILS[0])
     return "%s%s" % (state_zh, suffix)
 
 
-def _unique_enterprise_name(state_zh, good_key, founded_year, used_names,
-                            group=False):
+def _unique_enterprise_name(style, state_zh, good_key, founded_year, used_names,
+                            group=False, state_surnames=None):
     """按模板生成企业名并保证在 used_names 中唯一 (冲突时换模板/换种子重试)。"""
-    base = _enterprise_style_name(state_zh, good_key, founded_year, group=group)
+    base = _enterprise_style_name(style, state_zh, good_key, founded_year,
+                                  group=group, state_surnames=state_surnames)
     if base not in used_names:
         return base
+    pool = _ENT_TPL_EAST if style == "east" else _ENT_TPL_WEST
     for k in range(1, 60):
-        rnd = random.Random("ent-name|retry|%s|%s|%s|%s"
-                            % (state_zh, good_key, founded_year, k))
-        tpl = rnd.choice(_ENT_TPL)
-        nm = _enterprise_style_name(state_zh, good_key, founded_year,
-                                    group=group, salt=k)
+        rnd = random.Random("ent-name|retry|%s|%s|%s|%s|%s"
+                            % (style, state_zh, good_key, founded_year, k))
+        tpl = rnd.choice(pool)
+        nm = _enterprise_style_name(style, state_zh, good_key, founded_year,
+                                    group=group, salt=k,
+                                    state_surnames=state_surnames, tpl=tpl)
         if nm not in used_names:
             return nm
     return "%s%s" % (state_zh, _LOCAL_ENTERPRISE_SUFFIX.get(good_key, "公司"))
@@ -13265,7 +13407,7 @@ def _ev_local_delisting(c, year, country_name):
 
 
 def _apply_local_merger(acquirer, target, year, country_name, events,
-                        used_names=None):
+                        used_names=None, style="east", state_surnames=None):
     """收购方吸收被并方: 商品篮/行业合并, 可升级集团体名, 记录事件。"""
     target["merged_into"] = acquirer.get("name")
     target["delisted_year"] = year
@@ -13286,8 +13428,10 @@ def _apply_local_merger(acquirer, target, year, country_name, events,
             banned.discard(acquirer.get("name"))
             banned.discard(target.get("name"))
             new_name = _unique_enterprise_name(
-                acquirer.get("state") or "未知州", acquirer.get("good") or "grain",
-                acquirer.get("founded_year") or year, banned, group=True)
+                style, acquirer.get("state") or "未知州",
+                acquirer.get("good") or "grain",
+                acquirer.get("founded_year") or year, banned, group=True,
+                state_surnames=state_surnames)
             if new_name and new_name != acquirer.get("name"):
                 nh = acquirer.setdefault("name_history", [])
                 nh.append({"year": year, "name": new_name})
@@ -13301,14 +13445,95 @@ def _apply_local_merger(acquirer, target, year, country_name, events,
                               target.get("name"), acquirer.get("name"))})
 
 
+def _ipo_params(name, sid, state_scale, cfg, min_scale=50000.0):
+    """上市发行参数 (确定性): 发行价 = 家乡州产出规模×系数 ÷ 发行股数。
+
+    state_scale: {sid: 州建筑产出价值合计} (存档无州级GDP, 以其为代理;
+    原始为周度口径, 按×52 年化); sid 缺失或规模过小时用 min_scale 兜底;
+    发行股数为种子随机 (可控区间见 config: stock_ipo_shares_min/max)。
+    返回 (issue_price, shares, market_cap)。"""
+    rnd = random.Random(f"ipo|{name}")
+    if state_scale and sid is not None:
+        scale = float(state_scale.get(sid) or 0.0)
+    else:
+        scale = 0.0
+    scale = max(scale * 52.0, float(min_scale))
+    factor = float(cfg.get("stock_ipo_mcap_factor", 3.0) or 3.0)
+    shares_min = int(cfg.get("stock_ipo_shares_min", 10000) or 10000)
+    shares_max = int(cfg.get("stock_ipo_shares_max", 100000) or 100000)
+    if shares_max < shares_min:
+        shares_max = shares_min
+    shares = rnd.randint(shares_min, shares_max)
+    market_cap = round(scale * factor, 2)
+    price = round(max(market_cap / shares, 0.01), 2)
+    return price, shares, market_cap
+
+
+def _local_names_history(journal_dir, year, player):
+    """历史上用过的本地企业名 (含已退市/被并购者), 供新设/改名避让。
+
+    仅当快照 stock_market 尚未持久化 used_names 时作扫描回退 (旧会话升级):
+    名称来源 = 历年 raw_*.json 中 kind=local 的 companies.name
+             + 年度事件 (新设上市/退市/并购) 里出现的名称。
+    返回 set[str]。"""
+    names = set()
+    if not journal_dir or not year:
+        return names
+    base = None
+    try:
+        for folder in sorted(os.listdir(journal_dir)):
+            if player and not str(folder).startswith(str(player)):
+                continue
+            cand = os.path.join(journal_dir, folder, "data")
+            if os.path.isdir(cand):
+                base = cand
+                break
+    except OSError:
+        return names
+    if not base:
+        return names
+    try:
+        fns = os.listdir(base)
+    except OSError:
+        return names
+    for fn in fns:
+        m = re.fullmatch(r"raw_(\d{4})\.json", fn)
+        if not m or int(m.group(1)) >= year:
+            continue
+        try:
+            with open(os.path.join(base, fn), encoding="utf-8") as f:
+                raw = json.load(f)
+        except (OSError, ValueError):
+            continue
+        sm = raw.get("stock_market") or {}
+        for c in sm.get("companies") or []:
+            if c.get("kind") == "local" and c.get("name"):
+                names.add(c["name"])
+        for ev in sm.get("events") or []:
+            for k in ("name", "acquirer", "target"):
+                v = ev.get(k)
+                if isinstance(v, str) and v:
+                    names.add(v)
+    return names
+
+
 def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
                          price_delta=None, prices=None, prev_goods=None, gm=None,
-                         keep_quotes=False):
+                         keep_quotes=False, style="east", state_scale=None,
+                         raw_override=None, state_surnames=None,
+                         used_extra=None):
     """地方企业年度演化 (确定性): 退市 → 并购 → 新设补足 → 行情续算。
 
     cands      本年 (州×商品) 产量候选行 (按产量降序);
     prev_locals 上年地方企业 (已 _coerce_local_registry);
     keep_quotes=True 时保留上年行情数值 (历史数据回填用), 仅重组名称/登记簿/事件;
+    style      命名风格 ("east"/"west");
+    state_scale 州产出规模 {sid: 值}, 供新设上市发行定价;
+    raw_override {(state, good): 年涨跌小数} 时, 该企业本年 raw 直接取给定值
+                (历史回填用, 保证与旧行情口径一致), 否则按商品价格+扰动计算;
+    state_surnames 州本土文化姓氏池 (西方姓氏体用), 见 _state_homeland_surnames;
+    used_extra 历史上用过的企业名集合 (含已退市/被并购者), 新设与并购改名均避让,
+                防止同名个股跨年重现;
     开市之年 (prev_locals 为空) 不发生并购, 全部按新设上市处理。
     返回 (companies, events)。"""
     events = []
@@ -13322,47 +13547,56 @@ def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
             events.append(_ev_local_delisting(c, year, country_name))
             continue
         active.append(c)
+    merged_keys = set()
     if prev_locals and len(active) >= 2:
         merger_p = float(cfg.get("stock_merger_chance", 0.5) or 0.5)
         ev_rng = random.Random("stock|events|%s|%s" % (year, country_name))
-        all_names = {c.get("name") for c in active if c.get("name")}
+        all_names = ({c.get("name") for c in active if c.get("name")}
+                     | set(used_extra or ()))
 
         def _pick_acquirer(pool):
-            """收购方须为成立满一年的企业 (创始年当年不并购), 取指数最高者。"""
+            """收购方须为成立满一年的企业 (创始年当年不并购), 取现价最高者。"""
             eligible = [c for c in pool
                         if c.get("founded_year") not in (None, 0)
                         and c.get("founded_year") < year]
             if not eligible:
                 return None, None
             ranked = sorted(eligible,
-                            key=lambda c: -(float(c.get("index") or 0.0)))
-            tgt = min(pool, key=lambda c: float(c.get("index") or 0.0))
+                            key=lambda c: -(float(c.get("price") or 0.0)))
+            tgt = min(pool, key=lambda c: float(c.get("price") or 0.0))
             if ranked[0] is tgt and len(pool) > 1:
-                tgt = sorted(pool, key=lambda c: float(c.get("index") or 0.0))[1]
+                tgt = sorted(pool, key=lambda c: float(c.get("price") or 0.0))[1]
             return ranked[0], tgt
 
         if ev_rng.random() < merger_p:
             acquirer, tgt = _pick_acquirer(active)
             if acquirer is not None and acquirer is not tgt:
+                merged_keys.add((tgt.get("state"), tgt.get("good")))
                 _apply_local_merger(acquirer, tgt, year, country_name, events,
-                                    used_names=all_names)
+                                    used_names=all_names, style=style,
+                                    state_surnames=state_surnames)
                 active.remove(tgt)
                 if ev_rng.random() < 0.4 and len(active) >= 2:
                     a2, t2 = _pick_acquirer(active)
                     if a2 is not None and a2 is not t2:
+                        merged_keys.add((t2.get("state"), t2.get("good")))
                         _apply_local_merger(a2, t2, year, country_name, events,
-                                            used_names=all_names)
+                                            used_names=all_names, style=style,
+                                            state_surnames=state_surnames)
                         active.remove(t2)
     listed_keys = {(c.get("state"), c.get("good")) for c in active}
-    used_names = {c.get("name") for c in active if c.get("name")}
+    used_names = ({c.get("name") for c in active if c.get("name")}
+                  | set(used_extra or ()))
     new_rows = []
     for r in cands:
         if len(active) + len(new_rows) >= target:
             break
         key = (r["state"], r["good"])
-        if key in listed_keys:
+        # 本年刚被兼并/退市的 (州×商品) 不再同年新设, 避免同名重复上市
+        if key in listed_keys or key in merged_keys:
             continue
-        nm = _unique_enterprise_name(r["state"], r["good"], year, used_names)
+        nm = _unique_enterprise_name(style, r["state"], r["good"], year,
+                                     used_names, state_surnames=state_surnames)
         used_names.add(nm)
         listed_keys.add(key)
         new_rows.append(dict(r, name=nm))
@@ -13372,52 +13606,12 @@ def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
                            "state": r["state"], "good": r["good"],
                            "desc": "%s（%s，主营%s产销）新设上市。"
                                    % (nm, r["state"], goods_zh)})
-    comps = []
-    if keep_quotes:
-        for c in active:
-            if all(c.get(k) is not None for k in ("open", "high", "low", "close")):
-                ohlc = {k: c.get(k) for k in ("open", "high", "low", "close")}
-            else:
-                ohlc = _stock_ohlc(c.get("name"), year,
-                                   float(c.get("index") or 100.0),
-                                   float(c.get("index") or 100.0))
-            comps.append(_local_company_dict(c, year, ohlc))
-        for r in new_rows:
-            ohlc = _stock_ohlc(r["name"], year, 100.0, 100.0)
-            comps.append({
-                "kind": "local", "name": r["name"], "state": r["state"],
-                "industries": "%s产销" % (r.get("zh") or r["good"]),
-                "goods_basket": r.get("zh") or r["good"],
-                "gid": r["gid"], "good": r["good"],
-                "enterprise_id": "local|%s|%s|%s" % (r["state"], r["good"], year),
-                "founded_year": year,
-                "name_history": [{"year": year, "name": r["name"]}],
-                "merges": [],
-                "index": 100.0, "change_pct": None, "band": "新设上市",
-                "note": "新设上市",
-                "open": ohlc["open"] if ohlc else None,
-                "high": ohlc["high"] if ohlc else None,
-                "low": ohlc["low"] if ohlc else None,
-                "close": ohlc["close"] if ohlc else None,
-            })
-        return comps, events
-    for c in active:
-        gid = c.get("gid")
-        d = price_delta(gid) if price_delta else 0.0
-        rnd = random.Random("%s|stock|local|%s" % (year, c.get("name")))
-        raw = max(-_STOCK_YOY_CLAMP,
-                  min(_STOCK_YOY_CLAMP, d + rnd.uniform(-0.03, 0.03)))
-        index = float(c.get("index") or 100.0) * (1.0 + raw)
-        ohlc = _stock_ohlc(c.get("name"), year, float(c.get("index") or 100.0), index)
-        note = None
-        if c.get("renamed_year") == year:
-            note = "本年改名%s" % c.get("name")
-        comps.append(_local_company_dict(
-            c, year, ohlc, index=round(index, 1),
-            change_pct=round(raw * 100.0, 1), note=note))
-    for r in new_rows:
-        ohlc = _stock_ohlc(r["name"], year, 100.0, 100.0)
-        comps.append({
+
+    def _new_listing_dict(r):
+        """新设上市公司 dict: 按家乡州产出规模定发行价, 现价=发行价。"""
+        ip, shares, mcap = _ipo_params(r["name"], r.get("sid"), state_scale, cfg)
+        ohlc = _stock_ohlc(r["name"], year, ip, ip)
+        return {
             "kind": "local", "name": r["name"], "state": r["state"],
             "industries": "%s产销" % (r.get("zh") or r["good"]),
             "goods_basket": r.get("zh") or r["good"],
@@ -13426,17 +13620,55 @@ def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
             "founded_year": year,
             "name_history": [{"year": year, "name": r["name"]}],
             "merges": [],
-            "index": 100.0, "change_pct": None, "band": "新设上市",
+            "issue_price": ip, "shares": shares, "market_cap": mcap,
+            "price": ip, "change_pct": None, "band": "新设上市",
             "note": "新设上市",
             "open": ohlc["open"] if ohlc else None,
             "high": ohlc["high"] if ohlc else None,
             "low": ohlc["low"] if ohlc else None,
             "close": ohlc["close"] if ohlc else None,
-        })
+        }
+
+    comps = []
+    if keep_quotes:
+        for c in active:
+            if all(c.get(k) is not None for k in ("open", "high", "low", "close")):
+                ohlc = {k: c.get(k) for k in ("open", "high", "low", "close")}
+            else:
+                prev_price = float(c.get("price") or c.get("issue_price") or 100.0)
+                ohlc = _stock_ohlc(c.get("name"), year, prev_price, prev_price)
+            comps.append(_local_company_dict(c, year, ohlc))
+        for r in new_rows:
+            comps.append(_new_listing_dict(r))
+        return comps, events
+    for c in active:
+        gid = c.get("gid")
+        key = (c.get("state"), c.get("good"))
+        if raw_override and key in raw_override:
+            raw = max(-_STOCK_YOY_CLAMP, min(_STOCK_YOY_CLAMP,
+                                             float(raw_override[key])))
+        else:
+            d = price_delta(gid) if price_delta else 0.0
+            rnd = random.Random("%s|stock|local|%s" % (year, c.get("name")))
+            raw = max(-_STOCK_YOY_CLAMP,
+                      min(_STOCK_YOY_CLAMP, d + rnd.uniform(-0.03, 0.03)))
+        prev_price = float(c.get("price") or c.get("issue_price") or 0.0)
+        if prev_price <= 0:
+            prev_price = float(c.get("issue_price") or 1.0)
+        price = prev_price * (1.0 + raw)
+        ohlc = _stock_ohlc(c.get("name"), year, prev_price, price)
+        note = None
+        if c.get("renamed_year") == year:
+            note = "本年改名%s" % c.get("name")
+        comps.append(_local_company_dict(
+            c, year, ohlc, price=round(price, 2),
+            change_pct=round(raw * 100.0, 1), note=note))
+    for r in new_rows:
+        comps.append(_new_listing_dict(r))
     return comps, events
 
 
-def _local_company_dict(c, year, ohlc, index=None, change_pct=None, note=None):
+def _local_company_dict(c, year, ohlc, price=None, change_pct=None, note=None):
     """把登记簿里的地方企业行转为输出 company dict。
     note 只用于本年新设/本年改名等一次性信息, 不沿用上年 note
     (修复「新设上市」跨年携带问题)。"""
@@ -13449,8 +13681,12 @@ def _local_company_dict(c, year, ohlc, index=None, change_pct=None, note=None):
         "founded_year": c.get("founded_year"),
         "name_history": c.get("name_history"),
         "merges": c.get("merges"),
-        "index": round(index, 1) if index is not None
-                 else (round(float(c.get("index") or 100.0), 1)),
+        "issue_price": c.get("issue_price"),
+        "shares": c.get("shares"),
+        "market_cap": c.get("market_cap"),
+        "price": round(price, 2) if price is not None
+                 else (round(float(c.get("price")
+                                   or c.get("issue_price") or 0.0), 2)),
         "change_pct": change_pct if change_pct is not None else c.get("change_pct"),
         "band": _stock_band(change_pct if change_pct is not None
                             else c.get("change_pct")),
@@ -13722,14 +13958,17 @@ def _price_delta(gid, prices, prev_goods, gm):
 
 
 def _local_enterprise_candidates(melted, ctx, snap, gm):
-    """按 (州×商品) 产量排序的地方企业候选 (确定性: 平手按州名+商品名)。"""
+    """按 (州×商品) 产量排序的地方企业候选 (确定性: 平手按州名+商品名)。
+    同时返回州级产出规模 {sid: 建筑产出价值合计} (存档无州级GDP, 作发行定价代理)。"""
     order = gm.get("order") or []
     zh = gm.get("zh") or {}
     state_ids = _pool_state_ids(snap)
     by_state, bmap, objs = ctx.buildings_index(state_ids)
     rows = []
+    state_scale = {}
     for sid in state_ids:
         prod = {}
+        scale = 0.0
         for bid in by_state.get(sid, []):
             og = ((objs.get(bid) or {}).get("output_goods") or {}).get("goods") or {}
             for gid_s, v in og.items():
@@ -13738,18 +13977,20 @@ def _local_enterprise_candidates(melted, ctx, snap, gm):
                     val = float((v or {}).get("value") or 0)
                 except (TypeError, ValueError):
                     continue
-                if val <= 0 or not (0 <= gid < len(order)):
+                if val <= 0:
                     continue
-                if order[gid] not in zh:
+                scale += val
+                if not (0 <= gid < len(order)) or order[gid] not in zh:
                     continue
                 prod[gid] = prod.get(gid, 0.0) + val
+        state_scale[sid] = scale
         st_zh = ctx.state_zh(sid) or "未知州"
         for gid, val in prod.items():
             key = order[gid]
             rows.append({"state": st_zh, "sid": sid, "gid": gid,
                          "good": key, "zh": zh.get(key, key), "value": val})
     rows.sort(key=lambda r: (-r["value"], r["state"], r["zh"]))
-    return rows
+    return rows, state_scale
 
 
 def _local_enterprise_name(state_zh, good_key):
@@ -13761,7 +14002,7 @@ _STOCK_OHLC_SPREAD = 0.05  # 年K线影线最大随机幅度 (±5%)
 
 
 def _stock_ohlc(name, year, open_, close_):
-    """个股年K线四值: open=上年收盘 (新设上市 100), close=本报指数;
+    """个股/指数年K线四值: open=上年收盘 (新设上市以发行价开市), close=现价;
     high/low 在 max/min(open,close) 外再外扩 0~±5% 的确定性随机幅度。
     行情本身是程序模拟口径, 影线幅度同样由种子决定, 同年同股稳定可复现。"""
     if open_ is None or close_ is None:
@@ -13779,12 +14020,55 @@ def _stock_ohlc(name, year, open_, close_):
     }
 
 
-def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
+def _exchange_index_ohlc(comps, prev_stock, year):
+    """市值加权链式交易所指数 + 年K线 (开市年 100, 此后逐年链式, 自开市起连续)。
+
+    指数_t = 指数_{t-1} × Σ(现价×股数)[两市共存] / Σ(上年现价×股数)[两市共存];
+    新上市标的按发行价并入次年起权重, 退市剔除; 某年无共存标的时持平 (保连续)。
+    返回 {"open","high","low","close","change_pct"}。"""
+    prev_comps = (prev_stock or {}).get("companies") or []
+    prev_price = {c.get("name"): (c.get("price") or c.get("close"))
+                  for c in prev_comps if c.get("name")}
+    prev_ex = (prev_stock or {}).get("exchange_index") or {}
+    prev_close = prev_ex.get("close") if isinstance(prev_ex, dict) else None
+    num = den = 0.0
+    for c in comps:
+        nm = c.get("name")
+        pp = prev_price.get(nm)
+        pn = c.get("price")
+        sh = c.get("shares")
+        if nm and pp and pn and sh:
+            num += pn * sh
+            den += pp * sh
+    if not prev_stock:
+        idx = 100.0
+    elif prev_close and den > 0 and num > 0:
+        idx = prev_close * num / den
+    else:
+        idx = prev_close if prev_close else 100.0
+    change = ((idx / prev_close) - 1.0) * 100.0 if prev_close else None
+    ohlc = _stock_ohlc("exchange_index", year, prev_close or 100.0, idx)
+    return {
+        "open": ohlc["open"] if ohlc else None,
+        "high": ohlc["high"] if ohlc else None,
+        "low": ohlc["low"] if ohlc else None,
+        "close": round(idx, 2),
+        "change_pct": round(change, 2) if change is not None else None,
+    }
+
+
+def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
+                       journal_dir=None):
     """股市动态数据 (国家级公司 + 地方企业), 无科技/无公司时返回 None。
 
     国家级公司: companies.database 中属于本国的公司 (玩家创建/特许公司);
-    地方企业: 按 (州×商品) 生产量生成, 州名+商品名命名, 上年已创建者保留;
-    年涨跌 = 商品篮子价格变动 + 公司景气 + 确定性扰动, 钳制 ±25%。
+    地方企业: 按 (州×商品) 生产量生成, 上年已创建者保留;
+    年涨跌 = 商品篮子价格变动 + 公司景气 + 确定性扰动, 钳制 ±25%;
+    每股为真实股价: 新设上市按家乡州产出规模定价
+    (发行价 = 州产出规模×系数 ÷ 发行股数), 现价按年涨跌续算;
+    交易所指数为市值加权链式 (开市年 100, 自开市年起逐年连续)。
+    journal_dir 提供时, 新设/改名避让历史上用过的本地企业名 (防同名个股);
+    结果携带 used_names (全部用过的本地企业名), 随快照/raw 跨年持久化。
     """
     try:
         _cfg = _journal.load_config()
@@ -13802,10 +14086,18 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
     prices = _market_price_map(melted, country) or {}
     prev_stock = (prev_snap or {}).get("stock_market") or {}
     prev_goods = prev_stock.get("goods_prices") or {}
-    prev_idx = {}
+    prev_quote = {}
     for c in prev_stock.get("companies") or []:
         if c.get("name"):
-            prev_idx[c["name"]] = c.get("index")
+            prev_quote[c["name"]] = c
+    country_name = (country or {}).get("name") or snap.get("player") or "未知"
+    style = _country_enterprise_style(country_name)
+    # 地方企业候选 + 州产出规模 (先算, 供国家级公司新设上市定价共用)
+    target = int(_cfg.get("stock_local_enterprise_count", 5) or 5)
+    cands, state_scale = _local_enterprise_candidates(melted, ctx, snap, gm)
+    # 西方姓氏体: 州本土文化姓氏池 (仅非东亚国家需要)
+    state_surnames = (_state_homeland_surnames(melted, ctx, snap)
+                      if style == "west" else None)
     comps = []
     charters = _company_charters_map(melted)
     for cid2, cobj in _companies_database(melted).items():
@@ -13830,30 +14122,42 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
         raw = max(-_STOCK_YOY_CLAMP,
                   min(_STOCK_YOY_CLAMP,
                       0.5 * basket_delta + 0.3 * biz + 0.2 * rnd.uniform(-0.04, 0.04)))
-        prev_i = prev_idx.get(name)
-        if isinstance(prev_i, (int, float)) and prev_i > 0:
-            index = prev_i * (1.0 + raw)
+        prev_q = prev_quote.get(name) or {}
+        home_sid = None
+        st_region = cobj.get("state_region")
+        if st_region is not None and str(st_region).strip().isdigit():
+            home_sid = int(st_region)
+        if home_sid is None:
+            home_sid = snap.get("capital_id")
+        prev_price = prev_q.get("price")
+        if isinstance(prev_price, (int, float)) and prev_price > 0:
+            price = prev_price * (1.0 + raw)
             change = raw * 100.0
             note = None
+            issue_price = prev_q.get("issue_price")
+            shares = prev_q.get("shares")
+            mcap = prev_q.get("market_cap")
         else:
-            index = 100.0
+            # 新设上市: 按家乡州产出规模定价
+            issue_price, shares, mcap = _ipo_params(name, home_sid, state_scale,
+                                                    _cfg)
+            price = issue_price
             change = None
             note = "新设上市"
-        st_region = cobj.get("state_region")
-        st_zh = loc.get(st_region, st_region) if st_region else "未知州"
+        st_zh = ctx.state_zh(home_sid) if home_sid else "未知州"
         ind = _company_industries_zh(cobj, loc, charters)
         gids = sorted((weights or {}).keys())
         basket_zh = "、".join(zh.get(order[g], g) for g in gids[:4]) if gids else None
         note2 = _prosperity_band(cobj.get("prosperity"))
-        ohlc = _stock_ohlc(
-            name, year,
-            prev_i if isinstance(prev_i, (int, float)) and prev_i > 0 else 100.0,
-            index)
+        open_ = prev_price if isinstance(prev_price, (int, float)) and prev_price > 0 \
+            else issue_price
+        ohlc = _stock_ohlc(name, year, open_, price)
         comps.append({
             "kind": "national", "name": name, "state": st_zh,
             "industries": ind or basket_zh or "未知行业",
             "goods_basket": basket_zh, "gid": None, "good": None,
-            "index": round(index, 1),
+            "issue_price": issue_price, "shares": shares, "market_cap": mcap,
+            "price": round(price, 2),
             "change_pct": (round(change, 1) if change is not None else None),
             "band": _stock_band(change),
             "note": (note + "；" + note2) if (note and note2) else (note or note2 or ""),
@@ -13863,14 +14167,16 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
             "close": ohlc["close"] if ohlc else None,
         })
     # 地方企业: 年度演化 (退市/并购/新设补足), 见 _evolve_local_market
-    target = int(_cfg.get("stock_local_enterprise_count", 5) or 5)
-    cands = _local_enterprise_candidates(melted, ctx, snap, gm)
     prev_locals = [c for c in prev_stock.get("companies") or []
                    if c.get("kind") == "local" and c.get("name")]
-    country_name = (country or {}).get("name") or snap.get("player") or "未知"
+    hist_names = set(prev_stock.get("used_names") or [])
+    if journal_dir:
+        hist_names |= _local_names_history(journal_dir, year, snap.get("player"))
     local_comps, events = _evolve_local_market(
         cands, prev_locals, target, year, country_name, _cfg,
-        price_delta=(lambda gid: _price_delta(gid, prices, prev_goods, gm)))
+        price_delta=(lambda gid: _price_delta(gid, prices, prev_goods, gm)),
+        style=style, state_scale=state_scale, state_surnames=state_surnames,
+        used_extra=hist_names)
     comps.extend(local_comps)
     if not comps:
         return None
@@ -13885,12 +14191,16 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None):
     if with_chg:
         top_gainer = max(with_chg, key=lambda c: c["change_pct"]).get("name")
         top_loser = min(with_chg, key=lambda c: c["change_pct"]).get("name")
+    exchange_index = _exchange_index_ohlc(comps, prev_stock, year)
+    hist_names |= {c.get("name") for c in comps if c.get("name")}
     return {
         "open": True, "year": year,
         "first_year": not bool(prev_stock),
+        "used_names": sorted(hist_names),
         "goods_prices": goods_prices,
         "companies": comps,
         "events": events,
+        "exchange_index": exchange_index,
         "advancers": adv, "decliners": dec, "avg_change": avg,
         "top_gainer": top_gainer, "top_loser": top_loser,
     }
@@ -13930,7 +14240,7 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
         snap["society_flavor_lines"] = _society_flavor_lines(snap, prev_snap)
     if _cfg.get("stock_market_enabled", True):
         sm = _stock_market_data(melted, snap, ctx, country, cid,
-                                prev_snap=prev_snap)
+                                prev_snap=prev_snap, journal_dir=journal_dir)
         if sm:
             snap["stock_market"] = sm
     if journal_dir:
@@ -13953,7 +14263,11 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
 # (enterprise_id/founded_year/name_history/merges) + 年度并购/退市/新设事件
 # (stock_market.events) + 修复 note 跨年携带「新设上市」问题,
 # 旧缓存需重新熔化提取。
-SNAPSHOT_CACHE_VERSION = 8
+# 版本 9: 股市改为真实股价模型 (issue_price/shares/market_cap/price 取代 index,
+# 发行价 = 州产出规模×系数÷发行股数) + 市值加权链式交易所指数
+# (stock_market.exchange_index, 自开市年起连续) + 东亚/西方两套地方企业命名风格
+# (非东亚国家默认西方风格), 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 9
 # raw/snapshot 携带国家名解析表版本: 跨年合并时若上一年 raw 无此表,
 # 只能沿用烘焙名, 提示用 tools/regen_data.py 重新生成。
 NAME_TABLE_VERSION = 1

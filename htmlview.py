@@ -265,8 +265,26 @@ code{background:#efe7d3;border-radius:3px;padding:1px 5px;font-family:Consolas,m
 .chart svg .candle{cursor:crosshair}
 .candle-tip{position:absolute;display:none;pointer-events:none;background:rgba(38,32,22,.94);color:#f0e6d2;font-size:12px;line-height:1.7;padding:6px 10px;border-radius:4px;z-index:5;white-space:nowrap;box-shadow:0 2px 8px rgba(30,22,8,.35)}
 .candle-tip b{color:var(--gold)}
-.candle-tip .up{color:#7fd4a2}
-.candle-tip .down{color:#f0a49a}
+.candle-tip .up{color:var(--up-soft,#7fd4a2)}
+.candle-tip .down{color:var(--down-soft,#f0a49a)}
+
+/* 股市板块: 指数置顶 + 个股按钮切换 + 涨跌图例 (颜色随国家约定翻转) */
+.stock-head{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.stock-head .chart-title{margin:0}
+.stock-legend{font-size:12px;color:var(--ink-soft);display:inline-flex;align-items:center;gap:5px;margin-left:auto}
+.stock-legend i{width:11px;height:11px;border-radius:2px;display:inline-block;border:1px solid rgba(0,0,0,.18)}
+.stock-chart.stock-exchange{margin:0 0 14px}
+.stock-chart.stock-exchange .chart-title{margin:0 0 4px}
+.chg-badge{font-size:12px;font-weight:700;margin-left:6px}
+.chg-up{color:var(--up,#1e7d46)}
+.chg-down{color:var(--down,#b03a2e)}
+.stock-btns{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.stock-btn{font:inherit;padding:4px 12px;border:1px solid #c4b58c;background:#f3ecd8;color:var(--ink);border-radius:14px;cursor:pointer;font-size:13px;line-height:1.5}
+.stock-btn:hover{border-color:var(--accent)}
+.stock-btn.active{background:var(--accent);border-color:var(--accent);color:#fdf8ea;font-weight:700}
+.stock-btn .chg{font-weight:700;margin-left:5px}
+.stock-btn .chg.new{color:#9a8a5f}
+.stock-pane .stock-chart{margin:0}
 
 /* 报纸版式 */
 .view-newspaper .masthead{font-family:"STKaiti","KaiTi","SimSun",serif;text-align:center;font-size:42px;letter-spacing:8px;font-weight:700;border-top:3px double #3a2c16;border-bottom:3px double #3a2c16;padding:16px 0 12px;margin:0 0 12px}
@@ -412,10 +430,10 @@ function candleGeom(rows) {
   return { W, H, ml, mr, mt, mb, pw, ph, years, lo, hi, X, Y };
 }
 
-function candleChartSvg(rows) {
+function candleChartSvg(rows, palette) {
   const g = candleGeom(rows);
   const { W, H, ml, mr, mt, mb, pw, years, lo, hi, X, Y } = g;
-  const UP = "#1e7d46", DOWN = "#b03a2e";
+  const pal = palette || { up: "#1e7d46", down: "#b03a2e" };
   const fmt = v => Number(v).toFixed(0);
   const step = niceStep(hi - lo, 4);
   const t0 = Math.ceil(lo / step) * step;
@@ -438,7 +456,7 @@ function candleChartSvg(rows) {
   let candles = "";
   rows.forEach(r => {
     const x = X(r.year);
-    const col = r.close >= r.open ? UP : DOWN;
+    const col = r.close >= r.open ? pal.up : pal.down;
     const y1 = Y(Math.max(r.open, r.close));
     const y2 = Y(Math.min(r.open, r.close));
     const h = Math.max(2, y2 - y1);
@@ -484,33 +502,100 @@ function attachCandleTip(svg, rows) {
   svg.addEventListener("mouseleave", () => { tip.style.display = "none"; });
 }
 
+const PALETTES = {
+  east: { up: "#b03a2e", down: "#1e7d46" },
+  west: { up: "#1e7d46", down: "#b03a2e" },
+};
+const PALETTE_SOFT = {
+  east: { up: "#f0a49a", down: "#7fd4a2" },
+  west: { up: "#7fd4a2", down: "#f0a49a" },
+};
+let curStock = null;   // 当前选中的个股名 (跨年份保持)
+
+function stockSub(s) {
+  return [s.kind === "national" ? "国家级公司" : "地方企业",
+          s.state, s.industries ? "主营" + s.industries : ""]
+    .filter(Boolean).join(" · ") || s.name;
+}
+
+function stockTitle(s) {
+  return s.orig && s.orig !== s.name ? `${esc(s.name)}（前身${esc(s.orig)}）` : esc(s.name);
+}
+
+function renderOneStock(s, pal) {
+  return `<div class="stock-chart"><div class="chart-title">${stockTitle(s)}</div>`
+       + candleChartSvg(s.rows, pal) + "</div>";
+}
+
 function renderStockChart(div, curYear) {
   const stocks = (CHARTS.stock || [])
-    .filter(s => s.rows.some(r => r.year <= curYear));
-  if (!stocks.length) {
+    .filter(s => s.rows.some(r => r.year <= curYear))
+    .map(s => ({ ...s, rows: s.rows.filter(r => r.year <= curYear) }));
+  const exRows = (CHARTS.exchange || []).filter(r => r.year <= curYear);
+  if (!stocks.length && !exRows.length) {
     div.innerHTML = '<p class="chart-hint">本期无个股行情数据，图表自交易所开市次年起显示。</p>';
     return;
   }
-  let html = '<div class="chart-title">个股年K线（绿涨红跌）</div>';
-  html += '<p class="chart-sub">每年一根年K线：开盘=上年收盘（新设上市以100点为基准），收盘=本报指数，影线为年内确定性随机波动；悬停蜡烛可查看开收高低。</p>';
-  stocks.forEach(s => {
-    const rows = s.rows.filter(r => r.year <= curYear);
-    if (!rows.length) return;
-    const last = rows[rows.length - 1];
-    const title = s.orig && s.orig !== s.name ? `${esc(s.name)}（前身${esc(s.orig)}）` : esc(s.name);
-    html += `<div class="stock-chart"><div class="chart-title">${title}</div>`;
-    const sub = [s.kind === "national" ? "国家级公司" : "地方企业",
-                 s.state, s.industries ? "主营" + s.industries : ""]
-      .filter(Boolean).join(" · ");
-    if (sub) html += `<p class="chart-sub">${esc(sub)}</p>`;
-    html += candleChartSvg(rows) + "</div>";
-  });
+  const mode = CHARTS.palette === "east" ? "east" : "west";
+  const pal = PALETTES[mode];
+  div.style.setProperty("--up", pal.up);
+  div.style.setProperty("--down", pal.down);
+  div.style.setProperty("--up-soft", PALETTE_SOFT[mode].up);
+  div.style.setProperty("--down-soft", PALETTE_SOFT[mode].down);
+
+  // 板块标题 + 涨跌图例 (颜色随国家约定)
+  let html = '<div class="stock-head"><span class="chart-title">股市</span>'
+    + '<span class="stock-legend"><i style="background:' + pal.up + '"></i>涨'
+    + '<i style="background:' + pal.down + '"></i>跌</span></div>';
+  // 交易所指数置顶 (动态名: 市场中心州首府 hub 名 + 交易所指数)
+  if (exRows.length) {
+    const last = exRows[exRows.length - 1];
+    const chg = last.change_pct;
+    const hub = CHARTS.capital ? esc(CHARTS.capital) : "";
+    const badge = chg == null ? ""
+      : `<span class="chg-badge ${chg >= 0 ? "chg-up" : "chg-down"}">`
+        + (chg >= 0 ? "+" : "") + chg.toFixed(2) + "%</span>";
+    html += `<div class="stock-chart stock-exchange"><div class="chart-title">`
+      + hub + "交易所指数" + badge + "</div>";
+    html += candleChartSvg(exRows, pal) + "</div>";
+  }
+  // 个股按钮条 + 当前选中个股视图
+  if (stocks.length) {
+    if (curStock == null || !stocks.some(s => s.name === curStock)) {
+      curStock = stocks[0].name;   // 默认选开市最早者 (stocks 已按首年排序)
+    }
+    html += '<div class="stock-btns">';
+    stocks.forEach(s => {
+      const r = s.rows[s.rows.length - 1];
+      const chg = r ? r.change_pct : null;
+      const badge = chg == null
+        ? '<span class="chg new">新</span>'
+        : `<span class="chg ${chg >= 0 ? "chg-up" : "chg-down"}">`
+          + (chg >= 0 ? "+" : "-") + Math.abs(chg).toFixed(1) + "%</span>";
+      html += `<button type="button" class="stock-btn${s.name === curStock ? " active" : ""}"`
+        + ` data-name="${esc(s.name)}" title="${esc(stockSub(s))}">`
+        + esc(s.name) + badge + "</button>";
+    });
+    html += "</div>";
+    const cur = stocks.find(s => s.name === curStock);
+    if (cur) html += '<div class="stock-pane">' + renderOneStock(cur, pal) + "</div>";
+  }
   div.innerHTML = html;
-  div.querySelectorAll(".stock-chart").forEach((chart, i) => {
-    const svg = chart.querySelector(".candle-svg");
-    const s = stocks[i];
-    if (svg && s) attachCandleTip(svg, s.rows.filter(r => r.year <= curYear));
-  });
+  const attach = (svg, rows) => { if (svg && rows && rows.length) attachCandleTip(svg, rows); };
+  attach(div.querySelector(".stock-exchange .candle-svg"), exRows);
+  const cur0 = stocks.find(s => s.name === curStock);
+  attach(div.querySelector(".stock-pane .candle-svg"), cur0 ? cur0.rows : null);
+  div.querySelectorAll(".stock-btn").forEach(b => b.addEventListener("click", () => {
+    curStock = b.dataset.name;
+    const pane = div.querySelector(".stock-pane");
+    const s = stocks.find(x => x.name === curStock);
+    if (s && pane) {
+      pane.innerHTML = renderOneStock(s, pal);
+      attach(pane.querySelector(".candle-svg"), s.rows);
+    }
+    div.querySelectorAll(".stock-btn").forEach(x =>
+      x.classList.toggle("active", x === b));
+  }));
 }
 
 function renderCharts(root) {
@@ -633,21 +718,45 @@ def _parse_literacy(v):
     return None
 
 
+# 东亚国家名单 (与 journal_save._EAST_ASIAN_NAME_HINTS 保持同步;
+# 用于股市涨跌颜色约定: 东亚红涨绿跌, 其余绿涨红跌)
+_EAST_ASIAN_NAME_HINTS = ("大清", "日本", "德川", "朝鲜", "韩国", "大韩", "越南",
+                          "大南", "安南", "琉球", "西藏", "蒙古", "中华", "中国")
+
+
+def _is_east_asian(name):
+    """玩家国名是否东亚国家 (子串命中任一即算)。"""
+    if not name:
+        return False
+    return any(h in name for h in _EAST_ASIAN_NAME_HINTS)
+
+
 def _collect_chart_data(base_dir):
     """读取会话 data/raw_*.json, 汇总图表历史:
     macro: 逐年 GDP/人口/生活水平/识字率;
-    stock: 各标的逐年开收高低 (按 enterprise_id 分组, 兼容旧格式按 name);
+    stock: 各标的逐年开收高低 (按 enterprise_id 分组, 兼容旧格式按 name;
+           同名标的合并为一只, 兼容并购/退市后同名重新上市的历史数据);
+    exchange: 交易所指数逐年开收高低 (自开市年连续);
     market: 逐年大盘概况 (涨跌家数/均值/领涨领跌/市场事件)。
-    返回 {"macro": [...], "stock": [...], "market": [...], "currency": "..."}。
+    附带 player/capital (交易所指数命名用: 市场中心州首府 hub 名) 与
+    palette ("east" 红涨绿跌 / "west" 绿涨红跌, 由玩家国名判定)。
+    返回 {"macro": [...], "stock": [...], "exchange": [...], "market": [...],
+          "currency": "...", "player": "...", "capital": "...", "palette": "..."}。
     结果同时落盘为 data/history.json (供程序直接读取)。"""
     data_dir = os.path.join(base_dir, "data")
     macro = []
     stock = {}
+    exchange = []
     market = []
     currency = ""
+    player = ""
+    capital = ""
     if not os.path.isdir(data_dir):
-        return {"macro": macro, "stock": [], "market": market,
-                "currency": currency}
+        return {"macro": macro, "stock": [], "exchange": exchange,
+                "market": market, "currency": currency, "player": player,
+                "capital": capital,
+                "palette": "east" if _is_east_asian(
+                    player or os.path.basename(base_dir)) else "west"}
     for fn in sorted(os.listdir(data_dir)):
         m = re.fullmatch(r"raw_(\d{4})\.json", fn)
         if not m:
@@ -659,6 +768,10 @@ def _collect_chart_data(base_dir):
             continue
         year = int(m.group(1))
         currency = currency or (raw.get("currency") or "")
+        if raw.get("player"):
+            player = raw["player"]       # 取最新年国名
+        if raw.get("capital"):
+            capital = raw["capital"]     # 取最新年首都 hub 名
         lit = _parse_literacy(raw.get("literacy"))
         macro.append({
             "year": year,
@@ -678,6 +791,15 @@ def _collect_chart_data(base_dir):
             "first_year": sm.get("first_year"),
             "events": sm.get("events") or [],
         })
+        ex = sm.get("exchange_index") or {}
+        if isinstance(ex, dict) and ex.get("close") is not None \
+                and all(ex.get(k) is not None for k in ("open", "high", "low")):
+            exchange.append({
+                "year": year,
+                "open": ex["open"], "high": ex["high"],
+                "low": ex["low"], "close": ex["close"],
+                "change_pct": ex.get("change_pct"),
+            })
         for c in sm.get("companies") or []:
             name = c.get("name")
             if not name:
@@ -711,10 +833,34 @@ def _collect_chart_data(base_dir):
                 })
     macro.sort(key=lambda r: r["year"])
     market.sort(key=lambda r: r["year"])
+    exchange.sort(key=lambda r: r["year"])
     for rec in stock.values():
         rec["rows"].sort(key=lambda r: r["year"])
-    return {"macro": macro, "stock": list(stock.values()),
-            "market": market, "currency": currency}
+    # 同名标的合并为一只 (兼容历史数据), 同名同年以较后企业为准 (确定性)
+    merged = {}
+    for rec in sorted(stock.values(),
+                      key=lambda r: (r["rows"][0]["year"] if r["rows"] else 9999,
+                                     r["id"])):
+        nm = rec["name"]
+        base = merged.get(nm)
+        if base is None:
+            merged[nm] = rec
+            continue
+        by_year = {r["year"]: r for r in base["rows"]}
+        for r in rec["rows"]:
+            by_year[r["year"]] = r
+        base["rows"] = [by_year[y] for y in sorted(by_year)]
+        for k in ("kind", "state", "industries", "orig"):
+            if base.get(k) is None:
+                base[k] = rec.get(k)
+    stocks_out = list(merged.values())
+    stocks_out.sort(key=lambda r: (r["rows"][0]["year"] if r["rows"] else 9999,
+                                   r["name"]))
+    return {"macro": macro, "stock": stocks_out, "exchange": exchange,
+            "market": market, "currency": currency, "player": player,
+            "capital": capital,
+            "palette": "east" if _is_east_asian(
+                player or os.path.basename(base_dir)) else "west"}
 
 
 def _write_history_json(base_dir, charts):
