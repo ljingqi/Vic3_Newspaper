@@ -24,6 +24,7 @@ journal.py 的分板块报纸生成管线。
 """
 import io
 import json
+import math
 import os
 import random
 import re
@@ -5650,6 +5651,30 @@ def _pool_pop_text(pid, obj, ctx, loc, unit=None, literacy_band=False):
     return "，".join(bits) + "。"
 
 
+def _pop_dividend_rate(obj):
+    """一个 POP 的分红/投资月人均率: weekly_budget 槽位4 ÷ 劳动力 × 52/12,
+    与家庭采访 budget_rates.dividends 同口径 (游戏槽位: 4=分红/投资收入)。
+    无分红或数据缺失返回 0.0。"""
+    wb = (obj or {}).get("weekly_budget") or []
+    wf = (obj or {}).get("workforce")
+    if not isinstance(wb, list) or len(wb) <= 4:
+        return 0.0
+    v = wb[4] if isinstance(wb[4], (int, float)) else 0.0
+    if v <= 0 or not isinstance(wf, (int, float)) or wf <= 0:
+        return 0.0
+    return v / wf * (52.0 / 12.0)
+
+
+def _pool_investment_lines(snap, st_zh, pop_obj, seed_key):
+    """杂志文章池共用 (2026-08-23): 该人群有分红/投资收入 且 国家已研发
+    mutual_funds 时, 附一家地方企业本年行情作为其投资结果 (优先同州)。
+    条件不满足返回空列表。"""
+    return _journal.investment_outcome_lines(
+        snap.get("tech_keys"), snap.get("stock_market"), st_zh,
+        _pop_dividend_rate(pop_obj),
+        "%s|investment|%s|%s" % (snap.get("year"), seed_key, st_zh))
+
+
 def _pool_pop_class(obj):
     """存档 social_class 为嵌套 dict ({"social_class": "lower_class"})。"""
     v = obj.get("social_class")
@@ -6392,6 +6417,7 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     if grassroots_pop:
         pid, o = grassroots_pop[0]
         grassroots.append(_pool_pop_text(pid, o, ctx, loc, unit=unit))
+        grassroots.extend(_pool_investment_lines(snap, st_zh, o, "mag_service"))
     else:
         grassroots.append("（无足量基层人群样本，请含蓄写作。）")
     gr_ck = (culture_id_to_key(grassroots_pop[0][1].get("culture"))
@@ -6527,6 +6553,7 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
     if sps:
         pid, pop = rnd.choice(sps)
         ballot.append(_pool_pop_text(pid, pop, ctx, loc, unit=unit))
+        ballot.extend(_pool_investment_lines(snap, st_zh, pop, "mag_voting"))
         bl_ck = (culture_id_to_key(pop.get("culture"))
                  if pop.get("culture") is not None else None)
         # 投票文章例外: 未施行妇女选举权时, 合格选民必然为男性
@@ -6648,6 +6675,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
                     household.append(f"恩格尔系数约{prof['engel']}%。")
             except Exception:
                 pass
+        household.extend(_pool_investment_lines(snap, st_zh, o, "mag_price"))
     market = ["本刊关注的几件商品与市价："]
     for r in rows[:5]:
         market.append(f"- {r['zh']}：市价约{round(r['price'], 2)}{unit}"
@@ -13426,6 +13454,13 @@ def _unique_enterprise_name(style, state_zh, good_key, founded_year, used_names,
     return "%s%s" % (state_zh, _LOCAL_ENTERPRISE_SUFFIX.get(good_key, "公司"))
 
 
+def _registry_home_asset(c):
+    """地方企业登记簿无 assets 字段时, 以家乡 (州×商品) 补默认资产 (旧会话兼容)。"""
+    return {"state": c.get("state") or "?", "gid": c.get("gid"),
+            "good": c.get("good") or "?", "zh": c.get("goods_basket")
+            or c.get("good") or "?"}
+
+
 def _coerce_local_registry(c, fallback_year=None):
     """补齐地方企业登记簿字段 (兼容旧格式快照: 无 enterprise_id/founded_year 时补)。"""
     if not c.get("enterprise_id"):
@@ -13434,6 +13469,7 @@ def _coerce_local_registry(c, fallback_year=None):
         c["founded_year"] = fallback_year
     c.setdefault("name_history", [])
     c.setdefault("merges", [])
+    c.setdefault("assets", [_registry_home_asset(c)])
     return c
 
 
@@ -13452,12 +13488,31 @@ def _ev_local_delisting(c, year, country_name):
 
 def _apply_local_merger(acquirer, target, year, country_name, events,
                         used_names=None, style="east", state_surnames=None):
-    """收购方吸收被并方: 商品篮/行业合并, 可升级集团体名, 记录事件。"""
+    """收购方吸收被并方: 商品篮/行业合并 + 名下资产 (州×商品) 并入, 可升级集团体名。
+
+    资产并入 (价值模型): 被并方资产清单 (家乡+其历次兼并) 并入收购方 assets,
+    并以 _merged_assets 单独登记本年新并入者 (供有机增长/兼并有界溢价计算,
+    行情续算后即丢弃, 不随登记簿持久化)。"""
     target["merged_into"] = acquirer.get("name")
     target["delisted_year"] = year
     target["delisted_reason"] = "被兼并"
     merges = acquirer.setdefault("merges", [])
-    merges.append({"year": year, "role": "acquirer", "other": target.get("name")})
+    merges.append({"year": year, "role": "acquirer", "other": target.get("name"),
+                   "state": target.get("state"), "good": target.get("good")})
+    # 资产并入: 被并方名下 (州×商品) 生产资产归收购方
+    t_assets = target.get("assets") or [_registry_home_asset(target)]
+    a_assets = acquirer.setdefault("assets", [])
+    new_merged = acquirer.setdefault("_merged_assets", [])
+    seen = {(a.get("state"), a.get("good"))
+            for a in a_assets if a.get("state") and a.get("good")}
+    for a in t_assets:
+        k = (a.get("state"), a.get("good"))
+        if not k[0] or not k[1] or k in seen:
+            continue
+        a_assets.append({"state": a.get("state"), "gid": a.get("gid"),
+                         "good": a.get("good"), "zh": a.get("zh")})
+        new_merged.append(a_assets[-1])
+        seen.add(k)
     old_basket = acquirer.get("goods_basket") or ""
     tgt_basket = target.get("goods_basket") or ""
     merged = "、".join(dict.fromkeys(
@@ -13565,20 +13620,25 @@ def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
                          price_delta=None, prices=None, prev_goods=None, gm=None,
                          keep_quotes=False, style="east", state_scale=None,
                          raw_override=None, state_surnames=None,
-                         used_extra=None):
+                         used_extra=None, macro_ret=None):
     """地方企业年度演化 (确定性): 退市 → 并购 → 新设补足 → 行情续算。
 
-    cands      本年 (州×商品) 产量候选行 (按产量降序);
+    cands      本年 (州×商品) 产量候选行 (按产量降序, 含 value/profit);
     prev_locals 上年地方企业 (已 _coerce_local_registry);
     keep_quotes=True 时保留上年行情数值 (历史数据回填用), 仅重组名称/登记簿/事件;
     style      命名风格 ("east"/"west");
     state_scale 州产出规模 {sid: 值}, 供新设上市发行定价;
     raw_override {(state, good): 年涨跌小数} 时, 该企业本年 raw 直接取给定值
-                (历史回填用, 保证与旧行情口径一致), 否则按商品价格+扰动计算;
+                (历史回填用, 保证与旧行情口径一致), 否则按价值模型计算;
     state_surnames 州本土文化姓氏池 (西方姓氏体用), 见 _state_homeland_surnames;
     used_extra 历史上用过的企业名集合 (含已退市/被并购者), 新设与并购改名均避让,
                 防止同名个股跨年重现;
+    macro_ret  宏观经济年化收益 (小数, _stock_macro_return), 缺省 0;
     开市之年 (prev_locals 为空) 不发生并购, 全部按新设上市处理。
+    价值模型: 企业名下资产 (家乡 + 历次兼并的 (州×商品)) 的当年营收与利润
+    决定基本面 (asset_gdp=Σgoods_sales, asset_profit=Σprofit_after_reserves),
+    内在价值 fair 逐年续算, 现价向 fair×盈利水平加成 均值回归;
+    商品价格只作短期情绪 (权重见 config)。
     返回 (companies, events)。"""
     events = []
     for c in prev_locals:
@@ -13652,9 +13712,12 @@ def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
                                    % (nm, r["state"], goods_zh)})
 
     def _new_listing_dict(r):
-        """新设上市公司 dict: 按家乡州产出规模定发行价, 现价=发行价。"""
+        """新设上市公司 dict: 按家乡州产出规模定发行价, 现价=发行价,
+        资产清单=家乡 (州×商品), 内在价值=发行价。"""
         ip, shares, mcap = _ipo_params(r["name"], r.get("sid"), state_scale, cfg)
-        ohlc = _stock_ohlc(r["name"], year, ip, ip)
+        ohlc, monthly = _stock_monthly_ohlc(r["name"], year, ip, ip, cfg)
+        home = {"state": r["state"], "gid": r["gid"], "good": r["good"],
+                "zh": r.get("zh") or r["good"]}
         return {
             "kind": "local", "name": r["name"], "state": r["state"],
             "industries": "%s产销" % (r.get("zh") or r["good"]),
@@ -13664,6 +13727,10 @@ def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
             "founded_year": year,
             "name_history": [{"year": year, "name": r["name"]}],
             "merges": [],
+            "assets": [home],
+            "asset_gdp": round(r.get("sales") or 0.0, 2),
+            "asset_profit": round(r.get("profit") or 0.0, 2),
+            "fair_value": ip,
             "issue_price": ip, "shares": shares, "market_cap": mcap,
             "price": ip, "change_pct": None, "band": "新设上市",
             "note": "新设上市",
@@ -13671,49 +13738,92 @@ def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
             "high": ohlc["high"] if ohlc else None,
             "low": ohlc["low"] if ohlc else None,
             "close": ohlc["close"] if ohlc else None,
+            "monthly": monthly,
         }
 
     comps = []
     if keep_quotes:
         for c in active:
+            c.pop("_merged_assets", None)
             if all(c.get(k) is not None for k in ("open", "high", "low", "close")):
                 ohlc = {k: c.get(k) for k in ("open", "high", "low", "close")}
+                # 历史回填: 月K由 (年, 名称, 开, 收) 确定性重算
+                _m_ohlc, monthly = _stock_monthly_ohlc(
+                    c.get("name"), year, ohlc.get("open"), ohlc.get("close"), cfg)
             else:
                 prev_price = float(c.get("price") or c.get("issue_price") or 100.0)
-                ohlc = _stock_ohlc(c.get("name"), year, prev_price, prev_price)
-            comps.append(_local_company_dict(c, year, ohlc))
+                ohlc, monthly = _stock_monthly_ohlc(
+                    c.get("name"), year, prev_price, prev_price, cfg)
+            comps.append(_local_company_dict(c, year, ohlc, monthly=monthly))
         for r in new_rows:
             comps.append(_new_listing_dict(r))
         return comps, events
+    cand_sales = {(r["state"], r["good"]): r.get("sales", 0.0) for r in cands}
+    cand_profit = {(r["state"], r["good"]): r.get("profit", 0.0) for r in cands}
     for c in active:
         gid = c.get("gid")
         key = (c.get("state"), c.get("good"))
-        if raw_override and key in raw_override:
-            raw = max(-_STOCK_YOY_CLAMP, min(_STOCK_YOY_CLAMP,
-                                             float(raw_override[key])))
-        else:
-            d = price_delta(gid) if price_delta else 0.0
-            rnd = random.Random("%s|stock|local|%s" % (year, c.get("name")))
-            # 扰动与 ±45% 钳制等比放大 (0.03 × 1.8 ≈ 0.054)
-            raw = max(-_STOCK_YOY_CLAMP,
-                      min(_STOCK_YOY_CLAMP, d + rnd.uniform(-0.054, 0.054)))
+        # ---- 价值模型基本面: 名下资产 (家乡 + 历次兼并的 (州×商品)) 的营收与利润 ----
+        assets = c.get("assets") or [_registry_home_asset(c)]
+        merged_now = c.get("_merged_assets") or []
+        merged_keys = {(a.get("state"), a.get("good"))
+                       for a in merged_now if a.get("state") and a.get("good")}
+        asset_gdp_t = asset_profit_t = common_gdp = common_profit = 0.0
+        for a in assets:
+            if not a.get("state") or not a.get("good"):
+                continue
+            ak = (a["state"], a["good"])
+            asset_gdp_t += cand_sales.get(ak, 0.0)
+            asset_profit_t += cand_profit.get(ak, 0.0)
+            if ak not in merged_keys:      # 有机口径: 不含本年新并入资产
+                common_gdp += cand_sales.get(ak, 0.0)
+                common_profit += cand_profit.get(ak, 0.0)
+        prev_gdp = c.get("asset_gdp")
+        prev_profit = c.get("asset_profit")
         prev_price = float(c.get("price") or c.get("issue_price") or 0.0)
         if prev_price <= 0:
             prev_price = float(c.get("issue_price") or 1.0)
+        merger_value = asset_gdp_t - common_gdp
+        g_fund = _stock_fund_growth(common_gdp, common_profit, prev_gdp,
+                                    prev_profit, cfg, merger_value=merger_value,
+                                    prev_total=float(prev_gdp or 0.0))
+        margin = (asset_profit_t / asset_gdp_t) if asset_gdp_t > 0 else None
+        fair_prev = float(c.get("fair_value") or prev_price)
+        fair, fair_target = _stock_fair_value(fair_prev, g_fund, margin, cfg)
+        c.pop("_merged_assets", None)      # 本年临时登记, 不随登记簿持久化
+        d = price_delta(gid) if price_delta else 0.0
+        rnd = random.Random("%s|stock|local|%s" % (year, c.get("name")))
+        noise = rnd.uniform(-_STOCK_NOISE_SPREAD, _STOCK_NOISE_SPREAD)
+        if raw_override and key in raw_override:
+            raw = max(-_STOCK_YOY_CLAMP, min(_STOCK_YOY_CLAMP,
+                                             float(raw_override[key])))
+            # 回填年 (无基本面数据): fair 跟随市价, 避免次年价值模型对陈旧
+            # fair 产生虚假均值回归
+            fair = prev_price * (1.0 + raw)
+            fair_target = fair
+        else:
+            raw = _stock_value_return(fair_target, prev_price, macro_ret, d,
+                                      noise, cfg)
         price = prev_price * (1.0 + raw)
-        ohlc = _stock_ohlc(c.get("name"), year, prev_price, price)
+        ohlc, monthly = _stock_monthly_ohlc(c.get("name"), year,
+                                            prev_price, price, cfg)
         note = None
         if c.get("renamed_year") == year:
             note = "本年改名%s" % c.get("name")
         comps.append(_local_company_dict(
-            c, year, ohlc, price=round(price, 2),
-            change_pct=round(raw * 100.0, 1), note=note))
+            c, year, ohlc, monthly=monthly, price=round(price, 2),
+            change_pct=round(raw * 100.0, 1), note=note,
+            assets=assets, asset_gdp=round(asset_gdp_t, 2),
+            asset_profit=round(asset_profit_t, 2),
+            fair_value=round(fair, 2)))
     for r in new_rows:
         comps.append(_new_listing_dict(r))
     return comps, events
 
 
-def _local_company_dict(c, year, ohlc, price=None, change_pct=None, note=None):
+def _local_company_dict(c, year, ohlc, monthly=None, price=None, change_pct=None,
+                        note=None, assets=None, asset_gdp=None,
+                        asset_profit=None, fair_value=None):
     """把登记簿里的地方企业行转为输出 company dict。
     note 只用于本年新设/本年改名等一次性信息, 不沿用上年 note
     (修复「新设上市」跨年携带问题)。"""
@@ -13726,6 +13836,12 @@ def _local_company_dict(c, year, ohlc, price=None, change_pct=None, note=None):
         "founded_year": c.get("founded_year"),
         "name_history": c.get("name_history"),
         "merges": c.get("merges"),
+        "assets": assets if assets is not None
+                  else (c.get("assets") or [_registry_home_asset(c)]),
+        "asset_gdp": asset_gdp if asset_gdp is not None else c.get("asset_gdp"),
+        "asset_profit": asset_profit if asset_profit is not None
+                        else c.get("asset_profit"),
+        "fair_value": fair_value if fair_value is not None else c.get("fair_value"),
         "issue_price": c.get("issue_price"),
         "shares": c.get("shares"),
         "market_cap": c.get("market_cap"),
@@ -13740,6 +13856,7 @@ def _local_company_dict(c, year, ohlc, price=None, change_pct=None, note=None):
         "high": ohlc["high"] if ohlc else None,
         "low": ohlc["low"] if ohlc else None,
         "close": ohlc["close"] if ohlc else None,
+        "monthly": monthly if monthly is not None else (c.get("monthly") or []),
     }
 
 
@@ -14004,7 +14121,10 @@ def _price_delta(gid, prices, prev_goods, gm):
 
 def _local_enterprise_candidates(melted, ctx, snap, gm):
     """按 (州×商品) 产量排序的地方企业候选 (确定性: 平手按州名+商品名)。
-    同时返回州级产出规模 {sid: 建筑产出价值合计} (存档无州级GDP, 作发行定价代理)。"""
+    同时返回州级产出规模 {sid: 建筑产出价值合计} (存档无州级GDP, 作发行定价代理)。
+    候选行附带该 (州×商品) 的建筑营收合计 (sales=goods_sales) 与利润合计
+    (profit=profit_after_reserves, 均按各产出商品价值占比分摊), 供股市价值
+    模型作「资产GDP/盈利能力」口径: 营收为收入代理, 利润率 = profit/sales。"""
     order = gm.get("order") or []
     zh = gm.get("zh") or {}
     state_ids = _pool_state_ids(snap)
@@ -14013,9 +14133,14 @@ def _local_enterprise_candidates(melted, ctx, snap, gm):
     state_scale = {}
     for sid in state_ids:
         prod = {}
+        sales = {}
+        profit = {}
         scale = 0.0
         for bid in by_state.get(sid, []):
-            og = ((objs.get(bid) or {}).get("output_goods") or {}).get("goods") or {}
+            obj = objs.get(bid) or {}
+            og = ((obj.get("output_goods") or {}).get("goods") or {})
+            items = []
+            total = 0.0
             for gid_s, v in og.items():
                 try:
                     gid = int(gid_s)
@@ -14024,16 +14149,30 @@ def _local_enterprise_candidates(melted, ctx, snap, gm):
                     continue
                 if val <= 0:
                     continue
-                scale += val
+                items.append((gid, val))
+                total += val
+            if not items:
+                continue
+            scale += total
+            gs = obj.get("goods_sales")
+            bsales = float(gs) if isinstance(gs, (int, float)) else 0.0
+            bp = obj.get("profit_after_reserves")
+            bprofit = float(bp) if isinstance(bp, (int, float)) else 0.0
+            for gid, val in items:
                 if not (0 <= gid < len(order)) or order[gid] not in zh:
                     continue
                 prod[gid] = prod.get(gid, 0.0) + val
+                share = (val / total) if total > 0 else 0.0
+                sales[gid] = sales.get(gid, 0.0) + bsales * share
+                profit[gid] = profit.get(gid, 0.0) + bprofit * share
         state_scale[sid] = scale
         st_zh = ctx.state_zh(sid) or "未知州"
         for gid, val in prod.items():
             key = order[gid]
             rows.append({"state": st_zh, "sid": sid, "gid": gid,
-                         "good": key, "zh": zh.get(key, key), "value": val})
+                         "good": key, "zh": zh.get(key, key), "value": val,
+                         "sales": round(sales.get(gid, 0.0), 2),
+                         "profit": round(profit.get(gid, 0.0), 2)})
     rows.sort(key=lambda r: (-r["value"], r["state"], r["zh"]))
     return rows, state_scale
 
@@ -14043,34 +14182,193 @@ def _local_enterprise_name(state_zh, good_key):
     return f"{state_zh}{suffix}"
 
 
-_STOCK_OHLC_SPREAD = 0.10  # 年K线影线最大随机幅度 (±10%, 需求: 年内涨跌幅限制 10%)
+_STOCK_OHLC_SPREAD = 0.10  # 兼容旧口径: 年K线影线最大随机幅度 (±10%, 仅旧路径回退用)
+_STOCK_NOISE_SPREAD = 0.05   # 价值模型年度确定性扰动 (±5%)
+_STOCK_MARGIN_REF = 0.10     # 盈利水平加成基准利润率 (10%)
+_STOCK_FUND_CLAMP = 0.45     # 基本面年增长钳制 (与年涨跌同宽 ±45%)
+_STOCK_MONTHLY_NOISE = 0.06  # 月K月度噪声幅度 (±6%, 用户拍板: 年内路径较颠簸)
+_STOCK_MONTHLY_WICK = 0.05   # 月K影线最大随机幅度 (±5%, 用户拍板)
+
+
+def _stock_monthly_ohlc(name, year, open_, close_, cfg=None):
+    """12 根月K线 → 年K线聚合 (可控随机数, 确定性种子, 2026-08-23 新增)。
+
+    年涨跌 raw = close_/open_-1 不再一次性外扩影线, 而是拆成 12 个月的路径:
+      1) 种子取 12 个噪声 ε_i ∈ U(-noise, +noise) (月K噪声, 可配置);
+      2) 对数价格布朗桥: log c_i = log open + (i/12)·log(1+raw) + B_i,
+         B_i = W_i - (i/12)·W_12, W 为 ε 的累积和 → B_0 = B_12 = 0,
+         **末月收盘恒等于 close_, 月因子复利合成精确等于年涨跌** (望远镜求和);
+      3) 月K线: 开=上月收, 收=c_i, 影线在开收外 ±wick 种子外扩;
+      4) 年K聚合: open=首月开(=上年收盘), close=末月收(=现价, 取整 1 位小数
+         后与原 round(close_,1) 逐位一致), high=max(月高), low=min(月低)。
+    返回 (annual_dict, monthly_list); open/close 缺失或非正时返回 (None, [])。
+    行情本身是程序模拟口径, 月K与年K均由种子决定, 同年同股稳定可复现。"""
+    if open_ is None or close_ is None or open_ <= 0 or close_ <= 0:
+        return None, []
+    if cfg is None:
+        try:
+            cfg = _journal.load_config()
+        except Exception:
+            cfg = {}
+    noise = float(cfg.get("stock_monthly_noise",
+                          _STOCK_MONTHLY_NOISE) or _STOCK_MONTHLY_NOISE)
+    wick = float(cfg.get("stock_monthly_wick_spread",
+                         _STOCK_MONTHLY_WICK) or _STOCK_MONTHLY_WICK)
+    rnd = random.Random(f"{year}|stock|monthly|{name}")
+    eps = [rnd.uniform(-noise, noise) for _ in range(12)]
+    w = [0.0]
+    for e in eps:
+        w.append(w[-1] + e)
+    w12 = w[12]
+    span = math.log(close_ / open_)
+    log_open = math.log(open_)
+    monthly = []
+    prev = open_
+    for i in range(1, 13):
+        bridge = w[i] - (i / 12.0) * w12
+        c = math.exp(log_open + span * (i / 12.0) + bridge)
+        wup = rnd.uniform(0.0, wick)
+        wdn = rnd.uniform(0.0, wick)
+        hi = max(prev, c) * (1.0 + wup)
+        lo = min(prev, c) * (1.0 - wdn)
+        monthly.append({
+            "m": i,
+            "open": round(prev, 2),
+            "high": round(hi, 2),
+            "low": round(lo, 2),
+            "close": round(c, 2),
+        })
+        prev = c
+    annual = {
+        "open": round(open_, 1),
+        "close": round(close_, 1),
+        "high": round(max(x["high"] for x in monthly), 1),
+        "low": round(min(x["low"] for x in monthly), 1),
+    }
+    return annual, monthly
 
 
 def _stock_ohlc(name, year, open_, close_):
-    """个股/指数年K线四值: open=上年收盘 (新设上市以发行价开市), close=现价;
-    high/low 在 max/min(open,close) 外再外扩 0~±5% 的确定性随机幅度。
-    行情本身是程序模拟口径, 影线幅度同样由种子决定, 同年同股稳定可复现。"""
-    if open_ is None or close_ is None:
-        return None
-    rnd = random.Random(f"{year}|stock|ohlc|{name}")
-    up = rnd.uniform(0.0, _STOCK_OHLC_SPREAD)
-    down = rnd.uniform(0.0, _STOCK_OHLC_SPREAD)
-    hi = max(open_, close_) * (1.0 + up)
-    lo = min(open_, close_) * (1.0 - down)
-    return {
-        "open": round(open_, 1),
-        "close": round(close_, 1),
-        "high": round(hi, 1),
-        "low": round(lo, 1),
-    }
+    """兼容旧接口: 仅返回年K四值 (由月K聚合而来, 与 _stock_monthly_ohlc 一致)。"""
+    annual, _monthly = _stock_monthly_ohlc(name, year, open_, close_)
+    return annual
 
 
-def _exchange_index_ohlc(comps, prev_stock, year):
+def _safe_growth(cur, prev, fallback=0.0):
+    """同比相对变化 (cur/prev-1); 数据缺失/不可比时回退 fallback (确定性)。"""
+    if isinstance(cur, (int, float)) and isinstance(prev, (int, float)) \
+            and prev > 0 and cur > 0:
+        return cur / prev - 1.0
+    return fallback
+
+
+def _stock_macro_return(snap, prev_snap, prices, prev_goods):
+    """宏观经济年化收益 (小数): 0.5×国家GDP同比 + 0.3×生活水平变动 + 0.2×市场通胀,
+    钳制 ±30%。prev_snap 缺失 (开市年) 时全为 0。"""
+    gdp_yoy = 0.0
+    gdp = snap.get("gdp")
+    prev_gdp = (prev_snap or {}).get("gdp")
+    if isinstance(gdp, (int, float)) and isinstance(prev_gdp, (int, float)) \
+            and prev_gdp > 0:
+        gdp_yoy = (gdp - prev_gdp) / prev_gdp
+    sol_ret = 0.0
+    sol = snap.get("sol")
+    prev_sol = (prev_snap or {}).get("sol")
+    if isinstance(sol, (int, float)) and isinstance(prev_sol, (int, float)):
+        # 生活水平每 +1 视为 +5% 宏观顺风, 钳制 ±15%
+        sol_ret = max(-0.15, min(0.15, (sol - prev_sol) * 0.05))
+    infl = 0.0
+    ds = []
+    for k, v in (prices or {}).items():
+        pv = (prev_goods or {}).get(str(k))
+        if isinstance(v, (int, float)) and isinstance(pv, (int, float)) and pv:
+            ds.append((v - pv) / pv)
+    if ds:
+        infl = sum(ds) / len(ds)
+    return max(-0.30, min(0.30, 0.5 * gdp_yoy + 0.3 * sol_ret + 0.2 * infl))
+
+
+def _company_asset_financials(melted, cobj):
+    """国家级公司名下资产: 总部建筑 (cobj.building) 的 assets 列表 → 旗下生产建筑,
+    汇总营收 (asset_gdp = Σ goods_sales) 与净利润 (asset_profit,
+    profit_after_reserves)。无总部建筑/无资产/全无数据时返回 (None, None),
+    由调用方回退旧口径。"""
+    bid = cobj.get("building")
+    if not isinstance(bid, int):
+        return None, None
+    hq = _building_object(melted, bid) or {}
+    aids = hq.get("assets") or []
+    if not aids:
+        return None, None
+    gdp = profit = 0.0
+    for aid in aids:
+        try:
+            b = _building_object(melted, int(aid)) or {}
+        except (TypeError, ValueError):
+            continue
+        gs = b.get("goods_sales")
+        if isinstance(gs, (int, float)) and gs > 0:
+            gdp += gs
+        pv = b.get("profit_after_reserves")
+        if isinstance(pv, (int, float)):
+            profit += pv
+    if gdp <= 0 and profit == 0:
+        return None, None
+    return gdp, profit
+
+
+def _stock_fund_growth(organic_gdp, organic_profit, prev_gdp, prev_profit, cfg,
+                       merger_value=None, prev_total=None):
+    """基本面年增长 g_fund (小数, 价值模型核心):
+    有机口径 (不含本年新并入资产) 的 资产GDP同比×权重 + 资产利润同比×(1-权重),
+    数据不可比时以另一项/0 回退; 兼并当年另加有界资产扩张溢价
+    权重×min(新并入资产/上年资产, 1); 钳制 ±45%。"""
+    w = float(cfg.get("stock_fund_gdp_weight", 0.6) or 0.6)
+    w = max(0.0, min(1.0, w))
+    gdp_g = _safe_growth(organic_gdp, prev_gdp, 0.0)
+    prof_g = _safe_growth(organic_profit, prev_profit, gdp_g)
+    g = w * gdp_g + (1.0 - w) * prof_g
+    boost_w = float(cfg.get("stock_merger_boost_weight", 0.25) or 0.25)
+    if merger_value is not None and prev_total and prev_total > 0 \
+            and merger_value > 0:
+        g += boost_w * min(merger_value / prev_total, 1.0)
+    return max(-_STOCK_FUND_CLAMP, min(_STOCK_FUND_CLAMP, g))
+
+
+def _stock_fair_value(fair_prev, g_fund, margin, cfg):
+    """内在价值 (fair) 与均值回归目标 (target)。
+
+    fair = fair_prev×(1+g_fund): 资产GDP+盈利驱动的基本面价值;
+    target = fair×[1 + 权重×(利润率-基准10%)]: 盈利水平加成只作「水平」调整
+    (P/E 效应: 高利润率企业永久享受溢价), 不参与复利, 价格经均值回归向其靠拢。"""
+    fair = fair_prev * (1.0 + g_fund)
+    prem = 0.0
+    if isinstance(margin, (int, float)):
+        margin_w = float(cfg.get("stock_margin_weight", 1.0) or 1.0)
+        prem = margin_w * (margin - _STOCK_MARGIN_REF)
+    return fair, fair * (1.0 + prem)
+
+
+def _stock_value_return(target, prev_price, macro_ret, price_delta, noise, cfg):
+    """价值模型年涨跌 (小数): 均值回归×权重 + 宏观×权重 + 商品价格×权重 + 扰动,
+    钳制 ±45%。商品价格仅作短期情绪, 非主驱动。"""
+    revert_w = float(cfg.get("stock_revert_weight", 0.3) or 0.3)
+    macro_w = float(cfg.get("stock_macro_weight", 0.25) or 0.25)
+    price_w = float(cfg.get("stock_price_weight", 0.10) or 0.10)
+    raw = revert_w * (target / prev_price - 1.0) if prev_price > 0 else 0.0
+    raw += macro_w * (macro_ret or 0.0)
+    raw += price_w * (price_delta or 0.0)
+    raw += noise or 0.0
+    return max(-_STOCK_YOY_CLAMP, min(_STOCK_YOY_CLAMP, raw))
+
+
+def _exchange_index_ohlc(comps, prev_stock, year, cfg=None):
     """市值加权链式交易所指数 + 年K线 (开市年 100, 此后逐年链式, 自开市起连续)。
 
     指数_t = 指数_{t-1} × Σ(现价×股数)[两市共存] / Σ(上年现价×股数)[两市共存];
     新上市标的按发行价并入次年起权重, 退市剔除; 某年无共存标的时持平 (保连续)。
-    返回 {"open","high","low","close","change_pct"}。"""
+    年K高/低由 12 根月K聚合 (与个股同口径), 另附 monthly 月K序列。
+    返回 {"open","high","low","close","change_pct","monthly"}。"""
     prev_comps = (prev_stock or {}).get("companies") or []
     prev_price = {c.get("name"): (c.get("price") or c.get("close"))
                   for c in prev_comps if c.get("name")}
@@ -14092,13 +14390,15 @@ def _exchange_index_ohlc(comps, prev_stock, year):
     else:
         idx = prev_close if prev_close else 100.0
     change = ((idx / prev_close) - 1.0) * 100.0 if prev_close else None
-    ohlc = _stock_ohlc("exchange_index", year, prev_close or 100.0, idx)
+    ohlc, monthly = _stock_monthly_ohlc("exchange_index", year,
+                                        prev_close or 100.0, idx, cfg)
     return {
         "open": ohlc["open"] if ohlc else None,
         "high": ohlc["high"] if ohlc else None,
         "low": ohlc["low"] if ohlc else None,
         "close": round(idx, 2),
         "change_pct": round(change, 2) if change is not None else None,
+        "monthly": monthly,
     }
 
 
@@ -14108,7 +14408,11 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
 
     国家级公司: companies.database 中属于本国的公司 (玩家创建/特许公司);
     地方企业: 按 (州×商品) 生产量生成, 上年已创建者保留;
-    年涨跌 = 商品篮子价格变动 + 公司景气 + 确定性扰动, 钳制 ±45%;
+    价值模型 (v10): 企业名下资产 (地方企业=家乡+历次兼并的 (州×商品);
+    国家级公司=总部 building.assets 旗下建筑) 的营收 (asset_gdp=Σgoods_sales)
+    与净利润 (asset_profit) 决定基本面增长, 内在价值 fair 逐年续算,
+    现价向 fair×盈利水平加成 均值回归; 宏观 (GDP/生活水平/市场通胀) 与
+    商品价格只作次要影响, 年涨跌钳制 ±45%;
     每股为真实股价: 新设上市按家乡州产出规模定价
     (发行价 = 州产出规模×系数 ÷ 发行股数), 现价按年涨跌续算;
     交易所指数为市值加权链式 (开市年 100, 自开市年起逐年连续)。
@@ -14131,6 +14435,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
     prices = _market_price_map(melted, country) or {}
     prev_stock = (prev_snap or {}).get("stock_market") or {}
     prev_goods = prev_stock.get("goods_prices") or {}
+    macro_ret = _stock_macro_return(snap, prev_snap, prices, prev_goods)
     prev_quote = {}
     for c in prev_stock.get("companies") or []:
         if c.get("name"):
@@ -14164,10 +14469,6 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
         else:
             biz = biz / 100.0
         rnd = random.Random(f"{year}|stock|{cid2}")
-        # 扰动与 ±45% 钳制等比放大 (0.04 × 1.8 ≈ 0.072)
-        raw = max(-_STOCK_YOY_CLAMP,
-                  min(_STOCK_YOY_CLAMP,
-                      0.5 * basket_delta + 0.3 * biz + 0.2 * rnd.uniform(-0.072, 0.072)))
         prev_q = prev_quote.get(name) or {}
         home_sid = None
         st_region = cobj.get("state_region")
@@ -14177,6 +14478,25 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
             home_sid = snap.get("capital_id")
         prev_price = prev_q.get("price")
         if isinstance(prev_price, (int, float)) and prev_price > 0:
+            # ---- 价值模型: 基本面 (旗下资产产出+利润) 决定 fair, 价格均值回归 ----
+            asset_gdp, asset_profit = _company_asset_financials(melted, cobj)
+            if asset_gdp is not None and asset_gdp > 0:
+                g_fund = _stock_fund_growth(
+                    asset_gdp, asset_profit, prev_q.get("asset_gdp"),
+                    prev_q.get("asset_profit"), _cfg)
+                margin = (asset_profit / asset_gdp) if asset_gdp > 0 else None
+            else:
+                # 无资产数据 (总部缺失/无旗下建筑): 回退景气+商品篮子口径
+                g_fund = max(-_STOCK_FUND_CLAMP, min(_STOCK_FUND_CLAMP,
+                                                     0.5 * biz + 0.3 * basket_delta))
+                margin = None
+            fair_prev = prev_q.get("fair_value")
+            if not isinstance(fair_prev, (int, float)) or fair_prev <= 0:
+                fair_prev = prev_price
+            fair, fair_target = _stock_fair_value(fair_prev, g_fund, margin, _cfg)
+            raw = _stock_value_return(
+                fair_target, prev_price, macro_ret, basket_delta,
+                rnd.uniform(-_STOCK_NOISE_SPREAD, _STOCK_NOISE_SPREAD), _cfg)
             price = prev_price * (1.0 + raw)
             change = raw * 100.0
             note = None
@@ -14184,12 +14504,15 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
             shares = prev_q.get("shares")
             mcap = prev_q.get("market_cap")
         else:
-            # 新设上市: 按家乡州产出规模定价
+            # 新设上市: 按家乡州产出规模定价, fair=发行价
             issue_price, shares, mcap = _ipo_params(name, home_sid, state_scale,
                                                     _cfg)
             price = issue_price
             change = None
             note = "新设上市"
+            asset_gdp, asset_profit = _company_asset_financials(melted, cobj)
+            margin = (asset_profit / asset_gdp) if (asset_gdp or 0) > 0 else None
+            fair, _target = _stock_fair_value(issue_price, 0.0, margin, _cfg)
         st_zh = ctx.state_zh(home_sid) if home_sid else "未知州"
         ind = _company_industries_zh(cobj, loc, charters)
         gids = sorted((weights or {}).keys())
@@ -14197,12 +14520,15 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
         note2 = _prosperity_band(cobj.get("prosperity"))
         open_ = prev_price if isinstance(prev_price, (int, float)) and prev_price > 0 \
             else issue_price
-        ohlc = _stock_ohlc(name, year, open_, price)
+        ohlc, monthly = _stock_monthly_ohlc(name, year, open_, price, _cfg)
         comps.append({
             "kind": "national", "name": name, "state": st_zh,
             "industries": ind or basket_zh or "未知行业",
             "goods_basket": basket_zh, "gid": None, "good": None,
             "issue_price": issue_price, "shares": shares, "market_cap": mcap,
+            "asset_gdp": round(asset_gdp, 2) if isinstance(asset_gdp, (int, float)) else None,
+            "asset_profit": round(asset_profit, 2) if isinstance(asset_profit, (int, float)) else None,
+            "fair_value": round(fair, 2),
             "price": round(price, 2),
             "change_pct": (round(change, 1) if change is not None else None),
             "band": _stock_band(change),
@@ -14211,6 +14537,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
             "high": ohlc["high"] if ohlc else None,
             "low": ohlc["low"] if ohlc else None,
             "close": ohlc["close"] if ohlc else None,
+            "monthly": monthly,
         })
     # 地方企业: 年度演化 (退市/并购/新设补足), 见 _evolve_local_market
     prev_locals = [c for c in prev_stock.get("companies") or []
@@ -14222,7 +14549,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
         cands, prev_locals, target, year, country_name, _cfg,
         price_delta=(lambda gid: _price_delta(gid, prices, prev_goods, gm)),
         style=style, state_scale=state_scale, state_surnames=state_surnames,
-        used_extra=hist_names)
+        used_extra=hist_names, macro_ret=macro_ret)
     comps.extend(local_comps)
     if not comps:
         return None
@@ -14237,7 +14564,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
     if with_chg:
         top_gainer = max(with_chg, key=lambda c: c["change_pct"]).get("name")
         top_loser = min(with_chg, key=lambda c: c["change_pct"]).get("name")
-    exchange_index = _exchange_index_ohlc(comps, prev_stock, year)
+    exchange_index = _exchange_index_ohlc(comps, prev_stock, year, _cfg)
     hist_names |= {c.get("name") for c in comps if c.get("name")}
     return {
         "open": True, "year": year,
@@ -14313,7 +14640,15 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
 # 发行价 = 州产出规模×系数÷发行股数) + 市值加权链式交易所指数
 # (stock_market.exchange_index, 自开市年起连续) + 东亚/西方两套地方企业命名风格
 # (非东亚国家默认西方风格), 旧缓存需重新熔化提取。
-SNAPSHOT_CACHE_VERSION = 9
+# 版本 10: 股市价值模型 (价值投资): 地方企业登记簿新增名下资产清单
+# (assets, 家乡+历次兼并的 (州×商品)) 与 asset_gdp/asset_profit/fair_value;
+# 年涨跌 = 均值回归(价格向 fair×盈利水平加成靠拢) + 宏观 + 商品价格 + 扰动,
+# 核心驱动为企业名下资产产出额与利润 (国家级公司取总部 building.assets 旗下建筑),
+# 旧缓存需重新熔化提取。
+# 版本 11: 股市月K化: 个股/指数年K线由 12 根月K线聚合 (可控随机数, 对数价格
+# 布朗桥, 末月收=现价精确成立), companies/exchange_index 新增 monthly 月K序列,
+# 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 11
 # raw/snapshot 携带国家名解析表版本: 跨年合并时若上一年 raw 无此表,
 # 只能沿用烘焙名, 提示用 tools/regen_data.py 重新生成。
 NAME_TABLE_VERSION = 1

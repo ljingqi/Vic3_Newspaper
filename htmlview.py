@@ -415,7 +415,8 @@ function niceStep(range, target) {
 }
 
 function candleGeom(rows) {
-  const W = 470, H = 232, ml = 54, mr = 58, mt = 22, mb = 30;
+  // 只保留左侧股价轴 (需求: K线图两侧竖轴太丑), 右留白收窄让蜡烛区更宽
+  const W = 470, H = 232, ml = 54, mr = 16, mt = 22, mb = 30;
   const pw = W - ml - mr, ph = H - mt - mb;
   const years = [];
   for (let y = rows[0].year; y <= rows[rows.length - 1].year; y++) years.push(y);
@@ -442,7 +443,6 @@ function candleChartSvg(rows, palette) {
     const y = Y(v);
     grid += `<line class="grid" x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}"/>`;
     labels += `<text class="axis" x="${ml - 8}" y="${y + 4}" text-anchor="end">${fmt(v)}</text>`;
-    labels += `<text class="axis" x="${W - mr + 8}" y="${y + 4}" text-anchor="start">${fmt(v)}</text>`;
   }
   years.forEach(y => {
     const x = X(y);

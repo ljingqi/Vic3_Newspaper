@@ -119,7 +119,9 @@ DEFAULT_CONFIG = {
     "crime_outcome_engine": True,
     # 州情风味层: 报纸/杂志按州基础设施/行政力/社会演进指标生成州情速写
     "state_flavor_enabled": True,
-    # 报纸「股市动态」专栏: 研发证券交易所后出现; 每年按商品价格涨跌
+    # 报纸「股市动态」专栏: 研发证券交易所后出现; 价值模型 (v10):
+    # 股价围绕企业名下资产 (州×商品/公司旗下建筑) 的产出额与利润决定的内在价值
+    # 均值回归, 叠加宏观与商品价格影响
     "stock_market_enabled": True,
     # 股市专栏中地方企业数量 (按各州商品生产量生成)
     "stock_local_enterprise_count": 6,
@@ -131,9 +133,27 @@ DEFAULT_CONFIG = {
     "stock_ipo_shares_min": 10000,
     "stock_ipo_shares_max": 100000,
     "stock_ipo_min_scale": 50000,
+    # 价值模型参数 (v10): 基本面增长 = 资产GDP同比×权重 + 资产利润同比×(1-权重)
+    "stock_fund_gdp_weight": 0.6,
+    # 年涨跌 = 均值回归(价格向内在价值靠拢)×权重 + 宏观×权重 + 商品价格×权重 + 扰动
+    "stock_revert_weight": 0.3,
+    "stock_macro_weight": 0.25,
+    "stock_price_weight": 0.1,
+    # 兼并当年资产扩张溢价: 权重×min(新并入资产/上年资产, 1), 上限 30%
+    "stock_merger_boost_weight": 0.25,
+    # 盈利水平加成: 内在价值溢价 = (利润率-10%)×权重 (P/E 效应, 高利润率企业享溢价)
+    "stock_margin_weight": 1.0,
     # 传给模型的传输口径: 地方企业只发 涨幅前3 + 跌幅前3 (+ 本年新设上市),
     # 其余仅记录在 JSON (K线图仍展示全部)
     "stock_transmit_top_n": 3,
+    # 股市月K化 (v11): 年K线由 12 根月K线聚合 (可控随机数, 确定性种子,
+    # 末月收=现价精确成立); 月K噪声 = 月度路径颠簸幅度, 月K影线 = 单月影线上限
+    "stock_monthly_noise": 0.06,
+    "stock_monthly_wick_spread": 0.05,
+    # 分红人群投资行情联动: 报纸访谈/杂志文章池中, 若该人群有分红/投资收入且
+    # 国家已研发 mutual_funds 科技, 附一家地方企业本年行情作为其投资结果
+    # (优先取该人群所在州的企业, 否则确定性种子随机取一家)
+    "stock_investment_enabled": True,
     # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
     "parallel_generation_enabled": True,
     # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
@@ -1094,15 +1114,21 @@ SECTION_DEFS = [
     ("family", "民生访谈", "记者在样本州的一处建筑内，采访生活水平最低的人群，"
      "以访谈体写衣食住行、收入支出、受抚养人口与生活水平；须体现该人群政治倾向"
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
-     "以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，融入叙事作风味。"),
+     "以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，融入叙事作风味。"
+     "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
+     "其投资得失，行情数字以资料为限，不得另造。"),
     ("peer", "邻里富户", "与民生访谈同一建筑内生活水平最高的人群（富户），"
      "以同样的访谈体写其衣食住行与收支，并体现该人群政治倾向与参与比例最高的两个政治运动，"
      "与民生访谈形成贫富对照，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "融入叙事作风味。"),
+     "融入叙事作风味。"
+     "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
+     "其投资得失，行情数字以资料为限，不得另造。"),
     ("unemployed", "失业民生", "仅当样本州失业率超过5%时发送：报道该州失业状况，"
      "采访失业人群中人口最多的一群（同访谈体），体现给定失业率，并体现该人群政治倾向"
      "与参与比例最高的两个政治运动，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "融入叙事作风味。"),
+     "融入叙事作风味。"
+     "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
+     "其投资得失，行情数字以资料为限，不得另造。"),
     ("comment", "本报评论", "编辑部评论，结合历年发展对照，评述国运与民生之变迁。"),
     ("ads", "广告与启示", "围绕本期提供的已研发科技创作一两条趣味广告：可为商品、工艺、铺面告白，"
      "也可为文学沙龙、社科研讨会、新政晓谕、学堂启事等非商品形式；至少一条须直接体现科技，富有时代气息。"),
@@ -1684,6 +1710,57 @@ def render_stock(data, cfg=None):
     L.append("正文以给定公司/企业、现价、涨跌与交易所指数为唯一依据，"
              "个股行情以资料给出者为限。")
     return "\n".join(L)
+
+
+def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
+                             seed, cfg=None):
+    """分红人群投资行情联动 (2026-08-23): 报纸访谈/杂志文章池共用。
+
+    触发条件 (全部满足才附加): 该人群有分红/投资收入 (dividends > 0) 且
+    国家已研发 mutual_funds 科技 且 本期有地方企业行情; 任一不满足返回空列表
+    (不编造投资)。
+    企业选取: 优先取与该人群所在州 (region_name) 同名的地方企业; 无同州企业时
+    在全部地方企业中确定性种子随机取一家 (种子 = seed, 同年同人群可复现)。
+    返回事实行列表 (供调用方并入板块事实串)。"""
+    if not stock_market or not dividends or dividends <= 0:
+        return []
+    if "mutual_funds" not in (tech_keys or []):
+        return []
+    if cfg is None:
+        try:
+            cfg = load_config()
+        except Exception:
+            cfg = {}
+    if not cfg.get("stock_investment_enabled", True):
+        return []
+    locals_ = [c for c in (stock_market.get("companies") or [])
+               if c.get("kind") == "local" and c.get("name")]
+    if not locals_:
+        return []
+    same_state = [c for c in locals_ if c.get("state") == region_name]
+    pool = same_state or locals_
+    rnd = random.Random(seed or "investment")
+    pick = pool[rnd.randrange(len(pool))]
+    name = pick.get("name") or "未知企业"
+    state = pick.get("state") or "未知州"
+    ind = pick.get("industries") or pick.get("goods_basket") or "地方产业"
+    head = (f"- 投资结果：该人群分红/投资收入与持有地方企业股份有关。"
+            f"所持【{name}】（{state}，主营{ind}）本年行情：")
+    parts = []
+    price = pick.get("price")
+    if price is not None:
+        p_s = f"现价约{round(price, 2)}"
+        chg = pick.get("change_pct")
+        if chg is not None:
+            p_s += f"，较上年{'涨' if chg >= 0 else '跌'}约{abs(chg):.1f}%"
+        parts.append(p_s)
+    o, h, l, c = (pick.get("open"), pick.get("high"),
+                  pick.get("low"), pick.get("close"))
+    if all(v is not None for v in (o, h, l, c)):
+        parts.append(f"（本年开约{o}，高约{h}，低约{l}，收约{c}）")
+    if not parts:
+        return []
+    return [head + "".join(parts) + "。"]
 
 
 def render_econ(data, history=None):
@@ -2475,6 +2552,10 @@ def render_family(data, style=None):
                      f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
                      f"——以下收支为该人群全体居民合计，采访家庭为其代表")
         L.extend(_legacy_budget_lines(fi, unit))
+    L.extend(investment_outcome_lines(
+        data.get("tech_keys"), data.get("stock_market"), region,
+        (fi.get("budget_rates") or {}).get("dividends", 0.0),
+        f"{data.get('year')}|investment|family|{region}"))
     L.extend(_render_pop_politics(fi, data))
     fs = fi.get("food_security")
     if fs:
@@ -2620,6 +2701,10 @@ def render_peer(data, style=None):
                      f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
                      f"——以下收支为该人群全体居民合计，采访家庭为其代表")
         L.extend(_legacy_budget_lines(peer, unit))
+    L.extend(investment_outcome_lines(
+        data.get("tech_keys"), data.get("stock_market"), region,
+        (peer.get("budget_rates") or {}).get("dividends", 0.0),
+        f"{data.get('year')}|investment|peer|{region}"))
     L.extend(_render_pop_politics(peer, data))
     fs = peer.get("food_security")
     if fs:
@@ -2742,6 +2827,10 @@ def render_unemployed(data, style=None):
                      f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
                      f"——以下收支为该人群全体居民合计，采访家庭为其代表")
         L.extend(_legacy_budget_lines(uni, unit))
+    L.extend(investment_outcome_lines(
+        data.get("tech_keys"), data.get("stock_market"), region,
+        (uni.get("budget_rates") or {}).get("dividends", 0.0),
+        f"{data.get('year')}|investment|unemployed|{region}"))
     L.extend(_render_pop_politics(uni, data))
     fs = uni.get("food_security")
     if fs:
@@ -2823,8 +2912,15 @@ def render_history_table(data, history=None, include_flavor=True):
         pf = _press_freedom_line(data)
         if pf:
             L.append(pf)
-    L.append("| 年份 | GDP | 人口 | 生活水平 | 识字率 | 激进派% | 效忠派% | 第一大族 | 第一大教 |")
-    L.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    # 交易所指数列: 仅当本年股票模块触发 (stock_market 存在) 时出现;
+    # 未开市年份显示 "—"
+    has_stock = bool(data.get("stock_market"))
+    header = ["年份", "GDP", "人口", "生活水平", "识字率", "激进派%",
+              "效忠派%", "第一大族", "第一大教"]
+    if has_stock:
+        header.append("交易所指数")
+    L.append("| " + " | ".join(header) + " |")
+    L.append("| " + " | ".join(["---"] * len(header)) + " |")
     # 当年 + 前 9 年, 共 10 行; 传入更长历史时也只取最近 9 年
     rows = ((history or [])[-9:]) + [data]
     for h in rows:
@@ -2836,8 +2932,15 @@ def render_history_table(data, history=None, include_flavor=True):
         loy = h.get("loyalists_pct")
         rad_s = f"{rad}%" if isinstance(rad, (int, float)) else '—'
         loy_s = f"{loy}%" if isinstance(loy, (int, float)) else '—'
-        L.append(f"| {h.get('year', '?')} | {h.get('gdp', '?')} | {h.get('pop', '?')} | {h.get('sol', '?')} | "
-                 f"{h.get('literacy', '?')} | {rad_s} | {loy_s} | {topc} | {top_r} |")
+        cells = [str(h.get('year', '?')), str(h.get('gdp', '?')),
+                 str(h.get('pop', '?')), str(h.get('sol', '?')),
+                 str(h.get('literacy', '?')), rad_s, loy_s, topc, top_r]
+        if has_stock:
+            ex = ((h.get("stock_market") or {}).get("exchange_index") or {})
+            close = ex.get("close")
+            cells.append(str(round(close, 1))
+                         if isinstance(close, (int, float)) else "—")
+        L.append("| " + " | ".join(cells) + " |")
     return "\n".join(L)
 
 def render_ads(data, history=None):

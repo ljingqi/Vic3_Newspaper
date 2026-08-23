@@ -36,5 +36,20 @@
   },
   "state_flavor_enabled": true,
   "stock_market_enabled": true,
-  "stock_local_enterprise_count": 5
+  "stock_local_enterprise_count": 5,
+  "stock_merger_chance": 0.5,
+  "stock_ipo_mcap_factor": 3.0,
+  "stock_ipo_shares_min": 10000,
+  "stock_ipo_shares_max": 100000,
+  "stock_ipo_min_scale": 50000,
+  "stock_transmit_top_n": 3,
+  "stock_fund_gdp_weight": 0.6,
+  "stock_revert_weight": 0.3,
+  "stock_macro_weight": 0.25,
+  "stock_price_weight": 0.1,
+  "stock_merger_boost_weight": 0.25,
+  "stock_margin_weight": 1.0,
+  "stock_monthly_noise": 0.06,
+  "stock_monthly_wick_spread": 0.05,
+  "stock_investment_enabled": true
 }
