@@ -48,7 +48,8 @@ except Exception:
 
 from style import (DEFAULT_STYLE, FREE_SPEECH_FLAVOR, NEWSPAPER_STYLES,
                    resolve_newspaper_style)
-from currency import currency_unit
+from currency import (currency_unit, format_money, currency_system_text,
+                      DEFAULT_CURRENCY)
 
 # 周 → 月折算 (与 crime 板块罚金基准线同口径: 52周/12月)
 _WEEKS_PER_MONTH = 52 / 12
@@ -59,13 +60,16 @@ def _monthly(v):
     return v * _WEEKS_PER_MONTH
 
 
-def _monthly_parts(parts):
-    """收支分量字符串 (周值, 如「工资 573.70」) → 月值。"""
+def _monthly_parts(parts, fmt=None):
+    """收支分量字符串 (周值, 如「工资 573.70」) → 月值。
+    fmt 为可选的金额格式化函数 (如 lambda v: format_money(v, unit, rate)),
+    提供时金额按主辅币格式输出。"""
     out = []
     for p in parts or []:
         m = re.match(r"^(.*?)\s+([+-]?\d+\.?\d*)$", p)
         if m:
-            out.append(f"{m.group(1)} {_monthly(float(m.group(2))):.2f}")
+            v = _monthly(float(m.group(2)))
+            out.append(f"{m.group(1)} {fmt(v) if fmt else f'{v:.2f}'}")
         else:
             out.append(p)
     return out
@@ -154,6 +158,23 @@ DEFAULT_CONFIG = {
     # 国家已研发 mutual_funds 科技, 附一家地方企业本年行情作为其投资结果
     # (优先取该人群所在州的企业, 否则确定性种子随机取一家)
     "stock_investment_enabled": True,
+    # 汇率体系 (2026-08-23): 1 英镑兑各币种汇率 = 历史铸币平价锚 × 相对人均GDP
+    # 因子 × 贸易开放因子 × 确定性扰动, 逐年漂移钳制; 只作用于显示数值
+    "exchange_rate_enabled": True,
+    # 汇率人口口径: incorporated=已合并人口(Σ州人口×并入进度) | all=总人口
+    "fx_pop_scope": "incorporated",
+    # 历史平价锚放大系数 (1.0=纯历史铸币平价, 调大可整体放大展示金额)
+    "currency_base_scale": 1.0,
+    # 人均GDP 因子指数 (巴拉萨-萨缪尔森式 PPP 锚)
+    "fx_gdp_alpha": 0.35,
+    # 贸易开放度因子指数 (经常账户需求; 海关收入反推, 自由贸易下回退贸易容量)
+    "fx_trade_beta": 0.15,
+    # 较上年汇率漂移钳制 (±比例)
+    "fx_yoy_clamp": 0.30,
+    # 较基准锚总偏离钳制 (±比例)
+    "fx_total_clamp": 0.60,
+    # 经济要闻是否附「本年度 1 英镑兑 X 法郎」汇率行
+    "fx_show_in_econ": True,
     # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
     "parallel_generation_enabled": True,
     # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
@@ -1322,7 +1343,9 @@ def render_overview(data, history=None):
     full = full_country_name(data.get('player', '未知'), govt_zh)
     L.append(f"【国家】{full}  【都城】{capital}  【政体】{govt_zh}  【年份】{data.get('year', '?')}（{data.get('date', '')}）")
     unit = data.get("currency") or "英镑"
-    L.append(f"- GDP：{data.get('gdp', '未知')}{unit}；人口：{data.get('pop', '未知')}；生活水平：{data.get('sol', '未知')};识字率：{data.get('literacy', '未知')}")
+    gdp_v = data.get('gdp', '未知')
+    gdp_s = _fm(data, gdp_v) if isinstance(gdp_v, (int, float)) else str(gdp_v)
+    L.append(f"- GDP：{gdp_s}；人口：{data.get('pop', '未知')}；生活水平：{data.get('sol', '未知')};识字率：{data.get('literacy', '未知')}")
     L.append(f"- 恶名：{_infamy_band(data.get('infamy'))}")
     if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
         L.append(f"- 政治倾向：激进派占人口约{data.get('radicals_pct', '?')}%，"
@@ -1411,6 +1434,17 @@ def render_war(data, history=None):
             line += f"（始于{start}）"
         tail = []
         side_parts = []
+        # 某一方的代表国家 TAG (优先同 side 的参与者, 再按 dp 主方), 供币种换算
+        def _side_tag(side_key):
+            for p in (w.get("participants") or []):
+                if p.get("side") == side_key:
+                    return p.get("definition")
+            dp_id = w.get("dp_initiator") if side_key == "initiator" \
+                else w.get("dp_target")
+            for p in (w.get("participants") or []):
+                if p.get("id") == dp_id:
+                    return p.get("definition")
+            return None
         for side_key, side_label in (("initiator", "发起方"), ("target", "应战方")):
             cas = (w.get("casualties_by_side") or {}).get(side_key)
             cost = (w.get("costs_by_side") or {}).get(side_key)
@@ -1422,7 +1456,13 @@ def render_war(data, history=None):
                 people = int(round(cas * 100000))
                 bits.append(f"死伤约{people}人")
             if cost is not None:
-                bits.append(f"耗资约{cost:.0f}{unit}")
+                tag = _side_tag(side_key)
+                side_cur = currency_unit(tag=tag) if tag else unit
+                if side_cur != unit:
+                    bits.append(f"耗资约{_fm(data, cost, side_cur)}"
+                                f"（折合约{_fm(data, cost)}）")
+                else:
+                    bits.append(f"耗资约{_fm(data, cost)}")
             if bits:
                 side_parts.append(side_label + "，".join(bits))
         if side_parts:
@@ -1435,7 +1475,7 @@ def render_war(data, history=None):
                 people = int(round(cas * 100000))
                 bits.append(f"双方死伤约{people}人")
             if cost:
-                bits.append(f"耗资约{cost:.0f}{unit}")
+                bits.append(f"耗资约{_fm(data, cost)}")
             if bits:
                 tail.append("，".join(bits))
         support = []
@@ -1603,6 +1643,20 @@ def _yoy_pct(prev, cur):
     return (cur - prev) / prev * 100
 
 
+def _fx_rate(data, currency=None):
+    """data 字典 (含 exchange_rates) → 汇率 (1英镑=X主币); 无数据回退 1.0。"""
+    unit = currency or data.get("currency") or DEFAULT_CURRENCY
+    r = (((data.get("exchange_rates") or {}).get("rates") or {})
+         .get(unit) or {}).get("rate")
+    return r if isinstance(r, (int, float)) and r > 0 else 1.0
+
+
+def _fm(data, v, currency=None):
+    """游戏镑数值 → 主辅币文本 (按 data 中该币种汇率换算, format_money)。"""
+    unit = currency or data.get("currency") or DEFAULT_CURRENCY
+    return format_money(v, unit, _fx_rate(data, unit))
+
+
 def _yoy_delta(prev, cur):
     """同比绝对差值 (生活水平/识字率等使用), 数据缺失或非法时返回 None。"""
     if prev is None or cur is None:
@@ -1691,6 +1745,8 @@ def render_stock(data, cfg=None):
     for c in fresh:
         if c not in selected:
             selected.append(c)
+    unit = data.get("currency") or DEFAULT_CURRENCY
+    rate = _fx_rate(data, unit)
     for c in selected:
         name = c.get("name") or "未知公司"
         kind = "国家级公司" if c.get("kind") == "national" else "地方企业"
@@ -1700,7 +1756,7 @@ def render_stock(data, cfg=None):
         price = c.get("price")
         chg = c.get("change_pct")
         if price is not None:
-            price_s = f"现价约{round(price, 2)}"
+            price_s = f"现价约{format_money(price, unit, rate)}"
             if chg is not None:
                 price_s += f"，较上年{'涨' if chg >= 0 else '跌'}约{abs(chg):.1f}%"
             bits.append(price_s)
@@ -1713,7 +1769,7 @@ def render_stock(data, cfg=None):
 
 
 def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
-                             seed, cfg=None):
+                             seed, cfg=None, unit=None, rate=None):
     """分红人群投资行情联动 (2026-08-23): 报纸访谈/杂志文章池共用。
 
     触发条件 (全部满足才附加): 该人群有分红/投资收入 (dividends > 0) 且
@@ -1721,6 +1777,7 @@ def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
     (不编造投资)。
     企业选取: 优先取与该人群所在州 (region_name) 同名的地方企业; 无同州企业时
     在全部地方企业中确定性种子随机取一家 (种子 = seed, 同年同人群可复现)。
+    unit/rate 提供时股价与分红按汇率换算为主辅币格式 (format_money)。
     返回事实行列表 (供调用方并入板块事实串)。"""
     if not stock_market or not dividends or dividends <= 0:
         return []
@@ -1746,10 +1803,11 @@ def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
     ind = pick.get("industries") or pick.get("goods_basket") or "地方产业"
     head = (f"- 投资结果：该人群分红/投资收入与持有地方企业股份有关。"
             f"所持【{name}】（{state}，主营{ind}）本年行情：")
+    unit = unit or DEFAULT_CURRENCY
     parts = []
     price = pick.get("price")
     if price is not None:
-        p_s = f"现价约{round(price, 2)}"
+        p_s = f"现价约{format_money(price, unit, rate)}"
         chg = pick.get("change_pct")
         if chg is not None:
             p_s += f"，较上年{'涨' if chg >= 0 else '跌'}约{abs(chg):.1f}%"
@@ -1757,7 +1815,10 @@ def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
     o, h, l, c = (pick.get("open"), pick.get("high"),
                   pick.get("low"), pick.get("close"))
     if all(v is not None for v in (o, h, l, c)):
-        parts.append(f"（本年开约{o}，高约{h}，低约{l}，收约{c}）")
+        parts.append(f"（本年开约{format_money(o, unit, rate)}，"
+                     f"高约{format_money(h, unit, rate)}，"
+                     f"低约{format_money(l, unit, rate)}，"
+                     f"收约{format_money(c, unit, rate)}）")
     if not parts:
         return []
     return [head + "".join(parts) + "。"]
@@ -1768,7 +1829,7 @@ def render_econ(data, history=None):
     prev = (history[-1] or {}) if history else {}
     gdp = data.get('gdp', '未知')
     unit = data.get("currency") or "英镑"
-    gdp_line = f"- GDP：{gdp}{unit}"
+    gdp_line = f"- GDP：{_fm(data, gdp) if isinstance(gdp, (int, float)) else gdp}"
     gdp_pct = _yoy_pct(prev.get("gdp"), gdp if isinstance(gdp, (int, float)) else None)
     if gdp_pct is not None:
         gdp_line += f"（比去年同期{'增长' if gdp_pct >= 0 else '减少'}{abs(gdp_pct):.1f}%）"
@@ -1805,6 +1866,21 @@ def render_econ(data, history=None):
             tail = f"比去年同期{'提高' if lit_delta > 0 else '下降'}{abs(lit_delta):.2f}%"
         lit_line += f"（{tail}）"
     L.append(lit_line)
+    # 汇率行: 数据存在且开关开启时附加 (1 英镑兑 X 主币 + 较上年升贬)
+    fx = ((data.get("exchange_rates") or {}).get("rates") or {}).get(unit)
+    if fx and fx.get("rate"):
+        show = True
+        try:
+            show = load_config().get("fx_show_in_econ", True)
+        except Exception:
+            show = True
+        if show:
+            line = f"- 汇率：本年度 1 英镑兑 {fx['rate']:.2f}{unit}"
+            yoy = fx.get("yoy")
+            if yoy is not None:
+                word = "升值" if yoy < 0 else "贬值"
+                line += f"（{unit}较上年{word}约{abs(yoy):.1f}%）"
+            L.append(line)
     return "\n".join(L)
 
 def render_politics(data, history=None):
@@ -1934,9 +2010,15 @@ def render_politics(data, history=None):
 
 def render_society(data):
     L = []
-    if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
-        L.append(f"- 政治倾向(占总人群比例)：激进派约{data.get('radicals_pct', '?')}%，"
-                 f"效忠派约{data.get('loyalists_pct', '?')}%")
+    pol_bits = []
+    _rp = data.get("radicals_pct")
+    _lp = data.get("loyalists_pct")
+    if _rp is not None and _rp:
+        pol_bits.append(f"激进派约{_rp}%")
+    if _lp is not None and _lp:
+        pol_bits.append(f"效忠派约{_lp}%")
+    if pol_bits:
+        L.append("- 政治倾向(占总人群比例)：" + "、".join(pol_bits))
     # 国教(国家官方宗教)与主流文化(国族): 存档直读自国家对象, 供模型把握社会基调
     religion = data.get("religion")
     if religion:
@@ -2150,7 +2232,7 @@ def _render_pop_igs(obj):
             segs.append(f"{nm}（{pct:.0f}%）" if isinstance(pct, (int, float)) else nm)
         line = "- 政治阵营：该人群前三利益集团为" + "、".join(segs)
         una = obj.get("unaffiliated_pct")
-        if isinstance(una, (int, float)):
+        if isinstance(una, (int, float)) and una >= 0.5:
             line += f"，其余约{una:.0f}%为无政治阵营"
         L.append(line)
     elif obj.get("interest_group"):
@@ -2260,13 +2342,14 @@ def _family_roster(data, fi, role):
             "children": children}
 
 
-def _family_budget_lines(fi, unit):
+def _family_budget_lines(fi, unit, rate=None):
     """受访家庭账本 (新口径): 人均率 × 家庭构成。
     户主 1 劳动力; 配偶是否计入劳动力由女权法律决定 (默认受抚养);
     子女 N 计入受抚养。妇女默认属受抚养人口, 故受抚养数 = 子女 + (妻不工作)。
     只列出该家庭实际存在的收入/支出分项 (零值不显示);
     分项人数已在群体规模/家庭构成行说明, 这里不再重复;
-    支出按「劳动力人数」口径, 唯人头税按总人口 (实采校验)。"""
+    支出按「劳动力人数」口径, 唯人头税按总人口 (实采校验)。
+    rate 提供时金额按汇率换算为主辅币格式 (format_money)。"""
     r = fi.get("budget_rates") or {}
     if not r:
         return []
@@ -2279,59 +2362,62 @@ def _family_budget_lines(fi, unit):
     def _amt(key, denom):
         return (r.get(key) or 0) * denom
 
+    def _m(v):
+        return format_money(v, unit, rate)
+
     inc_items = []
     wage = _amt("wage", workers)
     if wage > 1e-9:
-        inc_items.append(f"工资约{wage:.2f}")
+        inc_items.append(f"工资约{_m(wage)}")
     dep_inc = _amt("dependent", deps)
     if dep_inc > 1e-9:
-        inc_items.append(f"受抚养收入约{dep_inc:.2f}")
+        inc_items.append(f"受抚养收入约{_m(dep_inc)}")
     welf = _amt("welfare", workers)
     if welf > 1e-9:
-        inc_items.append(f"福利救济约{welf:.2f}")
+        inc_items.append(f"福利救济约{_m(welf)}")
     inv = _amt("dividends", workers)
     if inv > 1e-9:
-        inc_items.append(f"分红/投资约{inv:.2f}")
+        inc_items.append(f"分红/投资约{_m(inv)}")
     sub = _amt("subsistence", workers)
     if sub > 1e-9:
-        inc_items.append(f"自给收入约{sub:.2f}")
+        inc_items.append(f"自给收入约{_m(sub)}")
     oth = _amt("other", workers)
     if oth > 1e-9:
-        inc_items.append(f"其他收入约{oth:.2f}")
+        inc_items.append(f"其他收入约{_m(oth)}")
     tr = _amt("transfers", workers)
     if tr > 1e-9:
-        inc_items.append(f"政府转移支付约{tr:.2f}")
+        inc_items.append(f"政府转移支付约{_m(tr)}")
     total_inc = wage + dep_inc + welf + inv + sub + oth + tr
     L = []
     if inc_items:
-        L.append(f"- 家庭月收入：约{total_inc:.2f}{unit}"
+        L.append(f"- 家庭月收入：约{_m(total_inc)}"
                  "（" + "、".join(inc_items) + "）")
     else:
-        L.append(f"- 家庭月收入：约{total_inc:.2f}{unit}")
+        L.append(f"- 家庭月收入：约{_m(total_inc)}")
 
     exp_items = []
     goods = _amt("goods", workers)
     if goods > 1e-9:
-        exp_items.append(f"商品消费约{goods:.2f}")
+        exp_items.append(f"商品消费约{_m(goods)}")
     itax = _amt("income_tax", workers)
     if itax > 1e-9:
-        exp_items.append(f"所得税约{itax:.2f}")
+        exp_items.append(f"所得税约{_m(itax)}")
     ctax = _amt("consumption_tax", workers)
     if ctax > 1e-9:
-        exp_items.append(f"消费税约{ctax:.2f}")
+        exp_items.append(f"消费税约{_m(ctax)}")
     dtax = _amt("dividend_tax", workers)
     if dtax > 1e-9:
-        exp_items.append(f"红利税约{dtax:.2f}")
+        exp_items.append(f"红利税约{_m(dtax)}")
     ptax = _amt("poll_tax", pop)
     if ptax > 1e-9:
-        exp_items.append(f"人头税约{ptax:.2f}")
+        exp_items.append(f"人头税约{_m(ptax)}")
     total_exp = goods + itax + ctax + dtax + ptax
     if exp_items:
-        L.append(f"- 家庭月支出：约{total_exp:.2f}{unit}"
+        L.append(f"- 家庭月支出：约{_m(total_exp)}"
                  "（" + "、".join(exp_items) + "）")
     else:
-        L.append(f"- 家庭月支出：约{total_exp:.2f}{unit}")
-    L.append(f"- 月度结余：约{total_inc - total_exp:+.2f}{unit}")
+        L.append(f"- 家庭月支出：约{_m(total_exp)}")
+    L.append(f"- 月度结余：约{_m(total_inc - total_exp)}")
     return L
 
 
@@ -2353,7 +2439,7 @@ def _family_scale_lines(fi):
     ]
 
 
-def _legacy_budget_lines(fi, unit):
+def _legacy_budget_lines(fi, unit, rate=None):
     """旧快照兜底: 群体合计口径 (无 budget_rates 字段时使用)。"""
     income = fi.get("income")
     expense = fi.get("expense")
@@ -2362,22 +2448,25 @@ def _legacy_budget_lines(fi, unit):
     workforce = fi.get("workforce")
     dependents = fi.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
-    parts = _monthly_parts(fi.get("income_parts") or [])
-    inc_line = f"- 每月收入（该人群合计）：约{_monthly(income):.2f}{unit}"
+    fmt = (lambda v: format_money(v, unit, rate)) if rate else None
+    parts = _monthly_parts(fi.get("income_parts") or [], fmt=fmt)
+    inc_line = f"- 每月收入（该人群合计）：约{format_money(_monthly(income), unit, rate)}"
     if parts:
         inc_line += "（" + "、".join(parts) + "）"
     L = [inc_line]
-    exp_parts = _monthly_parts(fi.get("expense_parts") or [])
+    exp_parts = _monthly_parts(fi.get("expense_parts") or [], fmt=fmt)
     if exp_parts:
-        L.append(f"- 每月支出（该人群合计）：约{_monthly(expense):.2f}{unit}"
+        L.append(f"- 每月支出（该人群合计）：约{format_money(_monthly(expense), unit, rate)}"
                  "（" + "、".join(exp_parts) + "）")
     else:
-        L.append(f"- 每月支出（该人群合计）：约{_monthly(expense):.2f}{unit}")
+        L.append(f"- 每月支出（该人群合计）：约{format_money(_monthly(expense), unit, rate)}")
     bal = _monthly(income) - _monthly(expense)
-    L.append(f"- 月度结余：约{bal:+.2f}{unit}/月"
-             f"（人均约{_monthly(income) / pop_total:.4f}{unit}收入 / "
-             f"{_monthly(expense) / pop_total:.4f}{unit}支出，按月计）"
-             if pop_total else f"- 月度结余：约{bal:+.2f}{unit}/月")
+    if pop_total:
+        L.append(f"- 月度结余：约{format_money(bal, unit, rate)}/月"
+                 f"（人均约{format_money(_monthly(income) / pop_total, unit, rate)}收入 / "
+                 f"{format_money(_monthly(expense) / pop_total, unit, rate)}支出，按月计）")
+    else:
+        L.append(f"- 月度结余：约{format_money(bal, unit, rate)}/月")
     return L
 
 
@@ -2543,19 +2632,21 @@ def render_family(data, style=None):
     dependents = fi.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
     unit = data.get("currency") or "英镑"
+    rate = _fx_rate(data, unit)
     if fi.get("budget_rates"):
         L.extend(_family_scale_lines(fi))
-        L.extend(_family_budget_lines(fi, unit))
+        L.extend(_family_budget_lines(fi, unit, rate))
     else:
         if dr is not None:
             L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
                      f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
                      f"——以下收支为该人群全体居民合计，采访家庭为其代表")
-        L.extend(_legacy_budget_lines(fi, unit))
+        L.extend(_legacy_budget_lines(fi, unit, rate))
     L.extend(investment_outcome_lines(
         data.get("tech_keys"), data.get("stock_market"), region,
         (fi.get("budget_rates") or {}).get("dividends", 0.0),
-        f"{data.get('year')}|investment|family|{region}"))
+        f"{data.get('year')}|investment|family|{region}",
+        unit=unit, rate=rate))
     L.extend(_render_pop_politics(fi, data))
     fs = fi.get("food_security")
     if fs:
@@ -2692,19 +2783,21 @@ def render_peer(data, style=None):
     dependents = peer.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
     unit = data.get("currency") or "英镑"
+    rate = _fx_rate(data, unit)
     if peer.get("budget_rates"):
         L.extend(_family_scale_lines(peer))
-        L.extend(_family_budget_lines(peer, unit))
+        L.extend(_family_budget_lines(peer, unit, rate))
     else:
         if dr is not None:
             L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
                      f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
                      f"——以下收支为该人群全体居民合计，采访家庭为其代表")
-        L.extend(_legacy_budget_lines(peer, unit))
+        L.extend(_legacy_budget_lines(peer, unit, rate))
     L.extend(investment_outcome_lines(
         data.get("tech_keys"), data.get("stock_market"), region,
         (peer.get("budget_rates") or {}).get("dividends", 0.0),
-        f"{data.get('year')}|investment|peer|{region}"))
+        f"{data.get('year')}|investment|peer|{region}",
+        unit=unit, rate=rate))
     L.extend(_render_pop_politics(peer, data))
     fs = peer.get("food_security")
     if fs:
@@ -2818,19 +2911,21 @@ def render_unemployed(data, style=None):
     dependents = uni.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
     unit = data.get("currency") or "英镑"
+    rate = _fx_rate(data, unit)
     if uni.get("budget_rates"):
         L.extend(_family_scale_lines(uni))
-        L.extend(_family_budget_lines(uni, unit))
+        L.extend(_family_budget_lines(uni, unit, rate))
     else:
         if dr is not None:
             L.append(f"- 该人群人口构成：共约{pop_total}人（劳动力{workforce}人，"
                      f"受抚养人口{dependents}人，受抚养比例约{dr * 100:.1f}%）"
                      f"——以下收支为该人群全体居民合计，采访家庭为其代表")
-        L.extend(_legacy_budget_lines(uni, unit))
+        L.extend(_legacy_budget_lines(uni, unit, rate))
     L.extend(investment_outcome_lines(
         data.get("tech_keys"), data.get("stock_market"), region,
         (uni.get("budget_rates") or {}).get("dividends", 0.0),
-        f"{data.get('year')}|investment|unemployed|{region}"))
+        f"{data.get('year')}|investment|unemployed|{region}",
+        unit=unit, rate=rate))
     L.extend(_render_pop_politics(uni, data))
     fs = uni.get("food_security")
     if fs:
@@ -2923,6 +3018,8 @@ def render_history_table(data, history=None, include_flavor=True):
     L.append("| " + " | ".join(["---"] * len(header)) + " |")
     # 当年 + 前 9 年, 共 10 行; 传入更长历史时也只取最近 9 年
     rows = ((history or [])[-9:]) + [data]
+    unit = data.get("currency") or DEFAULT_CURRENCY
+    cur_rate = _fx_rate(data, unit)
     for h in rows:
         cs = h.get("pop_cultures") or h.get("cultures") or []
         rs = h.get("pop_religions") or h.get("religions") or []
@@ -2932,7 +3029,14 @@ def render_history_table(data, history=None, include_flavor=True):
         loy = h.get("loyalists_pct")
         rad_s = f"{rad}%" if isinstance(rad, (int, float)) else '—'
         loy_s = f"{loy}%" if isinstance(loy, (int, float)) else '—'
-        cells = [str(h.get('year', '?')), str(h.get('gdp', '?')),
+        gdp_v = h.get('gdp')
+        if isinstance(gdp_v, (int, float)):
+            # 各行按该年自己的汇率换算 (旧数据无汇率时用本年汇率保持量级一致)
+            row_rate = _fx_rate(h, unit) if h.get("exchange_rates") else cur_rate
+            gdp_s = format_money(gdp_v, unit, row_rate)
+        else:
+            gdp_s = str(gdp_v) if gdp_v is not None else '?'
+        cells = [str(h.get('year', '?')), gdp_s,
                  str(h.get('pop', '?')), str(h.get('sol', '?')),
                  str(h.get('literacy', '?')), rad_s, loy_s, topc, top_r]
         if has_stock:
@@ -3087,6 +3191,10 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     num_guide = st.get("number_guide")
     if num_guide:
         parts.append(f"数字格式要求：{num_guide.replace('{CURRENCY}', unit)}")
+    # 主辅币制: 所有涉及金额的书写统一按资料币种的主辅币格式, 禁止自造币名
+    parts.append(f"货币规则：{currency_system_text(unit)}；金额一律按此主辅币"
+                 "书写（如 1法郎=100生丁），禁止自造币名（毛/苏/铜板/银币等），"
+                 "不得自创汇率换算。")
     parts.append(f"本期报纸：【国名】={country}，【都城】={capital}。抬头如下，行文须与之呼应：\n{masthead}\n\n"
                  f"请撰写「{title}」板块。要求：{req}")
     sys_msg = "\n\n".join(parts)

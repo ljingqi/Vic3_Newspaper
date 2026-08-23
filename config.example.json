@@ -51,5 +51,13 @@
   "stock_margin_weight": 1.0,
   "stock_monthly_noise": 0.06,
   "stock_monthly_wick_spread": 0.05,
-  "stock_investment_enabled": true
+  "stock_investment_enabled": true,
+  "exchange_rate_enabled": true,
+  "fx_pop_scope": "incorporated",
+  "currency_base_scale": 1.0,
+  "fx_gdp_alpha": 0.35,
+  "fx_trade_beta": 0.15,
+  "fx_yoy_clamp": 0.30,
+  "fx_total_clamp": 0.60,
+  "fx_show_in_econ": true
 }

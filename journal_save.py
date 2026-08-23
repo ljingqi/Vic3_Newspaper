@@ -37,7 +37,9 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-from currency import currency_unit
+from currency import (currency_unit, format_money, currency_system_text,
+                      FX_ANCHOR, FX_ANCHOR_TAG, CURRENCY_GROUPS,
+                      DEFAULT_CURRENCY)
 import journal as _journal
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -5596,9 +5598,11 @@ def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None, place=No
     return "，".join(bits) + "。"
 
 
-def _pool_pop_text(pid, obj, ctx, loc, unit=None, literacy_band=False):
+def _pool_pop_text(pid, obj, ctx, loc, unit=None, literacy_band=False,
+                   snap=None):
     """一个 POP → 自然语言: 身份/州/人数/生活水平/识字/接受度/月收支。
     unit 为货币单位字样 (如「比索」), 缺省不显示。
+    snap 提供时金额按汇率换算为主辅币格式 (format_money)。
     literacy_band=True 时识字率显示为区间+档名 (罪案人物用),
     其余文章保持数字 (默认)。"""
     try:
@@ -5644,10 +5648,13 @@ def _pool_pop_text(pid, obj, ctx, loc, unit=None, literacy_band=False):
     if inc is not None:
         # weekly_budget 是 POP 总额 (非人均), 与家庭采访/州平均月薪同口径:
         # 展示时按劳动力均摊, 避免大 POP 被当成单人的千元月薪。
+        rate = _fx_rate(snap, unit) if snap is not None else None
         if isinstance(wf, (int, float)) and wf > 0:
-            bits.append(f"人均月收支约{round(inc * 52 / 12 / wf, 1)}{unit or ''}")
+            bits.append("人均月收支约" + format_money(
+                inc * 52 / 12 / wf, unit or DEFAULT_CURRENCY, rate))
         else:
-            bits.append(f"该人群每月收支约{round(inc * 52 / 12, 1)}{unit or ''}")
+            bits.append("该人群每月收支约" + format_money(
+                inc * 52 / 12, unit or DEFAULT_CURRENCY, rate))
     return "，".join(bits) + "。"
 
 
@@ -5669,10 +5676,13 @@ def _pool_investment_lines(snap, st_zh, pop_obj, seed_key):
     """杂志文章池共用 (2026-08-23): 该人群有分红/投资收入 且 国家已研发
     mutual_funds 时, 附一家地方企业本年行情作为其投资结果 (优先同州)。
     条件不满足返回空列表。"""
+    unit = snap.get("currency") or currency_unit(
+        tag=snap.get("player_tag"), player_name=snap.get("player"))
     return _journal.investment_outcome_lines(
         snap.get("tech_keys"), snap.get("stock_market"), st_zh,
         _pop_dividend_rate(pop_obj),
-        "%s|investment|%s|%s" % (snap.get("year"), seed_key, st_zh))
+        "%s|investment|%s|%s" % (snap.get("year"), seed_key, st_zh),
+        unit=unit, rate=_fx_rate(snap, unit))
 
 
 def _pool_pop_class(obj):
@@ -5818,10 +5828,10 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
                else None)))
     if ups:
         workers_lines.append("- " + _pool_pop_text(
-            ups[0][0], ups[0][1], ctx, loc, unit=unit))
+            ups[0][0], ups[0][1], ctx, loc, unit=unit, snap=snap))
     if low_rail:
         workers_lines.append("- " + _pool_pop_text(
-            low_rail[0][0], low_rail[0][1], ctx, loc, unit=unit))
+            low_rail[0][0], low_rail[0][1], ctx, loc, unit=unit, snap=snap))
     if not ups and not low_rail:
         workers_lines.append("（该铁路建筑当前无足量人群样本，请据雇佣与产出情况含蓄写作。）")
     _blk = person_names_block(f"{snap.get('year')}|{cid}|railway",
@@ -5843,7 +5853,7 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
         life_lines.append("乡村建筑里的劳动者样本：")
         for pid, o in lows:
             life_lines.append("- " + _pool_pop_text(pid, o, ctx, loc,
-                                                    unit=unit))
+                                                    unit=unit, snap=snap))
         if lows and lows[0][1].get("culture") is not None:
             life_ck = culture_id_to_key(lows[0][1].get("culture"))
         if not lows:
@@ -6138,12 +6148,12 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     if source == "traded":
         active_line = (
             f"该州交易的大宗商品中，最活跃商品为「{good['zh']}」"
-            + (f"，市价约{round(good['price'], 2)}{unit}"
+            + (f"，市价约{_fm_pounds(snap, good['price'])}"
                if isinstance(good["price"], (int, float)) else "") + "。")
     else:
         active_line = (
             f"本期从我国可自产的制成品中选取市价居前的「{good['zh']}」"
-            + (f"（市价约{round(good['price'], 2)}{unit}）"
+            + (f"（市价约{_fm_pounds(snap, good['price'])}）"
                if isinstance(good["price"], (int, float)) else "")
             + "作为货架焦点。")
     if importer:
@@ -6152,8 +6162,12 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         if importer.get("state_zh"):
             extra.append(f"该国商埠：{importer['state_zh']}")
         if isinstance(importer.get("market_price"), (int, float)):
-            extra.append(f"当地市价约{round(importer['market_price'], 2)}"
-                         f"{importer.get('currency') or unit}")
+            imp_cur = importer.get("currency") or unit
+            imp_price = format_money(importer["market_price"], imp_cur,
+                                     _fx_rate(snap, imp_cur))
+            if imp_cur != unit:
+                imp_price += (f"（折合约{_fm_pounds(snap, importer['market_price'])}）")
+            extra.append(f"当地市价约{imp_price}")
         export_line = dest + (f"（{'，'.join(extra)}）" if extra else "") + "。"
     else:
         export_line = "（出口去向资料不足，本期按本地市场情况写作。）"
@@ -6181,7 +6195,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                                      n=1, rnd=rnd)
             for pid, po in picked:
                 workshop_lines.append("  工人样本：" + _pool_pop_text(
-                    pid, po, ctx, loc, unit=unit))
+                    pid, po, ctx, loc, unit=unit, snap=snap))
                 if wk_ck is None and po.get("culture") is not None:
                     wk_ck = culture_id_to_key(po.get("culture"))
     else:
@@ -6224,7 +6238,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                                      n=1, rnd=rnd)
             for pid, po in picked:
                 mine_lines.append(f"  {up_label}：" + _pool_pop_text(
-                    pid, po, ctx, loc, unit=unit))
+                    pid, po, ctx, loc, unit=unit, snap=snap))
                 if mn_ck is None and po.get("culture") is not None:
                     mn_ck = culture_id_to_key(po.get("culture"))
     else:
@@ -6281,21 +6295,21 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             bits = [f"出厂价约{round(gate, 2)}"]
             if abs(er) >= 1e-9:
                 bits.append(
-                    f"出口补贴{-er}%×出厂价{round(gate, 2)}" if er < 0
-                    else f"出口关税{er}%×出厂价{round(gate, 2)}")
+                    f"出口补贴{-er}%×出厂价{_fm_pounds(snap, gate)}" if er < 0
+                    else f"出口关税{er}%×出厂价{_fm_pounds(snap, gate)}")
             if abs(ir) >= 1e-9:
                 bits.append(
-                    f"进口补贴{-ir}%×（到岸价{round(import_base, 2)}）" if ir < 0
-                    else f"进口关税{ir}%×（到岸价{round(import_base, 2)}）")
+                    f"进口补贴{-ir}%×（到岸价{_fm_pounds(snap, import_base)}）" if ir < 0
+                    else f"进口关税{ir}%×（到岸价{_fm_pounds(snap, import_base)}）")
         cust_lines.append(
-            f"该消费者购买时共花费约{round(total, 2)}{unit}（"
+            f"该消费者购买时共花费约{_fm_pounds(snap, total)}（"
             + "＋".join(bits) + "）。")
     else:
         picked = _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
                                  n=2, rnd=rnd)
         for pid, po in picked:
             cust_lines.append("- " + _pool_pop_text(pid, po, ctx, loc,
-                                                    unit=unit))
+                                                    unit=unit, snap=snap))
             if cu_ck is None and po.get("culture") is not None:
                 cu_ck = culture_id_to_key(po.get("culture"))
         cust_lines.append("（出口去向资料不足，按本地市场情况写目的地顾客。）")
@@ -6306,7 +6320,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         cust_lines.append(_blk)
     if not importer and isinstance(good["price"], (int, float)):
         cust_lines.append(
-            f"「{good['zh']}」当前市价约{round(good['price'], 2)}{unit}，"
+            f"「{good['zh']}」当前市价约{_fm_pounds(snap, good['price'])}，"
             "可作为家庭账本的一笔支出参照。")
 
     # 动态板块标题: 按生产/上游环节实际形态命名,
@@ -6401,7 +6415,7 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
         classroom.append("基层公职/教员样本：")
         for pid, o in staff:
             classroom.append("- " + _pool_pop_text(pid, o, ctx, loc,
-                                                   unit=unit))
+                                                   unit=unit, snap=snap))
     st_ck = (culture_id_to_key(staff[0][1].get("culture"))
              if staff and staff[0][1].get("culture") is not None else None)
     _blk = person_names_block(f"{snap.get('year')}|{cid}|service",
@@ -6416,7 +6430,7 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     grassroots = ["最基层样本："]
     if grassroots_pop:
         pid, o = grassroots_pop[0]
-        grassroots.append(_pool_pop_text(pid, o, ctx, loc, unit=unit))
+        grassroots.append(_pool_pop_text(pid, o, ctx, loc, unit=unit, snap=snap))
         grassroots.extend(_pool_investment_lines(snap, st_zh, o, "mag_service"))
     else:
         grassroots.append("（无足量基层人群样本，请含蓄写作。）")
@@ -6552,7 +6566,7 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
     ballot = []
     if sps:
         pid, pop = rnd.choice(sps)
-        ballot.append(_pool_pop_text(pid, pop, ctx, loc, unit=unit))
+        ballot.append(_pool_pop_text(pid, pop, ctx, loc, unit=unit, snap=snap))
         ballot.extend(_pool_investment_lines(snap, st_zh, pop, "mag_voting"))
         bl_ck = (culture_id_to_key(pop.get("culture"))
                  if pop.get("culture") is not None else None)
@@ -6643,7 +6657,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
             if _state_avg_w is not None else None)
     unit = currency_unit(country_obj=country)
     if wage is not None:
-        household.append(f"该州劳动力人均月薪约{round(wage, 2)}{unit}。")
+        household.append(f"该州劳动力人均月薪约{_fm_pounds(snap, wage)}。")
     state_pool = {pid: o for pid, o in pops.items()
                   if o.get("location") == sid}
     lows = (_pool_pick_pops(state_pool, classes=("lower_class",), n=1, rnd=rnd)
@@ -6651,7 +6665,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
     if lows:
         pid, o = lows[0]
         household.append("餐桌上的主妇/劳工样本：" + _pool_pop_text(
-            pid, o, ctx, loc, unit=unit))
+            pid, o, ctx, loc, unit=unit, snap=snap))
         hh_ck = (culture_id_to_key(o.get("culture"))
                  if o.get("culture") is not None else None)
         _blk = person_names_block(f"{snap.get('year')}|{cid}|price",
@@ -6678,11 +6692,11 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
         household.extend(_pool_investment_lines(snap, st_zh, o, "mag_price"))
     market = ["本刊关注的几件商品与市价："]
     for r in rows[:5]:
-        market.append(f"- {r['zh']}：市价约{round(r['price'], 2)}{unit}"
-                      f"（基准价{r['cost']}{unit}）")
+        market.append(f"- {r['zh']}：市价约{_fm_pounds(snap, r['price'])}"
+                      f"（基准价{_fm_pounds(snap, r['cost'])}）")
     street = ["街市与生计收束素材："]
     if wage is not None:
-        street.append(f"{st_zh}劳动力人均月薪约{round(wage, 2)}{unit}，"
+        street.append(f"{st_zh}劳动力人均月薪约{_fm_pounds(snap, wage)}，"
                       "可作家庭支出参照。")
     street.append("物价涨落与工资、识字率、阶层结构共同构成百姓餐桌的底色，"
                   "行文以给定数字为准。")
@@ -6764,7 +6778,7 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
         sampled = rnd.sample(sps, min(2, len(sps)))
         for pid, o in sampled:
             island.append("- " + _pool_pop_text(pid, o, ctx, loc,
-                                                unit=unit))
+                                                unit=unit, snap=snap))
         if sampled and sampled[0][1].get("culture") is not None:
             isl_ck = culture_id_to_key(sampled[0][1].get("culture"))
     else:
@@ -6781,7 +6795,7 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
     home_ck = None
     if cap_pops:
         home.append("本土家庭样本：" + _pool_pop_text(
-            cap_pops[0][0], cap_pops[0][1], ctx, loc, unit=unit))
+            cap_pops[0][0], cap_pops[0][1], ctx, loc, unit=unit, snap=snap))
         if cap_pops[0][1].get("culture") is not None:
             home_ck = culture_id_to_key(cap_pops[0][1].get("culture"))
     _blk = person_names_block(f"{snap.get('year')}|{cid}|letters",
@@ -7411,7 +7425,7 @@ def _crime_state_stats(pops, sid):
             min(100.0, unemp / tot * 100))
 
 
-def _crime_ransom_amount(victim, rnd, unit):
+def _crime_ransom_amount(victim, rnd, unit, rate=None):
     """绑架赎金: 受害者人均月收入 × 2~6 个月 (复用罚金口径)。"""
     wf = (victim or {}).get("workforce")
     inc = _crime_pop_weekly_income(victim)
@@ -7421,7 +7435,8 @@ def _crime_ransom_amount(victim, rnd, unit):
     monthly = inc * 52 / 12 / wf
     months = rnd.randint(2, 6)
     amount = max(1, int(round(monthly * months)))
-    return f"赎金要求约{amount}{unit}（约合受害者{months}个月入息）。"
+    return (f"赎金要求约{format_money(amount, unit, rate)}"
+            f"（约合受害者{months}个月入息）。")
 
 
 def _crime_impact_direction(outcome, trick):
@@ -9387,7 +9402,7 @@ def _crime_verdict_reason(case, tier, murderer):
 
 
 def _crime_sentence(case, laws, fw, severity, tier, murderer, victim,
-                    fine_monthly=None, unit="英镑"):
+                    fine_monthly=None, unit="英镑", rate=None):
     """破案定罪后的最终判决: 档位 × 刑种 × 数字 (基准区间按得分插值)。
     奴隶/习惯法体系走特别条款, 不产生程序化刑期。"""
     laws = set(laws or [])
@@ -9432,8 +9447,7 @@ def _crime_sentence(case, laws, fw, severity, tier, murderer, victim,
                     own = own / mwf
                 amount = own * 52 / 12 * months
         if amount is not None:
-            n = max(1, int(round(amount)))
-            return f"判处罚金约{n}{unit}{suffix}。"
+            return f"判处罚金{format_money(amount, unit, rate)}{suffix}。"
         return f"判处罚金，数额以家资折抵{suffix}。"
     if form == "鞭笞":
         n = int(round(lo + pos * (hi - lo)))
@@ -9633,7 +9647,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
             tier = _crime_verdict_tier(severity, fw, case, laws)
             sentence = _crime_sentence(case, laws, fw, severity, tier,
                                        murderer[1], victim[1],
-                                       fine_monthly=fine_monthly, unit=unit)
+                                       fine_monthly=fine_monthly, unit=unit, rate=_fx_rate(snap, unit))
             outcome["severity"] = severity
             outcome["verdict_tier"] = tier
             outcome["sentence"] = sentence
@@ -9700,7 +9714,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
                 bits.append("家乡" + char_t["home_region"])
             return f"- 【受害者】{'，'.join(bits)}。"
         txt = _pool_pop_text(pop[0], pop[1], ctx, loc, unit=unit,
-                             literacy_band=True)
+                             literacy_band=True, snap=snap)
         nm = (names.get(role) or (None, None))[1]
         return f"- 【{role}】{nm}，{txt}" if nm else f"- 【{role}】{txt}"
 
@@ -9750,7 +9764,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
     extra_victim_lines = []
     for i, (vp, nm) in enumerate(zip(extra_victims, extra_names), 1):
         txt = _pool_pop_text(vp[0], vp[1], ctx, loc, unit=unit,
-                             literacy_band=True)
+                             literacy_band=True, snap=snap)
         nm_zh = (nm or (None, None))[1]
         label = f"受害者{'甲乙丙'[i - 1]}"
         extra_victim_lines.append(
@@ -9766,7 +9780,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
             brief_lines.append(mov_line)
         if case["crime_type"] == "kidnapping" \
                 or case.get("subtype") == "political_kidnapping":
-            ransom = _crime_ransom_amount(victim[1], rnd, unit)
+            ransom = _crime_ransom_amount(victim[1], rnd, unit, _fx_rate(snap, unit))
             if ransom:
                 brief_lines.append(ransom)
                 if case.get("subtype") == "political_kidnapping":
@@ -9785,10 +9799,11 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
         band_n, band_pct = _crime_turmoil_band(ctx.state_object(sid2))
         lit_pct, unemp_pct = _crime_state_stats(pops, sid2)
         st_line = (f"案发州：{st_zh}；动乱度：{_CRIME_TURMOIL_ZH[band_n]}"
-                   f"（激进派占比约{band_pct:.1f}%）；执法机构投入：{police_lv}；")
+                   + (f"（激进派占比约{band_pct:.1f}%）" if band_pct >= 0.05 else "")
+                   + f"；执法机构投入：{police_lv}；")
         if lit_pct is not None:
             st_line += f"州识字率约{lit_pct:.0f}%"
-            if unemp_pct is not None:
+            if unemp_pct is not None and unemp_pct >= 0.5:
                 st_line += f"，州失业率约{unemp_pct:.0f}%"
             st_line += "。"
         else:
@@ -9879,7 +9894,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
         case_lines.append(mov_line)
     if case["crime_type"] == "kidnapping" \
             or case.get("subtype") == "political_kidnapping":
-        ransom = _crime_ransom_amount(victim[1], rnd, unit)
+        ransom = _crime_ransom_amount(victim[1], rnd, unit, _fx_rate(snap, unit))
         if ransom:
             case_lines.append(ransom)
             if case.get("subtype") == "political_kidnapping":
@@ -10021,10 +10036,11 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
     band_n, band_pct = _crime_turmoil_band(ctx.state_object(sid2))
     lit_pct, unemp_pct = _crime_state_stats(pops, sid2)
     st_line = (f"案发州：{st_zh}；动乱度：{_CRIME_TURMOIL_ZH[band_n]}"
-               f"（激进派占比约{band_pct:.1f}%）；执法机构投入：{police_lv}；")
+               + (f"（激进派占比约{band_pct:.1f}%）" if band_pct >= 0.05 else "")
+               + f"；执法机构投入：{police_lv}；")
     if lit_pct is not None:
         st_line += f"州识字率约{lit_pct:.0f}%"
-        if unemp_pct is not None:
+        if unemp_pct is not None and unemp_pct >= 0.5:
             st_line += f"，州失业率约{unemp_pct:.0f}%"
         st_line += "。"
     else:
@@ -10033,9 +10049,9 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
     nat_parts = []
     rp = snap.get("radicals_pct")
     lp = snap.get("loyalists_pct")
-    if rp is not None:
+    if rp is not None and rp:
         nat_parts.append(f"全国激进派占比约{rp}%")
-    if lp is not None:
+    if lp is not None and lp:
         nat_parts.append(f"效忠派约{lp}%")
     fsl = snap.get("free_speech_law")
     if fsl:
@@ -10227,6 +10243,250 @@ def _pool_country_objects(melted):
     return out, prices_by_market
 
 
+# ---------------------------------------------------------------------------
+# 汇率体系 (2026-08-23): 人均GDP(已合并人口口径) + 贸易开放度代理 + 历史锚。
+# rate = 1 英镑兑 X 主币 = 基准锚 × 相对人均GDP因子 × 贸易开放因子 × 扰动,
+# 较上年漂移钳制 ±30%、较基准锚总偏离 ±60%; 汇率只作用于显示,
+# GDP 同比/股市演化等计算仍走游戏镑原值。玩家币种用玩家本国数据,
+# 其余币种用锚定国 (currency.FX_ANCHOR_TAG) 数据。
+# ---------------------------------------------------------------------------
+
+_FX_IDOBJ = re.compile(rb'"(\d+)":\{')
+_FX_PAT_COUNTRY = re.compile(rb'"country":(\d+)')
+_FX_PAT_INCORP = re.compile(rb'"incorporation":([\d.]+)')
+_FX_PAT_POP = re.compile(
+    rb'"pop_statistics":\{"population_lower_strata":([\d.]+),'
+    rb'"population_middle_strata":([\d.]+),"population_upper_strata":([\d.]+)')
+_FX_PAT_TCU = re.compile(rb'"trade_capacity_usage":([\d.]+)')
+
+_FX_ALPHA = 0.35        # 人均GDP 指数 (巴拉萨-萨缪尔森式 PPP 锚)
+_FX_BETA = 0.15         # 贸易开放度指数 (经常账户需求)
+_FX_G_CLAMP = (0.70, 1.45)
+_FX_T_CLAMP = (0.85, 1.18)
+_FX_YOY_CLAMP = 0.30    # 较上年汇率 ±30%
+_FX_TOTAL_CLAMP = 0.60  # 较基准锚 ±60%
+_FX_NOISE = 0.02        # 确定性年度扰动 ±2%
+
+
+def _fx_scan_state_data(melted):
+    """一次扫描 states.database → {cid: {pop, pop_inc, tcu}}。
+    pop = 三阶层人口合计; pop_inc = Σ(pop × incorporation) (已合并人口口径,
+    未并入州按并入进度折算, 殖民地人口按其进度计入);
+    tcu = Σ trade_capacity_usage (自由贸易下海关收入信号失效时的贸易量回退代理)。"""
+    si = melted.find(b'"states":{"database":{')
+    if si < 0:
+        return {}
+    db = melted.find(b'{', si)
+    end = _object_end(melted, db)
+    out = {}
+    j = db
+    while True:
+        m = _FX_IDOBJ.search(melted, j, end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        oend = _object_end(melted, ob2)
+        if oend <= ob2 + 1:
+            break
+        seg = melted[ob2:oend]
+        mc = _FX_PAT_COUNTRY.search(seg)
+        if not mc:
+            j = oend
+            continue
+        cid = int(mc.group(1))
+        mi = _FX_PAT_INCORP.search(seg)
+        incorp = float(mi.group(1)) if mi else 1.0
+        mp = _FX_PAT_POP.search(seg)
+        pop = (float(mp.group(1)) + float(mp.group(2))
+               + float(mp.group(3))) if mp else 0.0
+        mt = _FX_PAT_TCU.search(seg)
+        tcu = float(mt.group(1)) if mt else 0.0
+        e = out.setdefault(cid, {"pop": 0.0, "pop_inc": 0.0, "tcu": 0.0})
+        e["pop"] += pop
+        e["pop_inc"] += pop * incorp
+        e["tcu"] += tcu
+        j = oend
+    return out
+
+
+def _fx_trade_law(laws):
+    """法律列表 → 现行贸易政策法案 (无则 None)。"""
+    for l in (laws or []):
+        if l in _POOL_TRADE_POLICY_MULT:
+            return l
+    return None
+
+
+def _fx_effective_tariff_rate(laws):
+    """贸易法 → 有效进口关税率 (默认档位 low_tariffs 系数 0.25)。
+    自由贸易/孤立主义为 0 → 调用方回退贸易容量代理 (海关收入信号失效)。"""
+    law = _fx_trade_law(laws)
+    base = (_POOL_TARIFF_LAW_BASE.get(law) or {}).get("import", 0.0)
+    return base * _POOL_TARIFF_LEVEL_FRACTION.get("low_tariffs", 0.25)
+
+
+def _fx_country_metrics(cid, countries, state_scan, laws_by_cid=None, cfg=None):
+    """锚定国/玩家经济指标: (gdp, pop_eff, trade_open)。
+    gdp = 国家 GDP 时序当前值 (游戏镑);
+    pop_eff = 已合并人口 Σ(pop×incorporation) (fx_pop_scope=incorporated,
+    缺州数据时回退总人口) 或总人口;
+    trade_open = 贸易量代理/GDP: 关税收入反推 (有效税率≥1%时),
+    否则回退 Σtrade_capacity_usage —— 自由贸易法下依然可用。"""
+    cfg = cfg or {}
+    c = countries.get(cid) or {}
+    gdp = _pool_series_last(c, "gdp")
+    pop = _pool_series_last(c, "trend_population")
+    st = state_scan.get(cid) or {}
+    if not isinstance(pop, (int, float)) or pop <= 0:
+        pop = st.get("pop") or 0.0
+    pop_eff = pop
+    if cfg.get("fx_pop_scope", "incorporated") == "incorporated" \
+            and st.get("pop_inc"):
+        pop_eff = st["pop_inc"]
+    openv = None
+    if isinstance(gdp, (int, float)) and gdp > 0:
+        customs = 0.0
+        tariffs = ((c.get("budget") or {}).get("tariffs") or {}).get("values") or {}
+        if isinstance(tariffs, dict):
+            customs = sum(v for v in tariffs.values()
+                          if isinstance(v, (int, float)) and v > 0)
+        rate = _fx_effective_tariff_rate(laws_by_cid.get(cid)
+                                         if laws_by_cid else None)
+        if rate >= 0.01 and customs > 0:
+            vol = customs * 52.0 / rate          # 海关收入反推年化进口额
+        else:
+            vol = st.get("tcu") or 0.0           # 自由贸易/低关税回退
+        openv = vol / gdp
+    return gdp, pop_eff, openv
+
+
+def _currency_group_tags(currency):
+    """币种 → 该币种名下的国家 TAG 列表 (回退锚定国用)。"""
+    for unit, tags in CURRENCY_GROUPS:
+        if unit == currency:
+            return tags
+    return []
+
+
+def _exchange_rates_data(melted, snap, ctx, country, cid, prev_snap=None,
+                         journal_dir=None):
+    """汇率体系: {币种: {rate, base, g, t, yoy}} (rate = 1 英镑兑 X 主币)。
+    玩家币种用玩家本国数据, 其余币种用锚定国数据; 锚定国无 GDP 数据时
+    回退到该币种名下任一有 GDP 的国家, 再无则纯锚×扰动。
+    首年 = 锚×因子×扰动; 次年按上年汇率漂移钳制 ±30% (快照缓存续算)。
+    确定性: 同存档同年结果一致, regen 可复现。"""
+    try:
+        cfg = _journal.load_config()
+    except Exception:
+        cfg = {}
+    if not cfg.get("exchange_rate_enabled", True):
+        return {}
+    year = snap.get("year") or 0
+    countries, _ = _pool_country_objects(melted)
+    if not countries:
+        return {}
+    state_scan = _fx_scan_state_data(melted)
+    laws_by_cid = _pool_all_laws(melted)
+    tag_by_cid = {}
+    for ccid, c in countries.items():
+        d = c.get("definition")
+        if d and d not in tag_by_cid:
+            tag_by_cid[d] = ccid
+    player_cur = currency_unit(country_obj=country) \
+        or snap.get("currency") or DEFAULT_CURRENCY
+    scale = float(cfg.get("currency_base_scale", 1.0) or 1.0)
+    alpha = float(cfg.get("fx_gdp_alpha", _FX_ALPHA) or _FX_ALPHA)
+    beta = float(cfg.get("fx_trade_beta", _FX_BETA) or _FX_BETA)
+    yoy_clamp = float(cfg.get("fx_yoy_clamp", _FX_YOY_CLAMP) or _FX_YOY_CLAMP)
+    total_clamp = float(cfg.get("fx_total_clamp", _FX_TOTAL_CLAMP)
+                        or _FX_TOTAL_CLAMP)
+    gbr_metrics = None
+    gbr_cid = tag_by_cid.get("GBR")
+    if gbr_cid is not None:
+        gbr_metrics = _fx_country_metrics(gbr_cid, countries, state_scan,
+                                          laws_by_cid, cfg)
+    prev_rates = (((prev_snap or {}).get("exchange_rates") or {})
+                  .get("rates") or {})
+    rnd_cache = {}
+    rates = {}
+    for currency in FX_ANCHOR:
+        base = FX_ANCHOR[currency] * scale
+        g = t = 1.0
+        prev = (prev_rates.get(currency) or {}).get("rate")
+        if currency == DEFAULT_CURRENCY:
+            rate = 1.0                            # 英镑: 本位, 恒为 1
+        else:
+            metrics = None
+            if currency == player_cur:
+                metrics = _fx_country_metrics(cid, countries, state_scan,
+                                              laws_by_cid, cfg)
+            else:
+                anchor_cid = None
+                for tag in FX_ANCHOR_TAG.get(currency, []):
+                    ac = tag_by_cid.get(tag)
+                    if ac is not None:
+                        anchor_cid = ac
+                        break
+                if anchor_cid is None:
+                    for tag in _currency_group_tags(currency):
+                        ac = tag_by_cid.get(tag)
+                        if ac is not None:
+                            anchor_cid = ac
+                            break
+                if anchor_cid is not None:
+                    metrics = _fx_country_metrics(
+                        anchor_cid, countries, state_scan, laws_by_cid, cfg)
+            if metrics is not None and gbr_metrics is not None:
+                gdp_x, pop_x, open_x = metrics
+                gdp_g, pop_g, open_g = gbr_metrics
+                if (isinstance(gdp_x, (int, float)) and gdp_x > 0
+                        and isinstance(pop_x, (int, float)) and pop_x > 0
+                        and isinstance(gdp_g, (int, float)) and gdp_g > 0
+                        and isinstance(pop_g, (int, float)) and pop_g > 0):
+                    rel = (gdp_g / pop_g) / (gdp_x / pop_x)
+                    g = max(_FX_G_CLAMP[0],
+                            min(_FX_G_CLAMP[1], rel ** alpha))
+                if open_x is not None and open_g is not None and open_g > 0 \
+                        and open_x > 0:
+                    t = max(_FX_T_CLAMP[0],
+                            min(_FX_T_CLAMP[1], (open_g / open_x) ** beta))
+            rnd = rnd_cache.get(currency)
+            if rnd is None:
+                rnd = random.Random(f"{year}|fx|{currency}")
+                rnd_cache[currency] = rnd
+            n = 1.0 + (rnd.random() * 2.0 - 1.0) * _FX_NOISE
+            target = base * g * t * n
+            lo = base * (1.0 - total_clamp)
+            hi = base * (1.0 + total_clamp)
+            if isinstance(prev, (int, float)) and prev > 0:
+                lo = max(lo, prev * (1.0 - yoy_clamp))
+                hi = min(hi, prev * (1.0 + yoy_clamp))
+            rate = max(lo, min(hi, target))
+        rates[currency] = {
+            "rate": round(rate, 4),
+            "base": round(base, 4),
+            "g": round(g, 4),
+            "t": round(t, 4),
+            "yoy": (round((rate / prev - 1.0) * 100.0, 2)
+                    if isinstance(prev, (int, float)) and prev > 0 else None),
+        }
+    return {"year": year, "rates": rates}
+
+
+def _fx_rate(snap, currency=None):
+    """快照/数据字典 → 汇率 (1英镑=X主币); 无汇率数据回退 1.0。"""
+    unit = currency or snap.get("currency") or DEFAULT_CURRENCY
+    r = (((snap.get("exchange_rates") or {}).get("rates") or {})
+         .get(unit) or {}).get("rate")
+    return r if isinstance(r, (int, float)) and r > 0 else 1.0
+
+
+def _fm_pounds(snap, v, currency=None):
+    """游戏镑数值 → 主辅币文本 (按快照中该币种汇率换算)。"""
+    return format_money(v, currency or snap.get("currency") or DEFAULT_CURRENCY,
+                        _fx_rate(snap, currency))
+
+
 def _pool_world_prices(melted):
     """世界市场每商品价格: world_market.price_trend.channels[商品id].values[-1]。"""
     i = melted.find(b'"world_market":{')
@@ -10398,7 +10658,7 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
                          and _pool_workforce_ok(o)]
             if qualified:
                 pid, o = rnd.choice(qualified)
-                pop_text = _pool_pop_text(pid, o, ctx, loc, unit=imp_unit)
+                pop_text = _pool_pop_text(pid, o, ctx, loc, unit=imp_unit, snap=snap)
                 pop_culture = (culture_id_to_key(o.get("culture"))
                                if o.get("culture") is not None else None)
                 sol_note = (f"该商品属{need_name}需求，通常由生活水平{need_sol}及以上"
@@ -10415,7 +10675,7 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
                        and _pool_workforce_ok(o)]
                 if top:
                     pid, o = rnd.choice(top)
-                    pop_text = _pool_pop_text(pid, o, ctx, loc, unit=imp_unit)
+                    pop_text = _pool_pop_text(pid, o, ctx, loc, unit=imp_unit, snap=snap)
                     pop_culture = (culture_id_to_key(o.get("culture"))
                                    if o.get("culture") is not None else None)
                 sol_note = (
@@ -10427,7 +10687,7 @@ def _pool_shelf_importer(melted, ctx, snap, rnd, countries, market_prices,
                                      n=1, rnd=rnd)
             if picked:
                 pop_text = _pool_pop_text(picked[0][0], picked[0][1], ctx, loc,
-                                          unit=imp_unit)
+                                          unit=imp_unit, snap=snap)
                 pop_culture = (culture_id_to_key(picked[0][1].get("culture"))
                                if picked[0][1].get("culture") is not None else None)
     total_w = sum(r["weight"] for r in rows)
@@ -11573,6 +11833,8 @@ def build_journal_data(snap):
     data["player_tag"] = snap.get("player_tag")
     data["currency"] = snap.get("currency") or currency_unit(
         tag=snap.get("player_tag"), player_name=snap.get("player"))
+    # 汇率体系: 随 raw_<年>.json 持久化, 供跨年对照表按各年汇率换算
+    data["exchange_rates"] = snap.get("exchange_rates") or {}
     data["player_country_id"] = snap.get("player_country_id")
     data["govt"] = snap.get("govt_zh") or gov_to_name(snap.get("govt", "other"))
     # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国), 供抬头/报头使用
@@ -13031,11 +13293,12 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
             band = None
         lines.append(f"- 州情·民生：当地民众生活水平约{round(sol, 1)}"
                      + (f"（{band}）" if band else "") + "。")
-    if unemp_pct is not None:
+    if unemp_pct is not None and unemp_pct >= 0.5:
         lines.append(f"- 州情·生计：失业率约{unemp_pct:.0f}%"
                      f"（{_state_unemp_band(unemp_pct)}）。")
-    lines.append(f"- 州情·政情：激进派占比约{rad_pct:.1f}%，"
-                 f"属「{_STATE_TURMOIL_ZH[min(band_n, 3)]}」。")
+    if rad_pct >= 0.05:
+        lines.append(f"- 州情·政情：激进派占比约{rad_pct:.1f}%，"
+                     f"属「{_STATE_TURMOIL_ZH[min(band_n, 3)]}」。")
     ms = sobj.get("last_week_pop_migration_statistics") or {}
     wim = ms.get("weekly_immigration") or 0
     wem = ms.get("weekly_emigration") or 0
@@ -13128,12 +13391,12 @@ def _society_flavor_lines(snap, prev_snap=None):
                 pass
         lines.append(lit_txt + "。")
     rp, lp = snap.get("radicals_pct"), snap.get("loyalists_pct")
-    if rp is not None or lp is not None:
-        bits = []
-        if rp is not None:
-            bits.append(f"激进派约{rp}%")
-        if lp is not None:
-            bits.append(f"效忠派约{lp}%")
+    bits = []
+    if rp is not None and rp:
+        bits.append(f"激进派约{rp}%")
+    if lp is not None and lp:
+        bits.append(f"效忠派约{lp}%")
+    if bits:
         lines.append("全国政情：" + "、".join(bits) + "。")
     ss = snap.get("state_social") or {}
     sols = [v.get("sol") for v in ss.values()
@@ -13973,9 +14236,15 @@ def _load_building_goods_map():
 
 
 def _companies_database(melted):
-    """companies.database → {公司id: 公司对象}。"""
+    """companies.database → {公司id: 公司对象}。
+
+    存档里 "companies" 字符串可能先出现在 UI 状态对象里 (假阳性, 如
+    "companies"},"flags":...), 故优先匹配真正的结构键 "companies":{"database"
+    (rakaly 输出为紧凑 JSON, 与下方 _IDOBJ 无空格假设一致)。"""
     out = {}
-    idx = melted.find(b'"companies"')
+    idx = melted.find(b'"companies":{"database"')
+    if idx < 0:
+        idx = melted.find(b'"companies"')
     if idx < 0:
         return out
     end = _object_end(melted, melted.find(b'{', idx))
@@ -14004,9 +14273,14 @@ def _companies_database(melted):
 
 
 def _company_charters_map(melted):
-    """company_charters.database → {特许状id: 对象}。"""
+    """company_charters.database → {特许状id: 对象}。
+
+    公司对象内的 "company_charters" 字段 (列表) 会先于数据库出现, 故优先匹配
+    真正的结构键 "company_charters":{"database"。"""
     out = {}
-    idx = melted.find(b'"company_charters"')
+    idx = melted.find(b'"company_charters":{"database"')
+    if idx < 0:
+        idx = melted.find(b'"company_charters"')
     if idx < 0:
         return out
     end = _object_end(melted, melted.find(b'{', idx))
@@ -14474,6 +14748,12 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
         st_region = cobj.get("state_region")
         if st_region is not None and str(st_region).strip().isdigit():
             home_sid = int(st_region)
+        elif st_region:
+            # state_region 是区域模板键 (如 STATE_WALLONIA): 在本国州中按 region 反查
+            for s in (snap.get("states") or []):
+                if ctx.state_region_key(s.get("id")) == st_region:
+                    home_sid = s.get("id")
+                    break
         if home_sid is None:
             home_sid = snap.get("capital_id")
         prev_price = prev_q.get("price")
@@ -14586,7 +14866,8 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
     except Exception:
         _cfg = {}
     if not _cfg.get("state_flavor_enabled", True) \
-            and not _cfg.get("stock_market_enabled", True):
+            and not _cfg.get("stock_market_enabled", True) \
+            and not _cfg.get("exchange_rate_enabled", True):
         return snap
     year = snap.get("year") or 0
     if journal_dir and snap.get("_extras_year") == year:
@@ -14616,6 +14897,10 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
                                 prev_snap=prev_snap, journal_dir=journal_dir)
         if sm:
             snap["stock_market"] = sm
+    if _cfg.get("exchange_rate_enabled", True):
+        snap["exchange_rates"] = _exchange_rates_data(
+            melted, snap, ctx, country, cid, prev_snap=prev_snap,
+            journal_dir=journal_dir)
     if journal_dir:
         snap["_extras_year"] = year
     return snap
@@ -14648,7 +14933,13 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
 # 版本 11: 股市月K化: 个股/指数年K线由 12 根月K线聚合 (可控随机数, 对数价格
 # 布朗桥, 末月收=现价精确成立), companies/exchange_index 新增 monthly 月K序列,
 # 旧缓存需重新熔化提取。
-SNAPSHOT_CACHE_VERSION = 11
+# 版本 12: 修复 companies/company_charters 解析假阳性 (存档 UI 状态键先于真正
+# 数据库出现), 国家级公司重新纳入股市统计; 国家级公司家乡州按 state_region
+# 区域键在本国州中反查; 州情速写/全国演进/罪案事实/杂志政情去掉 0% 空值报告
+# (失业率0%/激进派0.0%等, 没有就不报), 旧缓存需重新熔化提取。
+# 版本 13: 汇率体系 (exchange_rates: 人均GDP+贸易开放度+历史锚, 快照跨年续算)
+# 与主辅币制 (format_money), 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 13
 # raw/snapshot 携带国家名解析表版本: 跨年合并时若上一年 raw 无此表,
 # 只能沿用烘焙名, 提示用 tools/regen_data.py 重新生成。
 NAME_TABLE_VERSION = 1

@@ -1205,7 +1205,7 @@ def _facts_minister(m):
         bits.append(f"来自{ig_zh}")
         if g.get("leader_ideology"):
             bits.append(f"意识形态为{g['leader_ideology']}")
-        if isinstance(g.get("clout_pct"), (int, float)):
+        if isinstance(g.get("clout_pct"), (int, float)) and g["clout_pct"] >= 0.05:
             bits.append(f"政治力量占比约{g['clout_pct']:.1f}%")
         if g.get("leader_home_region"):
             bits.append(f"家乡在{g['leader_home_region']}")
@@ -1293,8 +1293,13 @@ def _facts_regime(m, data):
     ]
     rp = data.get("radicals_pct")
     lp = data.get("loyalists_pct")
-    if rp is not None or lp is not None:
-        lines.append(f"激进派约占人口{rp}%，效忠派约占人口{lp}%。")
+    pol_bits = []
+    if rp is not None and rp:
+        pol_bits.append(f"激进派约占人口{rp}%")
+    if lp is not None and lp:
+        pol_bits.append(f"效忠派约占人口{lp}%")
+    if pol_bits:
+        lines.append("、".join(pol_bits) + "。")
     movs = data.get("political_movements") or []
     if movs:
         lines.append("主要政治运动：")
@@ -1487,6 +1492,13 @@ def _mag_flavor_block(m, sids):
 STATE_FLAVOR_RULE = (
     "州情速写（路网/行政覆盖/识字/民情/人群构成）为资料给定的事实，"
     "必须自然化入正文，与速写保持一致；州情指标以速写给出者为限。"
+)
+
+CURRENCY_RULE = (
+    "货币金额一律按资料给出的主辅币书写（如 1法郎=100生丁；"
+    "英镑为 1镑=20先令=240便士；卢比为 1卢比=16安那=192派），"
+    "禁止自造币名（毛/苏/铜板/银币等），不得自创汇率换算；"
+    "金额以资料给出者为限。"
 )
 
 
@@ -1817,6 +1829,7 @@ def build_lead_messages(article, data, intro):
         sys_msg += f"\n{STATE_FLAVOR_RULE}"
     if article["key"] in _CRIME_KEYS:
         sys_msg += f"\n{CRIME_TERM_RULE}"
+    sys_msg += f"\n{CURRENCY_RULE}"
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
         f"请先为全篇文章拟一个与本刊文风相称的标题，再写开篇板块《{sec['title']}》正文。"
@@ -1845,6 +1858,7 @@ def build_section_messages(article, section, data, intro, lead_text,
         sys_msg += f"\n{STATE_FLAVOR_RULE}"
     if article["key"] in _CRIME_KEYS:
         sys_msg += f"\n{CRIME_TERM_RULE}"
+    sys_msg += f"\n{CURRENCY_RULE}"
     lead_head = (f"本文开篇板块《{article['sections'][0]['title']}》内容摘要"
                  f"（以下为摘要，全文较长）:\n")
     if article["key"] in ("crime", "crime_big") and crime_card:
