@@ -283,6 +283,20 @@ def _clean_loc_name(value, loc=None):
     v = re.sub(r"\$+", "", v)
     return v.strip()
 
+
+def _building_type_zh(btype, loc=None):
+    """建筑类型中文名: 先查原键; 公司建筑 (building_company_X) 回退查 company_X
+    (游戏定义公司建筑显示名键为 company_<名>, 存档建筑类型带 building_ 前缀,
+    如 building_company_john_cockerill → company_john_cockerill);
+    均查不到时回退原始键 (与旧行为一致, 避免空名)。"""
+    if not btype:
+        return btype
+    loc = _load_loc_all() if loc is None else loc
+    zh = loc.get(btype)
+    if not zh and btype.startswith("building_company_"):
+        zh = loc.get("company_" + btype[len("building_company_"):])
+    return zh or btype
+
 def load_country_names():
     """从本地化(含 mod 覆盖)加载 {TAG: 中文名} 映射。"""
     global _NAME_CACHE
@@ -2903,7 +2917,7 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         unemployed = False
         workplace = (building_ctx or {}).get("workplace")
         if not workplace and btype:
-            workplace = _load_loc_all().get(btype, btype)
+            workplace = _building_type_zh(btype)
     # 消费画像: 州 pop_needs 按该 pop 文化 id 取需求权重
     profile = _consumption_profile((pop_needs or {}).get(str(pop.get("culture"))), sol)
     # 消费商品市价对比 (市价 vs 商品基准价 cost)
@@ -3578,10 +3592,7 @@ def _owner_building_info(data, ob, objs=None, workforce=None):
     else:
         bt, st = _building_head(data, ob)
     loc = _load_loc_all()
-    bzh = loc.get(bt) if bt else None
-    if not bzh and bt and bt.startswith("building_company_"):
-        # 公司建筑本地化键为 company_<类型后缀> (如 building_company_X → company_X)
-        bzh = loc.get("company_" + bt[len("building_company_"):])
+    bzh = _building_type_zh(bt, loc) if bt else None
     info = {
         "building_id": ob,
         "building_type": bt,
@@ -3901,7 +3912,7 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
     # 生产方式中文名、建筑名与 hub 名不在每次 _family_from_pop 里重复计算。
     building_ctx = {}
     if btype:
-        building_ctx["workplace"] = _load_loc_all().get(btype, btype)
+        building_ctx["workplace"] = _building_type_zh(btype)
         hub_cat = _hub_for_building(btype)
         if hub_cat:
             if state_obj is not None:
@@ -5550,7 +5561,7 @@ def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None, place=No
     """一栋建筑 → 自然语言: 类型/州/等级/生产方法/所有权/雇佣/投入产出。
     place 非空时用它替代州名 (如贸易中心改用 Hub 名)。"""
     btype = obj.get("building") or ""
-    zh = loc.get(btype) or btype or "未知建筑"
+    zh = _building_type_zh(btype, loc) or "未知建筑"
     state = place or ctx.state_zh(obj.get("state")) or "未知州"
     bits = [f"{zh}（位于{state}）"]
     lv = obj.get("levels")
@@ -7889,7 +7900,7 @@ def _crime_workplace_ctx(ctx, obj):
     """工作建筑对象 → (建筑中文名, 聚落名, 州中文名, 聚落类别)。"""
     loc = _load_loc_all()
     btype = obj.get("building") or ""
-    bzh = loc.get(btype, btype) or "未知建筑"
+    bzh = _building_type_zh(btype, loc) or "未知建筑"
     state = ctx.state_zh(obj.get("state")) or "未知州"
     hub = None
     cat = _hub_for_building(btype)
@@ -12053,6 +12064,11 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
     snap["ruler_activity"] = ruler_act
     # 家庭采访样本: 走访活动必须与统治者访问的家庭完全一致;
     # 其它活动按年份确定性随机，避免同年重生成结果漂移。
+    # 上一年访谈样本 (防连年重复): 未显式传入时按玩家 TAG 内部补算 (改名兼容)。
+    if prev_interview is None and journal_dir:
+        prev_interview = _load_prev_year_interview(
+            journal_dir, snap.get("year") or 0, snap.get("player"),
+            tag=snap.get("player_tag"))
     forced_family = visit_pop_obj if (act_kind == "visit_pop" and visit_pop_obj is not None) else None
     interview_rnd = random.Random(snap.get("year") or 0)
     interview = _pick_interview_set(melted, state_ids, ig_slots, building_map, price_map,
@@ -13413,23 +13429,44 @@ def _society_flavor_lines(snap, prev_snap=None):
     return lines
 
 
-def _load_prev_year_snapshot(journal_dir, year, player=None):
-    """尽力读取上一年整份快照 (供股市指数/州情同比续算)。
+def _folder_base(folder):
+    """会话文件夹基底名 (去掉尾部数字): 比利时2 → 比利时。"""
+    return re.sub(r"\d+$", "", str(folder))
 
-    与 _load_prev_year_interview 同策略: 不校验 mtime, 只按年份 + 会话前缀匹配。
+
+def _same_session_folder(player, folder):
+    """folder 是否属于 player 的同一会话 (玩家改名兼容)。
+
+    原名场景: folder 以玩家名开头 (比利时/比利时2 ⊂ 玩家「比利时」);
+    改名场景: 玩家名以 folder 基底开头 (玩家「比利时合众国」⊃ 基底「比利时」,
+    即该国从「比利时」改名为「比利时合众国」后仍能续接同一会话)。
+    """
+    if not player:
+        return True
+    if str(folder).startswith(str(player)):
+        return True
+    base = _folder_base(folder)
+    return bool(base) and str(player).startswith(base)
+
+
+def _prev_year_candidates(journal_dir, year, player=None, tag=None):
+    """列出上一年快照候选 [(folder, snap)], 按会话新旧降序。
+
+    匹配规则 (玩家改名不断链):
+      1) 快照自带 player_tag 时要求与当前 tag 一致 (主判据, TAG 跨改名稳定);
+      2) 快照无 tag (旧版本) 时回退玩家名前缀兼容 (_same_session_folder);
+      3) meta.player 前缀兼容双保险 (比利时 ↔ 比利时合众国)。
+    不校验 mtime: 只按年份 + 会话归属匹配 (供股市指数/州情同比/访谈防重复续算)。
     """
     if not year or year <= 1:
-        return None
+        return []
     prev_year = year - 1
     try:
         entries = sorted(os.listdir(journal_dir))
     except OSError:
-        return None
-    best = None
-    best_key = None
+        return []
+    out = []
     for folder in entries:
-        if player and not str(folder).startswith(str(player)):
-            continue
         path = _snapshot_cache_path(journal_dir, folder, prev_year)
         if not os.path.isfile(path):
             continue
@@ -13438,15 +13475,88 @@ def _load_prev_year_snapshot(journal_dir, year, player=None):
                 snap = json.load(fp)
         except Exception:
             continue
+        if not isinstance(snap, dict):
+            continue
         meta = snap.get("_meta") or {}
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("year") not in (None, prev_year):
+            continue
+        snap_tag = snap.get("player_tag")
+        if tag and snap_tag and snap_tag != tag:
+            continue
+        if player and not _same_session_folder(player, folder):
+            continue
         mp = meta.get("player")
-        if player and mp and mp != player:
+        if player and mp and mp != player \
+                and not str(player).startswith(mp) \
+                and not mp.startswith(str(player)):
             continue
         m = re.match(r"^(.*?)(\d+)$", str(folder))
         key = (m.group(1), int(m.group(2))) if m else (str(folder), 0)
+        out.append((folder, snap, key))
+    out.sort(key=lambda x: x[2], reverse=True)
+    return [(f, s) for f, s, _k in out]
+
+
+def _load_prev_year_snapshot(journal_dir, year, player=None, tag=None):
+    """尽力读取上一年整份快照 (供股市指数/州情同比续算)。
+
+    与 _load_prev_year_interview 同策略: 不校验 mtime, 只按年份 + 会话归属匹配。
+    tag 提供时优先按玩家国家 TAG 匹配 (玩家改名不影响 TAG 连续性)。
+    """
+    if not year or year <= 1:
+        return None
+    cands = _prev_year_candidates(journal_dir, year, player, tag)
+    return cands[0][1] if cands else None
+
+
+def _latest_session_folder_by_tag(journal_dir, tag=None, player=None):
+    """按玩家 TAG 找该会话最新文件夹 (玩家改名兼容, 供 continue 模式沿用)。
+
+    扫描各一级会话文件夹的最新年份快照, player_tag==tag (或玩家名前缀兼容)
+    者入选, 取快照年份最新 + 文件夹数字后缀最大者; 找不到返回 None。
+    """
+    if not journal_dir:
+        return None
+    try:
+        entries = sorted(os.listdir(journal_dir))
+    except OSError:
+        return None
+    best = None
+    best_key = None
+    for folder in entries:
+        data_dir = os.path.join(journal_dir, folder, "data")
+        if not os.path.isdir(data_dir):
+            continue
+        try:
+            fns = [fn for fn in os.listdir(data_dir)
+                   if re.fullmatch(r"snapshot_\d{4}\.json", fn)]
+        except OSError:
+            continue
+        if not fns:
+            continue
+        years = sorted(int(re.match(r"snapshot_(\d{4})\.json", fn).group(1))
+                       for fn in fns)
+        latest = years[-1]
+        path = _snapshot_cache_path(journal_dir, folder, latest)
+        try:
+            with open(path, "r", encoding="utf-8") as fp:
+                snap = json.load(fp)
+        except Exception:
+            continue
+        if not isinstance(snap, dict):
+            continue
+        snap_tag = snap.get("player_tag")
+        if tag and snap_tag and snap_tag != tag:
+            continue
+        if player and not _same_session_folder(player, folder):
+            continue
+        m = re.match(r"^(.*?)(\d+)$", str(folder))
+        key = (m.group(1), int(m.group(2)), latest) if m else (str(folder), 0, latest)
         if best_key is None or key > best_key:
             best_key = key
-            best = snap
+            best = folder
     return best
 
 
@@ -13831,7 +13941,7 @@ def _ipo_params(name, sid, state_scale, cfg, min_scale=50000.0):
     return price, shares, market_cap
 
 
-def _local_names_history(journal_dir, year, player):
+def _local_names_history(journal_dir, year, player, tag=None):
     """历史上用过的本地企业名 (含已退市/被并购者), 供新设/改名避让。
 
     仅当快照 stock_market 尚未持久化 used_names 时作扫描回退 (旧会话升级):
@@ -13844,7 +13954,7 @@ def _local_names_history(journal_dir, year, player):
     base = None
     try:
         for folder in sorted(os.listdir(journal_dir)):
-            if player and not str(folder).startswith(str(player)):
+            if player and not _same_session_folder(player, folder):
                 continue
             cand = os.path.join(journal_dir, folder, "data")
             if os.path.isdir(cand):
@@ -14336,6 +14446,29 @@ def _company_goods_basket(company_obj, gm):
     return weights
 
 
+_COMPANY_NAME_TEMPLATE_RE = re.compile(r"[\[\]$]|GetName|GetAdjective|DYNAMIC_NAME|TYPE_NAME")
+
+def _company_display_name(cobj, loc):
+    """公司显示名解析 (优先级): 玩家自定义名 custom_name → 存档 name 字段
+    (仅当能在本地化中解析出无运行时占位符的干净名字) → company_type 本地化名。
+
+    V3 玩家自建公司时 name 存的是动态名模板键 (如 dynamic_company_name_state_2,
+    本地化值形如 [STATE_REGION.GetNameNoFormatting]$DYNAMIC_NAME_TAG$$TYPE_NAME$,
+    含脚本占位符, 静态不可解析, 须跳过); 玩家在游戏内改名后存档写入
+    custom_name (原样字符串, 如 达能集团), 应优先采用。"""
+    custom = cobj.get("custom_name")
+    if isinstance(custom, str) and custom.strip():
+        return custom.strip()
+    ctype = cobj.get("company_type")
+    fallback = loc.get(ctype, ctype) if ctype else "未知公司"
+    nm = cobj.get("name")
+    if isinstance(nm, str) and nm.strip() and nm != ctype:
+        resolved = loc.get(nm.strip(), nm.strip())
+        if not _COMPANY_NAME_TEMPLATE_RE.search(resolved):
+            return resolved
+    return fallback
+
+
 def _company_industries_zh(company_obj, loc, charters):
     """公司主营行业中文名 (特许行业建筑类型 + 经营建筑类型, 取前 3)。"""
     names = []
@@ -14714,6 +14847,8 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
     for c in prev_stock.get("companies") or []:
         if c.get("name"):
             prev_quote[c["name"]] = c
+        if c.get("cid") is not None:
+            prev_quote.setdefault(str(c["cid"]), c)
     country_name = (country or {}).get("name") or snap.get("player") or "未知"
     style = _country_enterprise_style(country_name)
     # 地方企业候选 + 州产出规模 (先算, 供国家级公司新设上市定价共用)
@@ -14728,7 +14863,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
         if cobj.get("country") != cid:
             continue
         ctype = cobj.get("company_type")
-        name = loc.get(ctype, ctype) if ctype else "未知公司"
+        name = _company_display_name(cobj, loc)
         weights = _company_goods_basket(cobj, gm)
         deltas = []
         for gid, w in (weights or {}).items():
@@ -14743,7 +14878,10 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
         else:
             biz = biz / 100.0
         rnd = random.Random(f"{year}|stock|{cid2}")
-        prev_q = prev_quote.get(name) or {}
+        prev_q = (prev_quote.get(str(cid2))
+                  or prev_quote.get(name)
+                  or prev_quote.get(loc.get(ctype, ctype) if ctype else None)
+                  or {})
         home_sid = None
         st_region = cobj.get("state_region")
         if st_region is not None and str(st_region).strip().isdigit():
@@ -14803,6 +14941,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
         ohlc, monthly = _stock_monthly_ohlc(name, year, open_, price, _cfg)
         comps.append({
             "kind": "national", "name": name, "state": st_zh,
+            "cid": cid2,
             "industries": ind or basket_zh or "未知行业",
             "goods_basket": basket_zh, "gid": None, "good": None,
             "issue_price": issue_price, "shares": shares, "market_cap": mcap,
@@ -14824,7 +14963,8 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
                    if c.get("kind") == "local" and c.get("name")]
     hist_names = set(prev_stock.get("used_names") or [])
     if journal_dir:
-        hist_names |= _local_names_history(journal_dir, year, snap.get("player"))
+        hist_names |= _local_names_history(journal_dir, year, snap.get("player"),
+                                           tag=snap.get("player_tag"))
     local_comps, events = _evolve_local_market(
         cands, prev_locals, target, year, country_name, _cfg,
         price_delta=(lambda gid: _price_delta(gid, prices, prev_goods, gm)),
@@ -14842,8 +14982,12 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
     top_gainer = top_loser = None
     with_chg = [c for c in comps if c.get("change_pct") is not None]
     if with_chg:
-        top_gainer = max(with_chg, key=lambda c: c["change_pct"]).get("name")
-        top_loser = min(with_chg, key=lambda c: c["change_pct"]).get("name")
+        # 领涨/领跌仅在确实存在上涨/下跌个股时给出; 全部上涨时无领跌,
+        # 全部下跌时无领涨 (避免「0 家下跌却写领跌」类矛盾)
+        if adv > 0:
+            top_gainer = max(with_chg, key=lambda c: c["change_pct"]).get("name")
+        if dec > 0:
+            top_loser = min(with_chg, key=lambda c: c["change_pct"]).get("name")
     exchange_index = _exchange_index_ohlc(comps, prev_stock, year, _cfg)
     hist_names |= {c.get("name") for c in comps if c.get("name")}
     return {
@@ -14878,7 +15022,8 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
     price_map = _market_price_map(melted, country)
     prev_snap = None
     if journal_dir and year and year > 1:
-        prev_snap = _load_prev_year_snapshot(journal_dir, year, snap.get("player"))
+        prev_snap = _load_prev_year_snapshot(
+            journal_dir, year, snap.get("player"), tag=snap.get("player_tag"))
     if _cfg.get("state_flavor_enabled", True):
         snap["state_social"] = _build_state_social(melted, ctx, snap, state_ids,
                                                    pops=pops)
@@ -14939,7 +15084,10 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
 # (失业率0%/激进派0.0%等, 没有就不报), 旧缓存需重新熔化提取。
 # 版本 13: 汇率体系 (exchange_rates: 人均GDP+贸易开放度+历史锚, 快照跨年续算)
 # 与主辅币制 (format_money), 旧缓存需重新熔化提取。
-SNAPSHOT_CACHE_VERSION = 13
+# 版本 14: 上年快照定位改按玩家国家 TAG 绑定 (玩家改名不断链, 修复政体变更后
+# 股市/州情/访谈同比全部断链问题) + 公司建筑 workplace 本地化补 company_ 回退
+# (修复 building_company_john_cockerill 键值泄漏), 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 14
 # raw/snapshot 携带国家名解析表版本: 跨年合并时若上一年 raw 无此表,
 # 只能沿用烘焙名, 提示用 tools/regen_data.py 重新生成。
 NAME_TABLE_VERSION = 1
@@ -15027,7 +15175,9 @@ def _load_snapshot_cache(journal_dir, year):
                 and meta.get("year") == year
                 and meta.get("save_name") == save_name
                 and mt_ok):
-            matches.append((snap, meta.get("session_folder")))
+            # 返回物理文件夹而非 _meta.session_folder: 快照被移动/会话改名后,
+            # meta 里的旧文件夹名已失效, 若照用会把后续产物写进不存在的目录。
+            matches.append((snap, folder))
     if not matches:
         return None, None
     # 多个有效缓存(极少见)时优先取最新会话: 文件夹名为 玩家名 或 玩家名N, N 大者最新
@@ -15039,47 +15189,21 @@ def _load_snapshot_cache(journal_dir, year):
     return matches[0][0], matches[0][1]
 
 
-def _load_prev_year_interview(journal_dir, year, player=None):
+def _load_prev_year_interview(journal_dir, year, player=None, tag=None):
     """尽力读取上一年快照中的家庭采访样本 (供防连年重复)。
 
     快照缓存带「当前存档 mtime」校验, 跨年会因存档更新而失效, 因此这里不校验
-    mtime: 只按年份 + 会话文件夹前缀匹配 (玻利维亚 / 玻利维亚2...), 取最新会话。
+    mtime: 只按年份 + 会话归属匹配 (玻利维亚 / 玻利维亚2...), 取最新会话。
+    tag 提供时优先按玩家国家 TAG 匹配 (玩家改名不影响 TAG 连续性)。
     找不到、年份无效或玩家不匹配时返回 None。"""
     if not year or year <= 1:
         return None
-    prev_year = year - 1
-    try:
-        entries = sorted(os.listdir(journal_dir))
-    except OSError:
-        return None
-    best = None
-    best_key = None
-    for folder in entries:
-        if player and not str(folder).startswith(str(player)):
-            continue
-        path = _snapshot_cache_path(journal_dir, folder, prev_year)
-        if not os.path.isfile(path):
-            continue
-        try:
-            with open(path, "r", encoding="utf-8") as fp:
-                snap = json.load(fp)
-        except Exception:
-            continue
-        meta = snap.get("_meta") or {}
-        if not isinstance(meta, dict):
-            continue
-        mp = meta.get("player")
-        if player and mp and mp != player:
-            continue
+    for _folder, snap in _prev_year_candidates(journal_dir, year, player, tag):
         fi = snap.get("family_interview") or {}
         if not isinstance(fi, dict) or fi.get("workplace_id") is None:
             continue
-        m = re.match(r"^(.*?)(\d+)$", str(folder))
-        key = (m.group(1), int(m.group(2))) if m else (str(folder), 0)
-        if best_key is None or key > best_key:
-            best_key = key
-            best = fi
-    return best
+        return fi
+    return None
 
 
 _STATE_FALLBACK_RE = re.compile(r"^州\d+$")
@@ -15163,10 +15287,10 @@ def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None):
         else:
             if ctx is None:
                 ctx = SaveContext(melted)
-            prev = _load_prev_year_interview(cfg["journal_dir"], year,
-                                             _first_player_name(melted))
-            snap = extract_full_snapshot(melted, ctx=ctx, prev_interview=prev,
-                                        journal_dir=cfg["journal_dir"])
+            # 上一年访谈样本 (防连年重复) 由 extract_full_snapshot 按玩家 TAG
+            # 内部补算 (改名兼容), 这里不再预取。
+            snap = extract_full_snapshot(melted, ctx=ctx,
+                                         journal_dir=cfg["journal_dir"])
     if year and snap.get("year") != year:
         print(f"存档年份 {snap.get('year')} 与请求 {year} 不符")
     bad = _snap_states_health(snap)
@@ -15405,9 +15529,8 @@ def cmd_watch(continue_mode=False):
         meta0 = _parse_meta(melted)
         m_year = re.match(r"(\d{4})", str(meta0.get("game_date", "")))
         year_hint = int(m_year.group(1)) if m_year else None
-        prev = _load_prev_year_interview(cfg["journal_dir"], year_hint,
-                                         _first_player_name(melted))
-        snap = extract_full_snapshot(melted, ctx=ctx, prev_interview=prev,
+        # 上一年访谈样本 (防连年重复) 由 extract_full_snapshot 按玩家 TAG 内部补算
+        snap = extract_full_snapshot(melted, ctx=ctx,
                                      journal_dir=cfg["journal_dir"])
         bad = _snap_states_health(snap)
         if bad:
@@ -15415,7 +15538,8 @@ def cmd_watch(continue_mode=False):
             print("续传模式中止: 快照州名异常, 请检查存档/熔化数据后重试。")
             return 1
         player = snap.get("player") or "未知名国家"
-        folder = journal.find_latest_session_folder(player, cfg["journal_dir"])
+        folder = _latest_session_folder_by_tag(cfg["journal_dir"],
+                                               snap.get("player_tag"), player)
         if folder:
             journal.SESSION["folder"] = folder
             print(f"续传模式: 沿用最新文件夹 [{folder}]")
@@ -15459,9 +15583,9 @@ def cmd_watch(continue_mode=False):
                         meta0 = _parse_meta(melted[0])
                         m_year = re.match(r"(\d{4})", str(meta0.get("game_date", "")))
                         year_hint = int(m_year.group(1)) if m_year else None
-                        prev = _load_prev_year_interview(cfg["journal_dir"], year_hint,
-                                                         _first_player_name(melted[0]))
-                        snap = extract_full_snapshot(melted[0], prev_interview=prev,
+                        # 上一年访谈样本 (防连年重复) 由 extract_full_snapshot
+                        # 按玩家 TAG 内部补算 (改名兼容)
+                        snap = extract_full_snapshot(melted[0],
                                                      journal_dir=cfg["journal_dir"])
                         bad = _snap_states_health(snap)
                         if bad:

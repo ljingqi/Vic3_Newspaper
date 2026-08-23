@@ -1120,7 +1120,10 @@ SECTION_DEFS = [
      "（含国家级公司与地方企业）的名称、所在州域、主营商品、现价、年度涨跌幅与"
      "景气概况，并报道资料给出的交易所指数；现价、涨跌与指数为资料给定口径，"
      "一律照抄；个股行情以资料给出者为限；行情档位词（平盘/上涨等）无需复述；"
-     "新上市企业须注明「新设上市」。"),
+     "新上市企业须注明「新设上市」。"
+     "大盘概况按资料书写：有上涨个股时才写领涨，有下跌个股时才写领跌；"
+     "资料未给出领涨/领跌行时，大盘概况只写上涨家数、下跌家数与平均涨跌。"
+     "企业跨州经营时按资料列出其各州经营范围（在X州主营…产销，在Y州主营…产销）。"),
     ("politics", "政界动态", "报道政体、统治者、当前执政利益集团（标注「执政」者即组阁集团，"
      "数据含其政治力量占比、首领姓名与首领个人意识形态）、主要利益集团力量格局、"
      "当前影响最大的政治运动，"
@@ -1680,6 +1683,35 @@ def _pct_value(v):
     except (TypeError, ValueError):
         return None
 
+def _company_scope_text(c):
+    """企业经营范围描述: 企业名下资产 (家乡 + 历次兼并的 (州×商品)) 跨州时,
+    按州分组输出「在X州主营…产销；在Y州主营…产销」, 家乡州排最前;
+    资产缺失或仅涉及一州时回退「家乡州，主营行业」旧格式。"""
+    home = c.get("state") or "未知州"
+    ind = c.get("industries") or c.get("goods_basket") or "未知行业"
+    assets = c.get("assets") or []
+    by_state = {}
+    order = []
+    for a in assets:
+        st = a.get("state")
+        good = (a.get("zh") or a.get("good") or "").strip()
+        if not st or not good:
+            continue
+        goods = by_state.get(st)
+        if goods is None:
+            goods = by_state[st] = []
+            order.append(st)
+        if good not in goods:
+            goods.append(good)
+    if len(order) <= 1:
+        return f"{home}，主营{ind}"
+    if home in order:
+        order.remove(home)
+        order.insert(0, home)
+    clauses = [f"在{st}主营{'、'.join(by_state[st])}产销" for st in order]
+    return "；".join(clauses)
+
+
 def render_stock(data, cfg=None):
     """股市动态: 证券交易所开市后, 国家级公司 + 地方企业的现价行情。
 
@@ -1750,9 +1782,7 @@ def render_stock(data, cfg=None):
     for c in selected:
         name = c.get("name") or "未知公司"
         kind = "国家级公司" if c.get("kind") == "national" else "地方企业"
-        where = c.get("state") or "未知州"
-        ind = c.get("industries") or c.get("goods_basket") or "未知行业"
-        bits = [f"- 【{kind}】{name}（{where}，主营{ind}）"]
+        bits = [f"- 【{kind}】{name}（{_company_scope_text(c)}）"]
         price = c.get("price")
         chg = c.get("change_pct")
         if price is not None:
@@ -1764,7 +1794,8 @@ def render_stock(data, cfg=None):
             bits.append(c["note"])
         L.append("；".join(bits) + "。")
     L.append("正文以给定公司/企业、现价、涨跌与交易所指数为唯一依据，"
-             "个股行情以资料给出者为限。")
+             "个股行情以资料给出者为限。大盘概况的领涨在有上涨个股时写、"
+             "领跌在有下跌个股时写，与资料的大盘概况行保持一致。")
     return "\n".join(L)
 
 
@@ -1799,10 +1830,8 @@ def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
     rnd = random.Random(seed or "investment")
     pick = pool[rnd.randrange(len(pool))]
     name = pick.get("name") or "未知企业"
-    state = pick.get("state") or "未知州"
-    ind = pick.get("industries") or pick.get("goods_basket") or "地方产业"
     head = (f"- 投资结果：该人群分红/投资收入与持有地方企业股份有关。"
-            f"所持【{name}】（{state}，主营{ind}）本年行情：")
+            f"所持【{name}】（{_company_scope_text(pick)}）本年行情：")
     unit = unit or DEFAULT_CURRENCY
     parts = []
     price = pick.get("price")

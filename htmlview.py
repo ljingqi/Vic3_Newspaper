@@ -51,6 +51,34 @@ _META_DATE_RE = re.compile(r"报告日期\s*[:：]\s*([^|\n]+)")
 _META_GEN_RE = re.compile(r"生成时间\s*[:：]\s*([^\n]+)")
 
 
+def _stock_scope_text(c):
+    """企业经营范围描述 (与 journal._company_scope_text 同口径, htmlview 自持以免
+    循环依赖): 跨州资产时按州分组输出, 否则回退「家乡州，主营行业」。"""
+    home = c.get("state") or "未知州"
+    ind = c.get("industries") or c.get("goods_basket") or "未知行业"
+    assets = c.get("assets") or []
+    by_state = {}
+    order = []
+    for a in assets:
+        st = a.get("state")
+        good = (a.get("zh") or a.get("good") or "").strip()
+        if not st or not good:
+            continue
+        goods = by_state.get(st)
+        if goods is None:
+            goods = by_state[st] = []
+            order.append(st)
+        if good not in goods:
+            goods.append(good)
+    if len(order) <= 1:
+        return f"{home}，主营{ind}"
+    if home in order:
+        order.remove(home)
+        order.insert(0, home)
+    clauses = [f"在{st}主营{'、'.join(by_state[st])}产销" for st in order]
+    return "；".join(clauses)
+
+
 def _article_meta(text):
     """从文件头注释里提取报告日期/生成时间, 拼成页面底部元信息。"""
     parts = []
@@ -514,7 +542,7 @@ let curStock = null;   // 当前选中的个股名 (跨年份保持)
 
 function stockSub(s) {
   return [s.kind === "national" ? "国家级公司" : "地方企业",
-          s.state, s.industries ? "主营" + s.industries : ""]
+          s.scope || (s.state + (s.industries ? " · 主营" + s.industries : ""))]
     .filter(Boolean).join(" · ") || s.name;
 }
 
@@ -523,7 +551,9 @@ function stockTitle(s) {
 }
 
 function renderOneStock(s, pal) {
-  return `<div class="stock-chart"><div class="chart-title">${stockTitle(s)}</div>`
+  const unit = CHARTS.unit || "";
+  const title = stockTitle(s) + (unit ? "（" + unit + "）" : "");
+  return `<div class="stock-chart"><div class="chart-title">${title}</div>`
        + candleChartSvg(s.rows, pal) + "</div>";
 }
 
@@ -552,9 +582,14 @@ function renderStockChart(div, curYear) {
   div.style.setProperty("--down-soft", PALETTE_SOFT[mode].down);
 
   // 板块标题 + 涨跌图例 (颜色随国家约定)
-  let html = '<div class="stock-head"><span class="chart-title">股市</span>'
+  let html = '<div class="stock-head"><span class="chart-title">股市'
+    + (CHARTS.unit ? "（" + esc(CHARTS.unit) + "）" : "") + '</span>'
     + '<span class="stock-legend"><i style="background:' + pal.up + '"></i>涨'
     + '<i style="background:' + pal.down + '"></i>跌</span></div>';
+  if (CHARTS.fx_fallback) {
+    html += '<p class="chart-hint">早年（无汇率数据年份）个股价格按最早可得的'
+      + (CHARTS.unit || "主币") + '汇率折算显示。</p>';
+  }
   // 交易所指数置顶 (动态名: 市场中心州首府 hub 名 + 交易所指数)
   if (exRows.length) {
     const last = exRows[exRows.length - 1];
@@ -748,8 +783,12 @@ def _collect_chart_data(base_dir):
     market: 逐年大盘概况 (涨跌家数/均值/领涨领跌/市场事件)。
     附带 player/capital (交易所指数命名用: 市场中心州首府 hub 名) 与
     palette ("east" 红涨绿跌 / "west" 绿涨红跌, 由玩家国名判定)。
+    个股价格按「当年汇率」换算为主币 (游戏镑 × 1英镑兑X主币, 与报纸正文 format_money
+    同口径); 旧年份无汇率数据时回退首个有汇率年份的汇率 (fx_fallback=True 标注);
+    交易所指数是点数, 不换算。
     返回 {"macro": [...], "stock": [...], "exchange": [...], "market": [...],
-          "currency": "...", "player": "...", "capital": "...", "palette": "..."}。
+          "currency": "...", "player": "...", "capital": "...", "palette": "...",
+          "unit": "...", "fx_fallback": bool}。
     结果同时落盘为 data/history.json (供程序直接读取)。"""
     data_dir = os.path.join(base_dir, "data")
     macro = []
@@ -759,10 +798,11 @@ def _collect_chart_data(base_dir):
     currency = ""
     player = ""
     capital = ""
+    rates = {}      # year → 1英镑兑主币 (当年汇率)
     if not os.path.isdir(data_dir):
         return {"macro": macro, "stock": [], "exchange": exchange,
                 "market": market, "currency": currency, "player": player,
-                "capital": capital,
+                "capital": capital, "unit": currency, "fx_fallback": False,
                 "palette": "east" if _is_east_asian(
                     player or os.path.basename(base_dir)) else "west"}
     for fn in sorted(os.listdir(data_dir)):
@@ -776,6 +816,13 @@ def _collect_chart_data(base_dir):
             continue
         year = int(m.group(1))
         currency = currency or (raw.get("currency") or "")
+        # 当年汇率 (1英镑兑主币): 个股价格换算用; 无数据年份留空 (回退策略见下)
+        _cur = raw.get("currency") or currency or ""
+        if _cur:
+            _r = (((raw.get("exchange_rates") or {}).get("rates") or {})
+                  .get(_cur) or {}).get("rate")
+            if isinstance(_r, (int, float)) and _r > 0:
+                rates[year] = _r
         if raw.get("player"):
             player = raw["player"]       # 取最新年国名
         if raw.get("capital"):
@@ -812,11 +859,17 @@ def _collect_chart_data(base_dir):
             name = c.get("name")
             if not name:
                 continue
-            key = c.get("enterprise_id") or name
+            if c.get("enterprise_id"):
+                key = c["enterprise_id"]
+            elif c.get("cid") is not None:
+                key = "cid:%s" % c["cid"]   # 国家级公司按存档 id 键控, 改名不断链
+            else:
+                key = name
             rec = stock.setdefault(key, {
                 "id": key, "name": name, "orig": None,
                 "kind": c.get("kind"),
                 "state": c.get("state"), "industries": c.get("industries"),
+                "scope": None,
                 "rows": [],
             })
             rec["name"] = name   # 企业改名后图表沿用最新名
@@ -830,6 +883,7 @@ def _collect_chart_data(base_dir):
                 rec["state"] = c.get("state")
             if rec.get("industries") is None:
                 rec["industries"] = c.get("industries")
+            rec["scope"] = _stock_scope_text(c)   # 经营范围随兼并逐年更新
             if all(c.get(k) is not None
                    for k in ("open", "high", "low", "close")):
                 rec["rows"].append({
@@ -844,6 +898,21 @@ def _collect_chart_data(base_dir):
     exchange.sort(key=lambda r: r["year"])
     for rec in stock.values():
         rec["rows"].sort(key=lambda r: r["year"])
+    # 个股价格按汇率换算 (游戏镑 → 主币, 与报纸正文 format_money 同口径):
+    # 当年汇率优先; 旧年份无汇率数据 (旧版快照) 回退首个有汇率年份的汇率,
+    # 此时 fx_fallback=True 供页面标注「早年按最早汇率折算」。
+    first_rate = next((rates[y] for y in sorted(rates)), None)
+    missing = any(not rates.get(r["year"])
+                  for rec in stock.values() for r in rec["rows"])
+    fx_fallback = bool(rates) and missing and first_rate is not None
+    for rec in stock.values():
+        for r in rec["rows"]:
+            rate = rates.get(r["year"]) or first_rate
+            if rate and rate != 1.0:
+                r["open"] = round(r["open"] * rate, 2)
+                r["high"] = round(r["high"] * rate, 2)
+                r["low"] = round(r["low"] * rate, 2)
+                r["close"] = round(r["close"] * rate, 2)
     # 同名标的合并为一只 (兼容历史数据), 同名同年以较后企业为准 (确定性)
     merged = {}
     for rec in sorted(stock.values(),
@@ -861,12 +930,14 @@ def _collect_chart_data(base_dir):
         for k in ("kind", "state", "industries", "orig"):
             if base.get(k) is None:
                 base[k] = rec.get(k)
+        if rec.get("scope"):
+            base["scope"] = rec["scope"]
     stocks_out = list(merged.values())
     stocks_out.sort(key=lambda r: (r["rows"][0]["year"] if r["rows"] else 9999,
                                    r["name"]))
     return {"macro": macro, "stock": stocks_out, "exchange": exchange,
             "market": market, "currency": currency, "player": player,
-            "capital": capital,
+            "capital": capital, "unit": currency, "fx_fallback": fx_fallback,
             "palette": "east" if _is_east_asian(
                 player or os.path.basename(base_dir)) else "west"}
 
