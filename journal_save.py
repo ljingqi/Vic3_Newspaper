@@ -9683,7 +9683,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
             f"案发地：{place}（受害者工作建筑所在的{hub_label}）；"
             f"案发现场为{scene}。"
             "案件类型、案发地与案发现场全篇以给定资料为准；"
-            "不得引入现实人物、地名与案件。"
+            "案件发生在本刊的平行世界中，与现实人物、地名无关。"
         )
     elif profile == "small":
         case_head = (
@@ -9793,7 +9793,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
         street_lines.append(
             "写案发后街巷的即时反响：以给定动乱/识字/失业与舆论方向为限，"
             "写邻里议论、受害与加害两方家庭的情形；"
-            "不得编造资料外的事件、人名与数字。"
+            "事件、人名与数字以资料给出者为限。"
         )
         close_lines = [
             case_head,
@@ -12826,9 +12826,14 @@ def _admin_cover(melted, ctx, snap, cid, state_ids):
 
 
 def _state_pop_mosaic(pops, sid):
-    """州内具体人群速写: 主要职业/文化/宗教 + 整体接纳度。"""
+    """州内具体人群速写: 主要职业/文化/宗教 + 接纳度。
+
+    接纳度按前两大宗教分别取劳动力加权众数: 两教一致时用「整体」表述,
+    不一致时逐一分列 (如「什叶派完全接纳、泛灵信仰暴力敌视」),
+    避免"整体完全接纳"掩盖州内少数宗教人群遭暴力敌视的事实。"""
     from journal import POP_TYPE_NAMES, ACCEPTANCE_NAMES
     prof, cult, rel, accs = {}, {}, {}, []
+    rel_acc = {}   # 宗教名 -> {接受度: 劳动力}
     wf = 0.0
     for _pid, o in (pops or {}).items():
         if o.get("location") != sid:
@@ -12849,6 +12854,9 @@ def _state_pop_mosaic(pops, sid):
         acc = (o.get("acceptance_data") or {}).get("acceptance_status")
         if acc:
             accs.append({"acceptance_status": acc, "workforce": w})
+            if r:
+                rc = rel_acc.setdefault(r, {})
+                rc[acc] = rc.get(acc, 0) + w
     if wf <= 0:
         return None
     top_prof = [k for k, _ in sorted(prof.items(), key=lambda kv: -kv[1])[:2]]
@@ -12859,10 +12867,41 @@ def _state_pop_mosaic(pops, sid):
         parts.append(f"多为{'、'.join(top_cult)}裔")
     if top_rel:
         parts.append(f"信仰以{'、'.join(top_rel)}为主")
-    dom = dominant_acceptance_status(accs, weight_key="workforce")
-    if dom:
+    rel_doms = {}
+    for r in top_rel:
+        cnt = rel_acc.get(r) or {}
+        if cnt:
+            rel_doms[r] = max(cnt.items(), key=lambda kv: kv[1])[0]
+    if len(rel_doms) >= 2 and len(set(rel_doms.values())) > 1:
+        parts.append("本地对各族接纳度：" + "、".join(
+            f"{r}{ACCEPTANCE_NAMES.get(s, s)}" for r, s in rel_doms.items()))
+    elif rel_doms:
+        dom = next(iter(rel_doms.values()))
         parts.append(f"本地对各族接纳度整体{ACCEPTANCE_NAMES.get(dom, dom)}")
+    else:
+        dom = dominant_acceptance_status(accs, weight_key="workforce")
+        if dom:
+            parts.append(f"本地对各族接纳度整体{ACCEPTANCE_NAMES.get(dom, dom)}")
     return "，".join(parts)
+
+
+def _state_pop_avg_sol(pops, sid):
+    """州内全部 pop 的劳动力加权平均生活水平 (previous_quality_of_life)。
+
+    替代存档 state.pop_statistics.primary_cultures_standard_of_living:
+    该游戏字段量纲失真 (实测同国各州 0.28~139.9 乱跳, 如伊拉克阿杰米 139.9
+    而其 pop 实际均值约 10), 与采访板块同源的 pop 生活水平才可信。
+    无有效样本返回 None (调用方回退原字段)。"""
+    w = ws = 0.0
+    for _pid, o in (pops or {}).items():
+        if o.get("location") != sid:
+            continue
+        sol = o.get("previous_quality_of_life")
+        wf = o.get("workforce") or 0
+        if isinstance(sol, (int, float)) and wf > 0:
+            w += wf
+            ws += wf * sol
+    return (ws / w) if w > 0 else None
 
 
 def _state_social_prev(snap, prev_snap=None):
@@ -12953,14 +12992,16 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
                 lit_txt += f"，较上年{'提高' if dv > 0 else '下降'}约{abs(dv):.1f}个百分点"
         lines.append(f"- 州情·识字：{lit_txt}。")
     ps = sobj.get("pop_statistics") or {}
-    sol = ps.get("primary_cultures_standard_of_living")
+    sol = _state_pop_avg_sol(pops, sid)
+    if sol is None:
+        sol = ps.get("primary_cultures_standard_of_living")
     if isinstance(sol, (int, float)):
         try:
             from journal import sol_band
             band = sol_band(sol)
         except Exception:
             band = None
-        lines.append(f"- 州情·民生：主体人群生活水平约{round(sol, 1)}"
+        lines.append(f"- 州情·民生：当地民众生活水平约{round(sol, 1)}"
                      + (f"（{band}）" if band else "") + "。")
     if unemp_pct is not None:
         lines.append(f"- 州情·生计：失业率约{unemp_pct:.0f}%"
@@ -13025,7 +13066,9 @@ def _build_state_social(melted, ctx, snap, state_ids, pops=None):
             "population_lower_strata", "population_middle_strata",
             "population_upper_strata"))
         rad = ps.get("population_radicals") or 0
-        sol = ps.get("primary_cultures_standard_of_living")
+        sol = _state_pop_avg_sol(pops, sid)
+        if sol is None:
+            sol = ps.get("primary_cultures_standard_of_living")
         out[str(sid)] = {
             "literacy": round(lit, 2) if lit is not None else None,
             "unemployment": round(unemp, 2) if unemp is not None else None,
@@ -13074,7 +13117,7 @@ def _society_flavor_lines(snap, prev_snap=None):
             band = sol_band(avg_sol)
         except Exception:
             band = None
-        lines.append(f"各州主体人群生活水平均值约{round(avg_sol, 1)}"
+        lines.append(f"各州民众生活水平均值约{round(avg_sol, 1)}"
                      + (f"（{band}）" if band else "") + "。")
     return lines
 
@@ -13119,7 +13162,7 @@ def _load_prev_year_snapshot(journal_dir, year, player=None):
 # ---------------------------------------------------------------------------
 # 股市动态: 国家级公司 (玩家创建/特许公司) + 地方企业 (按商品生产量生成)
 # 每股为真实股价: 发行价 = 家乡州产出规模×系数÷发行股数 (确定性种子);
-# 年涨跌 = 商品篮子 + 公司景气 + 扰动, 钳制 ±25%, 现价在发行价上逐年续算;
+# 年涨跌 = 商品篮子 + 公司景气 + 扰动, 钳制 ±45%, 现价在发行价上逐年续算;
 # 交易所指数 = 市值加权链式 (开市年 100, 自开市年起连续);
 # 跨年用快照缓存续算, 企业名按东亚/西方两套模板生成后不再变化。
 # ---------------------------------------------------------------------------
@@ -13148,7 +13191,8 @@ _LOCAL_ENTERPRISE_SUFFIX_DEFAULT = "公司"
 # 股价年度涨跌档位词
 _STOCK_BAND_ZH = ((-15, "大跌"), (-5, "下跌"), (5, "平盘"), (15, "上涨"))
 _STOCK_BAND_MAX = "大涨"
-_STOCK_YOY_CLAMP = 0.25
+# 年度涨跌钳制 ±45% (需求: 每年波动幅度 45%)
+_STOCK_YOY_CLAMP = 0.45
 
 # ---------------------------------------------------------------------------
 # 地方企业命名模板 (两套风格, 确定性播种, 创始年确定后跨年稳定):
@@ -13650,8 +13694,9 @@ def _evolve_local_market(cands, prev_locals, target, year, country_name, cfg,
         else:
             d = price_delta(gid) if price_delta else 0.0
             rnd = random.Random("%s|stock|local|%s" % (year, c.get("name")))
+            # 扰动与 ±45% 钳制等比放大 (0.03 × 1.8 ≈ 0.054)
             raw = max(-_STOCK_YOY_CLAMP,
-                      min(_STOCK_YOY_CLAMP, d + rnd.uniform(-0.03, 0.03)))
+                      min(_STOCK_YOY_CLAMP, d + rnd.uniform(-0.054, 0.054)))
         prev_price = float(c.get("price") or c.get("issue_price") or 0.0)
         if prev_price <= 0:
             prev_price = float(c.get("issue_price") or 1.0)
@@ -13998,7 +14043,7 @@ def _local_enterprise_name(state_zh, good_key):
     return f"{state_zh}{suffix}"
 
 
-_STOCK_OHLC_SPREAD = 0.05  # 年K线影线最大随机幅度 (±5%)
+_STOCK_OHLC_SPREAD = 0.10  # 年K线影线最大随机幅度 (±10%, 需求: 年内涨跌幅限制 10%)
 
 
 def _stock_ohlc(name, year, open_, close_):
@@ -14063,7 +14108,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
 
     国家级公司: companies.database 中属于本国的公司 (玩家创建/特许公司);
     地方企业: 按 (州×商品) 生产量生成, 上年已创建者保留;
-    年涨跌 = 商品篮子价格变动 + 公司景气 + 确定性扰动, 钳制 ±25%;
+    年涨跌 = 商品篮子价格变动 + 公司景气 + 确定性扰动, 钳制 ±45%;
     每股为真实股价: 新设上市按家乡州产出规模定价
     (发行价 = 州产出规模×系数 ÷ 发行股数), 现价按年涨跌续算;
     交易所指数为市值加权链式 (开市年 100, 自开市年起逐年连续)。
@@ -14119,9 +14164,10 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
         else:
             biz = biz / 100.0
         rnd = random.Random(f"{year}|stock|{cid2}")
+        # 扰动与 ±45% 钳制等比放大 (0.04 × 1.8 ≈ 0.072)
         raw = max(-_STOCK_YOY_CLAMP,
                   min(_STOCK_YOY_CLAMP,
-                      0.5 * basket_delta + 0.3 * biz + 0.2 * rnd.uniform(-0.04, 0.04)))
+                      0.5 * basket_delta + 0.3 * biz + 0.2 * rnd.uniform(-0.072, 0.072)))
         prev_q = prev_quote.get(name) or {}
         home_sid = None
         st_region = cobj.get("state_region")

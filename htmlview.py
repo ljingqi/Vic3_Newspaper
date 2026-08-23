@@ -528,9 +528,17 @@ function renderOneStock(s, pal) {
 }
 
 function renderStockChart(div, curYear) {
+  // 退市年份映射: 当年被并购(target)/退市(name) 的企业当年仍可点击查看最后一根K线,
+  // 次年该企业仅存于 data/raw_*.json, 不再出现在个股列表中
+  const delistYear = {};
+  (CHARTS.market || []).forEach(m => (m.events || []).forEach(ev => {
+    if (ev.type === "merger" && ev.target) delistYear[ev.target] = m.year;
+    if (ev.type === "delisting" && ev.name) delistYear[ev.name] = m.year;
+  }));
   const stocks = (CHARTS.stock || [])
-    .filter(s => s.rows.some(r => r.year <= curYear))
-    .map(s => ({ ...s, rows: s.rows.filter(r => r.year <= curYear) }));
+    .map(s => ({ ...s, rows: s.rows.filter(r => r.year <= curYear) }))
+    .filter(s => s.rows.length && (s.rows[s.rows.length - 1].year === curYear
+      || delistYear[s.name] === curYear));
   const exRows = (CHARTS.exchange || []).filter(r => r.year <= curYear);
   if (!stocks.length && !exRows.length) {
     div.innerHTML = '<p class="chart-hint">本期无个股行情数据，图表自交易所开市次年起显示。</p>';

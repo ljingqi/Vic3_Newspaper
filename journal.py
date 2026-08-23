@@ -122,7 +122,7 @@ DEFAULT_CONFIG = {
     # 报纸「股市动态」专栏: 研发证券交易所后出现; 每年按商品价格涨跌
     "stock_market_enabled": True,
     # 股市专栏中地方企业数量 (按各州商品生产量生成)
-    "stock_local_enterprise_count": 5,
+    "stock_local_enterprise_count": 6,
     # 地方企业年度并购概率 (每年掷一次, 命中则强者兼并弱者; 0~1)
     "stock_merger_chance": 0.5,
     # 新设上市定价: 发行价 = 家乡州年产出规模×系数 ÷ 发行股数
@@ -864,13 +864,20 @@ def _division_label(govt_key):
     low = str(govt_key).lower()
     if any(k in low for k in (
             "republic", "democracy", "soviet", "commune",
-            "technate", "phalanstere", "council", "presidential")):
+            "technate", "phalanstere", "council", "presidential",
+            "federation", "confederacy", "free_city")):
         return "州"
     if any(k in low for k in (
             "monarch", "empire", "kingdom", "duchy", "regency",
-            "principality", "sultan", "khan", "shah", "caliph",
-            "emir", "bakufu", "shogun", "theocracy", "papal",
-            "chiefdom", "colony", "dominion", "chartered", "crown")):
+            "principality", "princely", "prince", "sultan", "sunanate",
+            "khan", "shah", "caliph", "emir", "bey", "khedive",
+            "tsar", "kaiser", "malik", "sharif", "sheikh", "imam",
+            "raj", "raja", "maharaja", "nawab", "nizam", "diwan",
+            "bakufu", "shogun", "theocracy", "papacy", "papal",
+            "bishopric", "lama", "khalsa", "chiefdom", "colony", "colonial",
+            "dominion", "chartered", "crown", "captaincy", "territory",
+            "frontier", "guberniya", "vilayet", "wilayah", "governor",
+            "hm_gov", "zhuz", "ras", "hakim", "junta")):
         return "省"
     return None
 
@@ -1071,7 +1078,7 @@ SECTION_DEFS = [
     ("stock", "股市动态", "报道证券交易所开市以来的行情：仅报道资料给出的各公司/企业"
      "（含国家级公司与地方企业）的名称、所在州域、主营商品、现价、年度涨跌幅与"
      "景气概况，并报道资料给出的交易所指数；现价、涨跌与指数为资料给定口径，"
-     "一律照抄，不得编造行情之外的个股消息，亦不得复述行情档位词（平盘/上涨等）；"
+     "一律照抄；个股行情以资料给出者为限；行情档位词（平盘/上涨等）无需复述；"
      "新上市企业须注明「新设上市」。"),
     ("politics", "政界动态", "报道政体、统治者、当前执政利益集团（标注「执政」者即组阁集团，"
      "数据含其政治力量占比、首领姓名与首领个人意识形态）、主要利益集团力量格局、"
@@ -1617,7 +1624,9 @@ def render_stock(data, cfg=None):
                  "各股按发行价开市。")
     ex = sm.get("exchange_index") or {}
     if isinstance(ex, dict) and ex.get("close") is not None:
-        ex_s = f"交易所指数约{round(ex['close'], 1)}"
+        ex_name = data.get("capital") or ""
+        ex_s = (f"{ex_name}交易所指数约{round(ex['close'], 1)}"
+                if ex_name else f"交易所指数约{round(ex['close'], 1)}")
         ex_chg = ex.get("change_pct")
         if ex_chg is not None:
             if abs(ex_chg) < 0.05:
@@ -1673,7 +1682,7 @@ def render_stock(data, cfg=None):
             bits.append(c["note"])
         L.append("；".join(bits) + "。")
     L.append("正文以给定公司/企业、现价、涨跌与交易所指数为唯一依据，"
-             "行情之外的个股消息不得编造。")
+             "个股行情以资料给出者为限。")
     return "\n".join(L)
 
 
@@ -2371,15 +2380,10 @@ def render_family(data, style=None):
         L.append(f"- 受访人姓名：{nm}")
     if roster:
         if roster["spouse"]["name"]:
-            _note = {"double": "双姓（本姓+夫姓）",
-                     "own": "保留女方本姓",
-                     "husband": "与受访人同姓"}.get(
-                roster.get("spouse_policy"), "与受访人同姓")
-            L.append(f"- 配偶姓名：{roster['spouse']['name']}（{_note}）")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}")
         if roster["children"]:
             L.append("- 子女：" + "、".join(
-                f"{c['label']} {c['name']}" for c in roster["children"])
-                + "（随父姓）")
+                f"{c['label']} {c['name']}" for c in roster["children"]))
         else:
             L.append("- 子女：膝下无子")
     L.extend(_ownership_lines(fi.get("workplace_ownership")))
@@ -2520,15 +2524,10 @@ def render_peer(data, style=None):
         L.append(f"- 受访人姓名：{nm}")
     if roster:
         if roster["spouse"]["name"]:
-            _note = {"double": "双姓（本姓+夫姓）",
-                     "own": "保留女方本姓",
-                     "husband": "与受访人同姓"}.get(
-                roster.get("spouse_policy"), "与受访人同姓")
-            L.append(f"- 配偶姓名：{roster['spouse']['name']}（{_note}）")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}")
         if roster["children"]:
             L.append("- 子女：" + "、".join(
-                f"{c['label']} {c['name']}" for c in roster["children"])
-                + "（随父姓）")
+                f"{c['label']} {c['name']}" for c in roster["children"]))
         else:
             L.append("- 子女：膝下无子")
     if workplace:
@@ -2659,15 +2658,10 @@ def render_unemployed(data, style=None):
         L.append(f"- 受访人姓名：{nm}")
     if roster:
         if roster["spouse"]["name"]:
-            _note = {"double": "双姓（本姓+夫姓）",
-                     "own": "保留女方本姓",
-                     "husband": "与受访人同姓"}.get(
-                roster.get("spouse_policy"), "与受访人同姓")
-            L.append(f"- 配偶姓名：{roster['spouse']['name']}（{_note}）")
+            L.append(f"- 配偶姓名：{roster['spouse']['name']}")
         if roster["children"]:
             L.append("- 子女：" + "、".join(
-                f"{c['label']} {c['name']}" for c in roster["children"])
-                + "（随父姓）")
+                f"{c['label']} {c['name']}" for c in roster["children"]))
         else:
             L.append("- 子女：膝下无子")
     L.append(f"- 该州失业率（失业人口/该州总人口）：{rate_s}")
