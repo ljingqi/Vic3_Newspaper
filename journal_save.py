@@ -5508,23 +5508,8 @@ _POOL_INTERNAL_SECURITY_LAWS = (
     "law_shinsengumi", "law_guaranteed_liberties",
 )
 
-# 机构投资等级(0~5) → 自然语言档位 (提示词不传 1级/2级 这类裸数字)
-INSTITUTION_LEVEL_ZH = {
-    0: "尚未设立",
-    1: "初具雏形",
-    2: "有限运转",
-    3: "全面铺开",
-    4: "高效有力",
-    5: "臻于完善",
-}
-
-
-def _institution_level_zh(level):
-    """机构投资等级 → 自然语言档位; 非法输入返回「未知」。"""
-    if not isinstance(level, (int, float)):
-        return "未知"
-    return INSTITUTION_LEVEL_ZH.get(int(level), f"第{int(level)}档")
-
+# 机构投资等级 → 自然语言档位 (单一来源在 journal.py, 经 _journal 复用,
+# 提示词不传 1级/2级 这类裸数字)
 
 # 游戏文件解析失败时的选品兜底清单: 有生产链条 + pop 可直接消费的制成品
 _POOL_SHELF_FALLBACK_GOODS = {
@@ -5558,15 +5543,12 @@ def _pool_goods_text(go, gm):
 
 
 def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None, place=None):
-    """一栋建筑 → 自然语言: 类型/州/等级/生产方法/所有权/雇佣/投入产出。
+    """一栋建筑 → 自然语言: 类型/州/生产方法/所有权/雇佣/投入产出。
     place 非空时用它替代州名 (如贸易中心改用 Hub 名)。"""
     btype = obj.get("building") or ""
     zh = _building_type_zh(btype, loc) or "未知建筑"
     state = place or ctx.state_zh(obj.get("state")) or "未知州"
     bits = [f"{zh}（位于{state}）"]
-    lv = obj.get("levels")
-    if isinstance(lv, (int, float)):
-        bits.append(f"{int(round(lv))}级")
     pms = obj.get("production_methods") or []
     pms_zh = []
     for p in pms:
@@ -5972,7 +5954,7 @@ def _pool_turmoil_data(melted, snap, ctx, rnd, country, cid, data):
     insts = _country_institution_levels(melted, cid)
     if insts:
         law_lines.append("全国机构投入：" + "；".join(
-            f"{loc.get(k, k)}：{_institution_level_zh(v)}"
+            f"{loc.get(k, k)}：{_journal._institution_level_zh(v)}"
             for k, v in sorted(insts.items())) + "。")
     else:
         law_lines.append("（该国暂无机构投入记录，机构均按未设立处理。）")
@@ -6387,7 +6369,7 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     states = snap.get("states") or []
     if insts:
         lead = ["国家机构投入：" + "；".join(
-            f"{loc.get(k, k)}：{_institution_level_zh(v)}"
+            f"{loc.get(k, k)}：{_journal._institution_level_zh(v)}"
             for k, v in sorted(insts.items())) + "。"]
     else:
         lead = ["（该国暂无机构投入记录，机构均按未设立处理。）"]
@@ -9600,8 +9582,8 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
     internal = next((l for l in _POOL_INTERNAL_SECURITY_LAWS if l in laws), None)
     insts = _country_institution_levels(melted, cid) or {}
     # 存档无该机构条目即未投入, 按 0 级「尚未设立」处理
-    police_lv = _institution_level_zh(insts.get("institution_police", 0))
-    home_lv = _institution_level_zh(insts.get("institution_home_affairs", 0))
+    police_lv = _journal._institution_level_zh(insts.get("institution_police", 0))
+    home_lv = _journal._institution_level_zh(insts.get("institution_home_affairs", 0))
     # 罚金基准线: 案发地所在州劳动力人均月收入 (weekly_budget 正分量 / 劳动力)
     _state_avg_w = _crime_state_avg_weekly_income(
         pops, victim[1].get("location"))
@@ -13348,12 +13330,16 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
                 break
         if tram_txt:
             break
-    if urban_lv >= 10 or any(hubs):
-        lines.append(f"- 州情·城邑：城镇中心约{urban_lv}级，市镇街巷渐成规模{tram_txt}。")
-    elif urban_lv:
-        lines.append(f"- 州情·城邑：城镇中心约{urban_lv}级，城邑初兴{tram_txt}。")
-    else:
+    if urban_lv <= 0:
         lines.append("- 州情·城邑：多为乡村聚落，城邑寥落。")
+    elif urban_lv < 5 and not any(hubs):
+        lines.append(f"- 州情·城邑：城邑初兴，街巷渐次成形{tram_txt}。")
+    elif urban_lv < 10:
+        lines.append(f"- 州情·城邑：市镇渐成规模，街巷纵横、商旅往来{tram_txt}。")
+    elif urban_lv < 20:
+        lines.append(f"- 州情·城邑：城邑繁盛，市廛栉比、商贾辐辏{tram_txt}。")
+    else:
+        lines.append(f"- 州情·城邑：都会气象，楼宇连云、人烟辐辏{tram_txt}。")
     mosaic = _state_pop_mosaic(pops, sid)
     if mosaic:
         lines.append(f"- 州情·人群：{mosaic}。")

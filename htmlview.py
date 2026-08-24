@@ -586,10 +586,6 @@ function renderStockChart(div, curYear) {
     + (CHARTS.unit ? "（" + esc(CHARTS.unit) + "）" : "") + '</span>'
     + '<span class="stock-legend"><i style="background:' + pal.up + '"></i>涨'
     + '<i style="background:' + pal.down + '"></i>跌</span></div>';
-  if (CHARTS.fx_fallback) {
-    html += '<p class="chart-hint">早年（无汇率数据年份）个股价格按最早可得的'
-      + (CHARTS.unit || "主币") + '汇率折算显示。</p>';
-  }
   // 交易所指数置顶 (动态名: 市场中心州首府 hub 名 + 交易所指数)
   if (exRows.length) {
     const last = exRows[exRows.length - 1];
@@ -784,11 +780,11 @@ def _collect_chart_data(base_dir):
     附带 player/capital (交易所指数命名用: 市场中心州首府 hub 名) 与
     palette ("east" 红涨绿跌 / "west" 绿涨红跌, 由玩家国名判定)。
     个股价格按「当年汇率」换算为主币 (游戏镑 × 1英镑兑X主币, 与报纸正文 format_money
-    同口径); 旧年份无汇率数据时回退首个有汇率年份的汇率 (fx_fallback=True 标注);
+    同口径); 旧年份无汇率数据时回退首个有汇率年份的汇率, 保持口径一致;
     交易所指数是点数, 不换算。
     返回 {"macro": [...], "stock": [...], "exchange": [...], "market": [...],
           "currency": "...", "player": "...", "capital": "...", "palette": "...",
-          "unit": "...", "fx_fallback": bool}。
+          "unit": "..."}。
     结果同时落盘为 data/history.json (供程序直接读取)。"""
     data_dir = os.path.join(base_dir, "data")
     macro = []
@@ -802,7 +798,7 @@ def _collect_chart_data(base_dir):
     if not os.path.isdir(data_dir):
         return {"macro": macro, "stock": [], "exchange": exchange,
                 "market": market, "currency": currency, "player": player,
-                "capital": capital, "unit": currency, "fx_fallback": False,
+                "capital": capital, "unit": currency,
                 "palette": "east" if _is_east_asian(
                     player or os.path.basename(base_dir)) else "west"}
     for fn in sorted(os.listdir(data_dir)):
@@ -900,11 +896,8 @@ def _collect_chart_data(base_dir):
         rec["rows"].sort(key=lambda r: r["year"])
     # 个股价格按汇率换算 (游戏镑 → 主币, 与报纸正文 format_money 同口径):
     # 当年汇率优先; 旧年份无汇率数据 (旧版快照) 回退首个有汇率年份的汇率,
-    # 此时 fx_fallback=True 供页面标注「早年按最早汇率折算」。
+    # 保证图表与正文同一币种口径 (页面不再标注折算说明)。
     first_rate = next((rates[y] for y in sorted(rates)), None)
-    missing = any(not rates.get(r["year"])
-                  for rec in stock.values() for r in rec["rows"])
-    fx_fallback = bool(rates) and missing and first_rate is not None
     for rec in stock.values():
         for r in rec["rows"]:
             rate = rates.get(r["year"]) or first_rate
@@ -937,7 +930,7 @@ def _collect_chart_data(base_dir):
                                    r["name"]))
     return {"macro": macro, "stock": stocks_out, "exchange": exchange,
             "market": market, "currency": currency, "player": player,
-            "capital": capital, "unit": currency, "fx_fallback": fx_fallback,
+            "capital": capital, "unit": currency,
             "palette": "east" if _is_east_asian(
                 player or os.path.basename(base_dir)) else "west"}
 

@@ -1050,6 +1050,24 @@ def job_satisfaction_band(v):
         return "满意"
     return "非常满意"
 
+# 机构投资等级(0~5) → 自然语言档位 (提示词不传 1级/2级 这类裸数字;
+# 单一来源, journal_save.py 经 _journal 复用)
+INSTITUTION_LEVEL_ZH = {
+    0: "尚未设立",
+    1: "初具雏形",
+    2: "有限运转",
+    3: "全面铺开",
+    4: "高效有力",
+    5: "臻于完善",
+}
+
+
+def _institution_level_zh(level):
+    """机构投资等级 → 自然语言档位; 非法输入返回「未知」。"""
+    if not isinstance(level, (int, float)):
+        return "未知"
+    return INSTITUTION_LEVEL_ZH.get(int(level), f"第{int(level)}档")
+
 def load_history(data, cfg, years_back=9):
     """加载当前年份之前若干年的原始数据, 供模型做发展对比。
     默认前 9 年 + 当年 = 历年发展对照 10 行。
@@ -1171,6 +1189,8 @@ FACT_GUIDE = (
     "报道政界动态时以执政集团为核心，结合其力量消长说明朝局与施政倾向。"
     "数据中给出的姓名（统治者、大臣、受访人等）直接使用；"
     "未给出姓名的直接描写对象用身份/职业代称。"
+    "描写建筑、机构与城邑的体量风貌时，用符合时代语境的自然措辞呈现其气象"
+    "（如城邑繁盛、厂房林立、市井喧阗、机构初具规模、市镇街巷纵横）。"
 )
 
 
@@ -2199,7 +2219,7 @@ def _render_vital_stats(obj):
         if hl:
             hline = f"- 医疗制度：{law_zh(hl)}"
             if obj.get("health_investment") is not None:
-                hline += f"（卫生机构 {obj.get('health_investment')} 级）"
+                hline += f"（卫生机构{_institution_level_zh(obj.get('health_investment'))}）"
             if obj.get("sewerage"):
                 hline += "，已普及现代下水道"
             L.append(hline)
@@ -2207,7 +2227,7 @@ def _render_vital_stats(obj):
         if el:
             eline = f"- 教育制度：{law_zh(el)}"
             if obj.get("schools_investment") is not None:
-                eline += f"（教育机构 {obj.get('schools_investment')} 级）"
+                eline += f"（教育机构{_institution_level_zh(obj.get('schools_investment'))}）"
             L.append(eline)
     return L
 
@@ -2517,9 +2537,6 @@ def _ownership_lines(own):
         pct = h.get("pct")
         if isinstance(pct, (int, float)):
             seg.append(f"约{pct:.0f}%")
-        lv = h.get("levels")
-        if isinstance(lv, (int, float)) and lv:
-            seg.append(f"{int(round(lv))}级")
         extras = []
         wf = h.get("workforce") or []
         if wf:
