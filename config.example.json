@@ -63,5 +63,7 @@
   "fx_trade_beta": 0.15,
   "fx_yoy_clamp": 0.30,
   "fx_total_clamp": 0.60,
-  "fx_show_in_econ": true
+  "fx_show_in_econ": true,
+  "interview_consumption_qty_scale": 12.0,
+  "interview_food_qty_min": 0.5
 }

@@ -181,6 +181,13 @@ DEFAULT_CONFIG = {
     "fx_total_clamp": 0.60,
     # 经济要闻是否附「本年度 1 英镑兑 X 法郎」汇率行
     "fx_show_in_econ": True,
+    # 访谈板块 (民生访谈/先富观察/失业民生) 商品数量读数放大系数:
+    # 游戏货币为抽象价值量, 直接换算的月度数量过小 (如「每14个月1千克」),
+    # 该系数把数量读数放大到可读区间 (按墨西哥样本, 12 时食品中位数约每月1千克)。
+    "interview_consumption_qty_scale": 12.0,
+    # 访谈板块食品类 (基本食物/奢侈食物/刺激品/嗜好品) 每月数量下限 (千克/升),
+    # 防止「约每N个月1千克」式离谱小读数; 0 = 不设下限。
+    "interview_food_qty_min": 0.5,
     # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
     "parallel_generation_enabled": True,
     # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
@@ -1228,10 +1235,11 @@ FACT_GUIDE = (
     "度量衡一律使用公制单位（吨、千克、千米、米、升、度、平方米），数值以资料为准。"
 )
 
-# 商品体量口径 (v2, 与 tools/goods_measure.json 及 Needs wiki 需求体系同源):
-# 涉及商品数量/消费场景的板块注入, 防止模型把抽象游戏单位读成实物件数、
-# 或写出「几百贵族一周只消费0.5辆汽车」式离谱小读数。
-_GOODS_GUIDE_SECTIONS = {"econ", "family", "peer", "unemployed", "comment"}
+# 消费结构参考 (v3, 与 tools/goods_measure.json 及 Needs wiki 需求体系同源):
+# 只注入经济/社论等全国口径板块, 作为「不同生活水平家庭开销结构」的统计参考;
+# 访谈板块 (family/peer/unemployed) 的家庭级金额与数量已由程序折算为具体数字
+# (见 _consumption_breakdown_lines), 不再注入, 避免模型另行换算或读出游戏单位。
+_GOODS_GUIDE_SECTIONS = {"econ", "comment"}
 _GOODS_GUIDE_CACHE = None
 
 # 货币规则只注入有金额数据的板块 (广告/政界/社会板块无金额数据, 不注入,
@@ -1240,42 +1248,28 @@ _MONEY_SECTIONS = {"headline", "war", "diplo", "econ", "stock",
                    "family", "peer", "unemployed", "comment"}
 
 
-def _goods_scale_guide(with_needs=True):
-    """商品体量口径提示块: 单位释义(SI 公制) + 昂贵品时间聚合规则 + 需求比例参考。
-    with_needs=False (访谈板块): 家庭级金额/数量已由程序折算成具体数字注入
-    (见 _consumption_breakdown_lines), 不再给比例, 避免模型另行换算;
-    with_needs=True (经济/社论等全国口径板块): 需求比例作为可直接引用的数据给出。
-    需求比例直接取 tools/goods_measure.json 的 _need_guide (游戏 buy_packages 口径)。"""
+def _goods_scale_guide():
+    """消费结构参考块: 不同生活水平家庭的开销占比 (按统计资料, 可直接引用)。
+    访谈板块不再注入: 其家庭级金额/数量已由程序折算成具体数字
+    (见 _consumption_breakdown_lines), 此处只服务全国口径板块。"""
     global _GOODS_GUIDE_CACHE
     if _GOODS_GUIDE_CACHE is not None:
-        v = _GOODS_GUIDE_CACHE.get(with_needs)
-        if v is not None:
-            return v
-    lines = ["商品与需求体量口径：",
-             "- 游戏商品 1 单位 ≈ 基准价 1 英镑的抽象价值量，报端商品数量一律按资料措辞照写"
-             "（资料已折算为公制读数，如谷物按千克、织物按米、煤炭按吨）。",
-             "- 汽车、电话机、无线电、飞机、金银、艺术品等昂贵品若为周度小数值（每周不足1），"
-             "资料已按年/月口径叙述（如「约每年26辆」）。"]
-    if with_needs:
-        try:
-            with open(os.path.join(SCRIPT_DIR, "tools", "goods_measure.json"),
-                      encoding="utf-8") as fp:
-                d = json.load(fp)
-            ng = d.get("_need_guide") or {}
-            note = ng.get("note")
-            if note:
-                lines.append("- " + note)
-                for k, v in ng.items():
-                    if k == "note":
-                        continue
-                    share = "、".join(f"{kk}约{int(vv)}%" for kk, vv in v.items() if vv)
-                    lines.append(f"  · {k}：{share}。")
-        except Exception:
-            pass
-    if _GOODS_GUIDE_CACHE is None:
-        _GOODS_GUIDE_CACHE = {}
-    _GOODS_GUIDE_CACHE[with_needs] = "\n".join(lines)
-    return _GOODS_GUIDE_CACHE[with_needs]
+        return _GOODS_GUIDE_CACHE
+    lines = ["不同生活水平家庭的开销结构（占比%，按统计资料，可直接引用）："]
+    try:
+        with open(os.path.join(SCRIPT_DIR, "tools", "goods_measure.json"),
+                  encoding="utf-8") as fp:
+            d = json.load(fp)
+        ng = d.get("_need_guide") or {}
+        for k, v in ng.items():
+            if k == "note":
+                continue
+            share = "、".join(f"{kk}约{int(vv)}%" for kk, vv in v.items() if vv)
+            lines.append(f"  · {k}：{share}。")
+    except Exception:
+        pass
+    _GOODS_GUIDE_CACHE = "\n".join(lines)
+    return _GOODS_GUIDE_CACHE
 
 
 _TERRITORY_CAP = 8
@@ -2558,7 +2552,18 @@ def _family_budget_lines(fi, unit, rate=None):
                  "（" + "、".join(exp_items) + "）")
     else:
         L.append(f"- 家庭月支出：约{_m(total_exp)}")
-    L.append(f"- 月度结余：约{_m(total_inc - total_exp)}")
+    bal = total_inc - total_exp
+    L.append(f"- 月度结余：约{_m(bal)}")
+    if bal < 0:
+        # 游戏内高生活水平人群的消费由积蓄支撑 (财富机制): 收支缺口
+        # 实为动用历年积蓄, 账本补一行说明, 避免「富户月月亏空」式误读。
+        wealth = fi.get("wealth")
+        if isinstance(wealth, (int, float)) and wealth >= 15:
+            L.append(f"- 收支缺口约{_m(-bal)}，靠历年积蓄填补（家底尚属殷实）")
+        elif isinstance(wealth, (int, float)):
+            L.append(f"- 收支缺口约{_m(-bal)}，靠历年积蓄填补（家底有限）")
+        else:
+            L.append(f"- 收支缺口约{_m(-bal)}，靠历年积蓄填补")
     if pop > 0:
         L.append(f"- 家庭人均月收入：约{_m(total_inc / pop)}"
                  f"（全家{pop}口均摊）；人均月支出约{_m(total_exp / pop)}")
@@ -2622,6 +2627,12 @@ def _goods_unit_per(key):
             int(m.get("dec", 0)), m.get("base"))
 
 
+def _goods_need(key):
+    """商品 key → 需求类 (如「基本食物/奢侈食物」); 未知返回 None。"""
+    m = _goods_measure_local().get(key)
+    return (m or {}).get("need")
+
+
 def _fmt_month_qty(name, q, unit, dec):
     """月度数量自然语言: ≥1 取整/按 dec 保小数; 0.1~1 保 1 位;
     <0.1 聚合为「约每N个月1/约每N年1单位」。"""
@@ -2657,7 +2668,7 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
     if wsum <= 0:
         return []
     out = []
-    # 金额行: 恩格尔口径的食物金额 + 各主要商品金额 (程序折算, 带数字)
+    # 金额行: 恩格尔口径的食物金额 + 各主要商品金额 (带数字, 自然表述)
     food_m = goods_m * (engel / 100.0) if isinstance(engel, (int, float)) else None
     money_bits = []
     for _k, nm, w, _d in items:
@@ -2666,16 +2677,31 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         mi = goods_m * (w or 0) / wsum
         money_bits.append(f"{nm}约{format_money(mi, unit, rate)}")
     if money_bits:
-        head = (f"- 消费结构（程序按消费画像折算）：该家庭每月商品消费约"
+        head = (f"- 消费结构：该家庭每月商品消费约"
                 f"{format_money(goods_m, unit, rate)}")
         if food_m is not None:
             head += (f"，其中基本食物约{format_money(food_m, unit, rate)}"
                      f"（恩格尔系数约{engel}%）")
         head += "；主要商品金额：" + "、".join(money_bits) + "。"
         out.append(head)
-    # 数量行: 金额 ÷ 市价 → 每月游戏单位 × per 乘数 → 公制读数。
+    # 数量行: 金额 ÷ 市价 → 每月游戏单位 × per 乘数 → 公制读数;
+    # 数量可经 config 系数放大 (interview_consumption_qty_scale), 并给食品类
+    # 设每月下限 (interview_food_qty_min), 避免「约每十几月1千克」式离谱小读数。
     # 只取权重最高的前 3 种商品, 避免稀疏小额商品 (如服务) 出现「约每数十年1单位」
     # 式不可读读数; 其余商品的金额已在金额行给出。
+    cfg = {}
+    try:
+        cfg = load_config()
+    except Exception:
+        pass
+    try:
+        qty_scale = float(cfg.get("interview_consumption_qty_scale", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        qty_scale = 1.0
+    try:
+        food_min = float(cfg.get("interview_food_qty_min", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        food_min = 0.0
     ordered = sorted(items, key=lambda it: -(it[2] or 0))
     qbits = []
     for key, nm, w, dv in ordered[:3]:
@@ -2690,10 +2716,14 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
             price = base * (1 + dv / 100.0)
         if not isinstance(price, (int, float)) or price <= 0:
             continue
-        qbits.append(_fmt_month_qty(nm, mi / price * per, unit_, dec))
+        q = mi / price * per * qty_scale
+        if food_min > 0 and unit_ in ("千克", "升"):
+            need = _goods_need(key)
+            if need and any(k in need for k in ("食物", "刺激", "嗜好")):
+                q = max(q, food_min)
+        qbits.append(_fmt_month_qty(nm, q, unit_, dec))
     if qbits:
-        out.append("- 主要消费商品（程序按消费画像与市价折算的估算月消费）："
-                   + "、".join(qbits) + "。")
+        out.append("- 主要消费商品月消费（估算）：" + "、".join(qbits) + "。")
     return out
 
 
@@ -3514,6 +3544,15 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     if key == "peer":
         family_title = _section_title(style, "family", "民生访谈")
         req = req.replace("民生访谈", family_title)
+        # 富户降格: 追踪对象生活水平未达「富户」档 (SoL<15) 时, 板块称谓
+        # 降为「殷实之家」, 避免「富户」头衔与温饱档数据打架 (如 SoL 9 的富户)。
+        _peer = data.get("top_sol_peer") or {}
+        _psol = _peer.get("sol")
+        if isinstance(_psol, (int, float)) and _psol < 15:
+            title = (title.replace("先富观察", "邻里观察")
+                     .replace("富户", "殷实之家")
+                     .replace("富室", "殷实之家"))
+            req = req.replace("（富户）", "（殷实之家）")
     # 采访板块: 受访人群不参与任何政治运动时, 只要求体现政治倾向,
     # 不要求「参与比例最高的两个政治运动」, 避免模型无数据可写时编造「数据缺失」。
     if key in ("family", "peer", "unemployed"):
@@ -3532,9 +3571,9 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
             req = f"{req}\n{ads_guide}"
     parts = [st["voice"], FACT_GUIDE]
     if key in _GOODS_GUIDE_SECTIONS:
-        # 访谈板块: 家庭级金额/数量已程序折算, 不再给需求比例 (防模型另行换算);
-        # 经济/社论等全国口径板块保留可直接引用的需求比例。
-        _gg = _goods_scale_guide(with_needs=(key in ("econ", "comment")))
+        # 仅经济/社论等全国口径板块注入消费结构参考; 访谈板块的家庭级金额/数量
+        # 已由程序折算成具体数字注入事实层, 不再给比例 (防模型另行换算)。
+        _gg = _goods_scale_guide()
         if _gg:
             parts.append(_gg)
     num_guide = st.get("number_guide")

@@ -1667,100 +1667,110 @@ def _lead_digest(text, limit=260, tail=180):
 
 
 # ---------------------------------------------------------------------------
-# B1: 罪案事实卡 (开篇正文 → 3~5 行结构化卡片, 供后续板块对齐)
+# B1: 罪案事实卡 (纯程序生成: 从案件资料确定性拼装, 供后续板块对齐)
+# 案件类型/案发地/案发现场/三角色/结局/判决全部直接取自资料,
+# 不再经 LLM 抽取, 保证后续板块与资料数据一致。
 # ---------------------------------------------------------------------------
 
-def build_crime_card_messages(article, data, lead_text):
-    """开篇《案件卷宗》正文 + 资料事实 → LLM 抽取「案件事实卡」。"""
-    case_facts = render_facts(article["key"], "case", data)
-    justice_facts = render_facts(article["key"], "justice", data)
-    sys_msg = (
-        "你是罪案特稿的事实核验员。唯一任务: 把开篇《案件卷宗》正文与资料事实"
-        "压缩成一张3–5行的「案件事实卡」，供后续板块保持全篇一致。铁律：\n"
-        "- 只使用正文与资料中已出现的事实。\n"
-        "- 案件类型、案发地、案发现场、三角色身份与判决以资料为准。\n"
-        "- 若正文与资料冲突，以资料为准，并在卡片末行注明「正文偏差」。\n"
-        "- 非暴力案（盗窃/勒索/欺诈/走私/贪腐等）按资料的非暴力性质处理，"
-        "绑架/政治绑架案受害者获救或放归；卡片以资料的结局为准，正文与资料冲突时"
-        "以资料为准并在末行注明「正文偏差」（绑架案可写胁迫、囚禁、赎金与解救）。\n"
-        "输出格式（严格按行，最多5行，无标题或多余文字）：\n"
-        "1. 案件类型：…；案发地：…；案发现场：…\n"
-        "2. 三角色：受害者=姓名/身份；犯罪嫌疑人=姓名/身份；证人=姓名/身份"
-        "（资料若给出【真凶】则为四角色，补写：真凶=姓名/身份）\n"
-        "3. 案发经过：…（2–3句，按正文概括，正文缺失则按资料类型简述）\n"
-        "4. 结局：…（受害者是否存活；是否破案；犯罪嫌疑人是否归案；"
-        "蒙冤开释案写真凶在逃；错判昭雪案写真凶落网、原判撤销）\n"
-        "5. 判决：…（资料给出的判决原文；未给出写「未定」）\n"
-        + CRIME_TERM_RULE
-    )
-    user_msg = (
-        f"【资料事实-案件概要】\n{case_facts}\n\n"
-        f"【资料事实-法网判决】\n{justice_facts}\n\n"
-        f"【开篇正文】\n{lead_text}\n\n请输出案件事实卡。"
-    )
-    return [{"role": "system", "content": sys_msg},
-            {"role": "user", "content": user_msg}]
+# 案发地后缀元注释: 「哈尔帕（受害者工作建筑所在的村落）」→「哈尔帕」
+_CRIME_PLACE_META_RE = re.compile(r"（[^）]*工作建筑[^）]*）")
 
 
-def _crime_card_fallback(data, key="crime"):
-    """事实卡抽取失败时的确定性兜底: 直接从资料拼 3–5 行卡片。"""
+def _crime_card_roles(case_facts):
+    """从 case 段落「全篇X角色身份固定」块解析角色行 (只取块内首现, 不碰
+    物证/补充资料段, 也不碰大案的【受害者甲/乙/丙】)。返回 [(键, 姓名)]。"""
+    in_block = False
+    roles = []
+    seen = set()
+    for ln in (case_facts or "").split("\n"):
+        s = ln.strip()
+        if "身份固定" in s and "全篇" in s:
+            in_block = True
+            continue
+        if in_block:
+            if s.startswith("- 【"):
+                m = re.match(r"- 【(受害者|犯罪嫌疑人|证人|真凶)】([^，,]+)", s)
+                if m:
+                    k, nm = m.group(1), m.group(2).strip()
+                    if k not in seen and nm:
+                        roles.append((k, nm))
+                        seen.add(k)
+                    continue
+            # 角色块结束: 非角色行 (如「动机：」「大案多名受害者：」等)
+            if roles:
+                break
+    return roles
+
+
+def _crime_card_motive(case_facts):
+    """从 case 段落的「动机：」行提炼案发经过简述 (去「动机（X）：」前缀)。"""
+    bits = []
+    for ln in (case_facts or "").split("\n"):
+        s = ln.strip()
+        if not s.startswith("动机："):
+            continue
+        body = s[len("动机："):].strip()
+        for part in body.split("；"):
+            p = re.sub(r"^动机（[^）]+）：", "", part.strip())
+            p = re.sub(r"^动机[：:]", "", p).strip()
+            if p and p not in bits:
+                bits.append(p)
+    return "；".join(bits)
+
+
+def _crime_card_outcome_text(oc):
+    """outcome → 结局行文本 (含蒙冤/错判与真凶下落)。"""
+    tier = oc.get("solve_tier")
+    tier_zh = {"convicted": "破案定罪", "acquitted": "无罪开释",
+               "unsolved": "悬案收束"}.get(tier, "结果未知")
+    misc = oc.get("miscarriage")
+    culprit = oc.get("culprit_name")
+    if misc == "framed":
+        tier_zh = "无罪开释（蒙冤被诬）"
+        if culprit:
+            tier_zh += f"，真凶{culprit}仍在逃"
+    elif misc == "wrongful":
+        tier_zh = "错判昭雪"
+        if culprit:
+            tier_zh += f"，真凶{culprit}落网、原判撤销"
+    return f"{tier_zh}；受害者是否死亡以资料为准。"
+
+
+def _build_crime_card(data, key="crime"):
+    """程序生成案件事实卡 (最多5行): 从 crime.sections['case'] 与 outcome
+    确定性拼装, 不依赖 LLM, 与资料数据保持一致。"""
     m = (data.get("magazine") or {})
     crime = m.get(key) or {}
     secs = crime.get("sections") or {}
     case_facts = secs.get("case") or ""
+    oc = crime.get("outcome") or {}
     lines = []
+    # 1. 案件类型 / 案发地 / 案发现场
     mt = re.search(r"一桩(.+?)案", case_facts)
     place = re.search(r"案发地：([^；;。]+)", case_facts)
     scene = re.search(r"案发现场为([^。；;]+)", case_facts)
     head = "案件类型：" + (mt.group(1) + "案" if mt else "待定")
     if place:
-        head += "；案发地：" + place.group(1).strip()
+        head += "；案发地：" + _CRIME_PLACE_META_RE.sub("", place.group(1).strip())
     if scene:
         head += "；案发现场：" + scene.group(1).strip()
     lines.append(head)
-    roles = re.findall(r"【(受害者|犯罪嫌疑人|证人)】([^，,\n]+)", case_facts)
+    # 2. 三角色 (含【真凶】时四角色)
+    roles = _crime_card_roles(case_facts)
     if roles:
-        lines.append("三角色：" + "；".join(f"{k}={v.strip()}" for k, v in roles))
-    lines.append("案发经过：以资料给出的案件类型与案发现场为准，详见开篇正文。")
-    oc = crime.get("outcome") or {}
-    tier = oc.get("solve_tier")
-    tier_zh = {"convicted": "破案定罪", "acquitted": "无罪开释",
-               "unsolved": "悬案收束"}.get(tier, "结果未知")
-    misc = oc.get("miscarriage")
-    if misc == "framed":
-        tier_zh = "无罪开释（蒙冤被诬）"
-    elif misc == "wrongful":
-        tier_zh = "错判昭雪"
-    lines.append(f"结局：{tier_zh}；受害者是否死亡以资料为准。")
+        lines.append("三角色：" + "；".join(f"{k}={v}" for k, v in roles))
+    # 3. 案发经过: 动机简述
+    motive = _crime_card_motive(case_facts)
+    lines.append("案发经过：" + (motive if motive
+                                 else "以资料给出的案件类型与案发现场为准。"))
+    # 4. 结局
+    lines.append("结局：" + _crime_card_outcome_text(oc))
+    # 5. 判决
     sent = oc.get("sentence") or "未定"
-    if misc == "wrongful":
+    if oc.get("miscarriage") == "wrongful":
         sent += "（后查真凶另有其人，原判撤销、冤情昭雪）"
     lines.append("判决：" + sent)
     return "\n".join(lines[:5])
-
-
-def _extract_crime_card(text, data=None, key="crime"):
-    """把模型输出规整为最多5行的案件事实卡; 空输出时退回资料摘要兜底。"""
-    lines = []
-    for ln in (text or "").split("\n"):
-        s = re.sub(r"^[#>*`\s]+", "", ln).strip()
-        s = re.sub(r"^\d+[.、．)\s]+", "", s).strip()
-        if s and s not in lines:
-            lines.append(s)
-        if len(lines) >= 5:
-            break
-    if not lines:
-        return _crime_card_fallback(data, key=key) if data else ""
-    return "\n".join(lines)
-
-
-def _build_crime_card(article, data, lead_text, cfg):
-    """罪案首板块生成后 → LLM 抽取案件事实卡; 失败退回资料摘要。"""
-    msg = build_crime_card_messages(article, data, lead_text)
-    card_cfg = dict(cfg)
-    card_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 1200)
-    text = journal.call_deepseek(msg, card_cfg).strip()
-    return _extract_crime_card(text, data, key=article["key"])
 
 
 def build_intro_messages(data):
@@ -1892,7 +1902,7 @@ def build_section_messages(article, section, data, intro, lead_text,
         user_msg = (
             f"本期杂志导言:\n{intro}\n\n"
             f"{lead_head}{digest}\n\n"
-            f"【案件事实卡】（由开篇正文与资料核验生成，后续板块必须以此为准，"
+            f"【案件事实卡】（案件事实档案，后续板块必须以此为准，"
             f"与板块数据冲突时以案件事实卡与资料数据为准）：\n{crime_card}\n\n"
             f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据"
             f"(国名请用【国名】={country}):\n"
@@ -2150,7 +2160,7 @@ def generate_magazine(data, cfg, force=True):
             leads[k] = body
             titles[k] = t
 
-    # B1: 罪案开篇生成后抽取「案件事实卡」, 供后续板块对齐
+    # B1: 罪案事实卡 (纯程序生成, 供后续板块对齐)
     # (普通罪案与大案均生成; 小案靠首板块摘要对齐, 不生成事实卡)
     crime_cards = {}
     crime_article = next((a for a in articles
@@ -2158,13 +2168,12 @@ def generate_magazine(data, cfg, force=True):
     if crime_article:
         ck = crime_article["key"]
         try:
-            card = _build_crime_card(crime_article, data, leads[ck], sec_cfg)
+            card = _build_crime_card(data, key=ck)
             if card:
                 crime_cards[ck] = card
                 journal.log(f"[{year}年] 罪案事实卡已生成 ({len(card)} 字)")
         except Exception as e:
-            journal.log(f"[{year}年] 罪案事实卡生成失败, 退回资料摘要: {e}")
-            crime_cards[ck] = _crime_card_fallback(data, key=ck)
+            journal.log(f"[{year}年] 罪案事实卡生成失败: {e}")
 
     def _gen_section(article, section):
         try:
