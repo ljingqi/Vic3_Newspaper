@@ -314,6 +314,15 @@ code{background:#efe7d3;border-radius:3px;padding:1px 5px;font-family:Consolas,m
 .stock-btn .chg.new{color:#9a8a5f}
 .stock-pane .stock-chart{margin:0}
 
+/* 社论宏观经济图: 指标按钮 + 单图窗格 (v2, 字小看不清 → 仿股票交互) */
+.macro-head{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.macro-head .chart-title{margin:0}
+.macro-last{font-weight:700;margin-left:5px;color:var(--ink-soft)}
+.macro-pane .chart-title{margin:0 0 6px}
+.macro-pane svg text.val{font-size:13px}
+.macro-pane svg text.axis{font-size:13px}
+.macro-pane svg .grid{stroke:#d8cba7;stroke-width:1}
+
 /* 报纸版式 */
 .view-newspaper .masthead{font-family:"STKaiti","KaiTi","SimSun",serif;text-align:center;font-size:42px;letter-spacing:8px;font-weight:700;border-top:3px double #3a2c16;border-bottom:3px double #3a2c16;padding:16px 0 12px;margin:0 0 12px}
 .view-newspaper .masthead-meta{text-align:center;font-size:15px;color:var(--ink-soft);letter-spacing:1px;margin-bottom:16px}
@@ -371,43 +380,55 @@ function esc(s) {
     c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-function lineChartSvg(series) {
-  const W = 340, H = 170, ml = 46, mr = 12, mt = 16, mb = 26;
-  const pw = W - ml - mr, ph = H - mt - mb;
-  let html = "";
-  series.forEach(s => {
-    const pts = s.points;
-    if (!pts.length) return;
-    const ys = pts.map(p => p.y);
-    let lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
-    if (hi === lo) { hi += 1; lo -= 1; }
-    const padY = (hi - lo) * 0.12;
-    lo -= padY; hi += padY;
-    const X = i => pts.length === 1 ? ml + pw / 2 : ml + pw * i / (pts.length - 1);
-    const Y = v => mt + ph - (v - lo) / (hi - lo) * ph;
-    let grid = "";
-    for (let t = 0; t < 4; t++) {
-      const v = lo + (hi - lo) * t / 3;
-      const y = Y(v);
-      grid += `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}" stroke="#d8cba7" stroke-width="1"/>`;
-      grid += `<text class="axis" x="${ml - 5}" y="${y + 4}" text-anchor="end">${s.fmt(v)}</text>`;
-    }
-    let line = "", dots = "", vals = "", years = "";
-    pts.forEach((p, i) => {
-      const x = X(i), y = Y(p.y);
-      line += (i ? "L" : "M") + x + "," + y;
-      dots += `<circle cx="${x}" cy="${y}" r="2.8" fill="${s.color}"/>`;
-      vals += `<text class="val" x="${x}" y="${y - 7}" text-anchor="middle">${s.fmt(p.raw)}</text>`;
-      years += `<text class="axis" x="${x}" y="${H - 8}" text-anchor="middle">${p.x}</text>`;
-    });
-    const poly = `<path d="${line}" fill="none" stroke="${s.color}" stroke-width="1.8"/>`;
-    html += `<div class="mini-chart">
-      <div class="chart-title">${esc(s.label)}${s.unit ? "（" + esc(s.unit) + "）" : ""}</div>
-      <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">${grid}${poly}${dots}${vals}${years}</svg>
-    </div>`;
-  });
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">${html}</div>`;
+// 大数分级缩写: ≥1亿 → X.X亿; ≥1万 → X.X万; 其余千分位取整
+function shortNum(v) {
+  const a = Math.abs(v);
+  if (a >= 1e8) return (v / 1e8).toFixed(1) + "亿";
+  if (a >= 1e4) return (v / 1e4).toFixed(1) + "万";
+  return Math.round(v).toLocaleString("en-US");
 }
+
+function macroLineSvg(s) {
+  // 单指标大图 (v2): 约 460~920 宽 × 300 高, 字体放大, 数值/年份标签抽稀
+  const pts = s.points;
+  const n = pts.length;
+  const W = Math.max(460, Math.min(920, n * 64)), H = 300,
+        ml = 70, mr = 20, mt = 30, mb = 42;
+  const pw = W - ml - mr, ph = H - mt - mb;
+  const ys = pts.map(p => p.y);
+  let lo = Math.min.apply(null, ys), hi = Math.max.apply(null, ys);
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const padY = (hi - lo) * 0.12;
+  lo -= padY; hi += padY;
+  const X = i => pts.length === 1 ? ml + pw / 2 : ml + pw * i / (pts.length - 1);
+  const Y = v => mt + ph - (v - lo) / (hi - lo) * ph;
+  const step = niceStep(hi - lo, 4);
+  let grid = "";
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
+    const y = Y(v);
+    grid += `<line class="grid" x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}"/>`;
+    grid += `<text class="axis" x="${ml - 8}" y="${y + 5}" text-anchor="end">${s.fmt(v)}</text>`;
+  }
+  let line = "", dots = "", vals = "", years = "";
+  const stepX = pts.length > 1 ? pw / (pts.length - 1) : pw;
+  const valEvery = Math.max(1, Math.ceil(64 / stepX));
+  const yearEvery = Math.max(1, Math.ceil(48 / stepX));
+  pts.forEach((p, i) => {
+    const x = X(i), y = Y(p.y);
+    const last = i === pts.length - 1;
+    line += (i ? "L" : "M") + x + "," + y;
+    dots += `<circle cx="${x}" cy="${y}" r="4" fill="${s.color}"/>`;
+    if (i % valEvery === 0 || last)
+      vals += `<text class="val" x="${x}" y="${y - 10}" text-anchor="middle">${s.fmt(p.raw)}</text>`;
+    if (i % yearEvery === 0 || last)
+      years += `<text class="axis" x="${x}" y="${H - 12}" text-anchor="middle">${p.x}</text>`;
+  });
+  const poly = `<path d="${line}" fill="none" stroke="${s.color}" stroke-width="2.4"/>`;
+  return `<div class="macro-pane"><div class="chart-title">${esc(s.label)}${s.unit ? "（" + esc(s.unit) + "）" : ""}</div>`
+       + `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img">${grid}${poly}${dots}${vals}${years}</svg></div>`;
+}
+
+let curMacro = null;   // 当前选中的指标 (跨年份保持)
 
 function renderMacroChart(div, curYear) {
   const macro = (CHARTS.macro || [])
@@ -417,7 +438,7 @@ function renderMacroChart(div, curYear) {
     return;
   }
   const currency = CHARTS.currency || "";
-  const num = v => Math.round(v).toLocaleString("en-US");
+  const num = shortNum;
   const series = [
     { label: "GDP", unit: currency, color: "#7a3b2e", fmt: num,
       points: macro.map(r => ({ x: r.year, y: r.gdp, raw: r.gdp })) },
@@ -430,7 +451,35 @@ function renderMacroChart(div, curYear) {
       fmt: v => Number(v).toFixed(2) + "%",
       points: macro.map(r => ({ x: r.year, y: r.literacy, raw: r.literacy })) },
   ].filter(s => s.points.every(p => p.y != null));
-  div.innerHTML = lineChartSvg(series);
+  if (!series.length) {
+    div.innerHTML = '<p class="chart-hint">本馆历年宏观数据不足。</p>';
+    return;
+  }
+  if (curMacro == null || !series.some(s => s.label === curMacro)) {
+    curMacro = series[0].label;   // 默认 GDP
+  }
+  let html = '<div class="macro-head"><span class="chart-title">宏观经济历年走势</span></div>';
+  html += '<div class="stock-btns">';
+  series.forEach(s => {
+    const last = s.points[s.points.length - 1];
+    const badge = last ? `<span class="macro-last">${s.fmt(last.raw)}</span>` : "";
+    html += `<button type="button" class="stock-btn${s.label === curMacro ? " active" : ""}"`
+      + ` data-macro="${esc(s.label)}">${esc(s.label)}${badge}</button>`;
+  });
+  html += '</div><div class="macro-pane-wrap"></div>';
+  div.innerHTML = html;
+  const paneWrap = div.querySelector(".macro-pane-wrap");
+  const draw = () => {
+    const s = series.find(x => x.label === curMacro);
+    paneWrap.innerHTML = s ? macroLineSvg(s) : "";
+  };
+  draw();
+  div.querySelectorAll(".stock-btn[data-macro]").forEach(b => b.addEventListener("click", () => {
+    curMacro = b.dataset.macro;
+    div.querySelectorAll(".stock-btn[data-macro]").forEach(x =>
+      x.classList.toggle("active", x === b));
+    draw();
+  }));
 }
 
 function niceStep(range, target) {
@@ -472,15 +521,18 @@ function candleChartSvg(rows, palette) {
     grid += `<line class="grid" x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}"/>`;
     labels += `<text class="axis" x="${ml - 8}" y="${y + 4}" text-anchor="end">${fmt(v)}</text>`;
   }
-  years.forEach(y => {
+  const band = pw / years.length;
+  const cw = Math.max(4, Math.min(20, band * 0.55));
+  // 年份标签抽稀: 每点需约 36px (首年/末年必标); 竖网格线仍逐年保留
+  const yearEvery = Math.max(1, Math.ceil(36 / band));
+  years.forEach((y, i) => {
     const x = X(y);
     grid += `<line class="grid-v" x1="${x}" y1="${mt}" x2="${x}" y2="${H - mb}"/>`;
-    labels += `<text class="axis" x="${x}" y="${H - 10}" text-anchor="middle">${y}</text>`;
+    if (i % yearEvery === 0 || i === years.length - 1)
+      labels += `<text class="axis" x="${x}" y="${H - 10}" text-anchor="middle">${y}</text>`;
   });
   grid += `<line class="axis-line" x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}"/>`;
   grid += `<line class="axis-line" x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}"/>`;
-  const band = pw / years.length;
-  const cw = Math.max(4, Math.min(20, band * 0.55));
   let candles = "";
   rows.forEach(r => {
     const x = X(r.year);
@@ -495,7 +547,6 @@ function candleChartSvg(rows, palette) {
   });
   return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" class="candle-svg">${grid}${labels}${candles}</svg>`;
 }
-
 function attachCandleTip(svg, rows) {
   const wrap = svg.closest(".stock-chart");
   if (!wrap) return;

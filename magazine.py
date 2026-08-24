@@ -203,8 +203,7 @@ POOL = {
             {"key": "lead", "title": "铁轨上的州", "req": (
                 "报道铁路及其所在州：生产方法、所有权、投入产出一律以数据为准；"
                 "以城市为舞台立起全篇的旅途与人物，车站名与里程以资料为准。"
-                "可自然化用州情速写中的路网档位（如驿路初通/商路纵横，铁路档位如"
-                "铁轨初通/蒸汽干线/电气化干线）描写旅途与沿线民生。"
+                "按州情速写给出的路网/铁路档位措辞描写旅途与沿线民生。"
             )},
             {"key": "rural", "title": "乡村的货厢", "req": (
                 "随铁路走访两座乡村（农场/矿场/林场/渔港）的建筑：生产方法、"
@@ -272,7 +271,7 @@ POOL = {
             {"key": "lead", "title": "国家的触角", "req": (
                 "报道教育/卫生/执法等机构的投入档位（自然语言）与相关法律，写国家力量如何自上而下延伸"
                 "到州县；机构与法律以数据为准。"
-                "可自然化用州情速写中的行政覆盖档位（如州县自治/勉强敷用/令行禁止）描写国家触角所及。"
+                "按州情速写给出的行政覆盖档位措辞描写国家触角所及。"
             )},
             {"key": "classroom", "title": "课堂与诊室", "req": (
                 "以样本州的识字率、政府雇员与基层公职/教员，写学校与诊所的具体面貌，"
@@ -676,6 +675,7 @@ WORLD_FRAME_RULE = (
     "「平行世界规则」: 本刊报道的世界完全由本刊资料构成, 与任何真实历史无关。"
     "所有国家、战争、边界、统治者、人物、日期、数字一律以本提示词给出的数据为准; "
     "数据未提供的即视为不存在或未知。行文含蓄, 以给定资料为限。"
+    "度量衡一律使用公制单位（吨、千克、千米、米、升、度、平方米）。"
 )
 
 _CRIME_KEYS = ("crime", "crime_big", "crime_small_a", "crime_small_b")
@@ -1061,7 +1061,7 @@ def _facts_soldier(m, data, peacetime=False):
     else:
         lines.append("（无足量平民样本，请据驻地数据含蓄写作。）")
     _fl = _mag_flavor_block(m, [s.get("state") for s in soldiers[:3]]
-                            + [c.get("state") for c in civilians[:2]])
+                            + [c.get("state") for c in civilians[:2]], data)
     if _fl:
         lines.append("【州情速写】")
         lines.extend(_fl)
@@ -1119,7 +1119,7 @@ def _facts_homefront(m, data):
                             soldier=True)
     if blk:
         lines.append(blk)
-    _fl = _mag_flavor_block(m, [p.get("state") for p in fam[:3]])
+    _fl = _mag_flavor_block(m, [p.get("state") for p in fam[:3]], data)
     if _fl:
         lines.append("【州情速写】")
         lines.extend(_fl)
@@ -1178,7 +1178,7 @@ def _facts_aftermath(m, data):
                             soldier=True)
     if blk:
         lines.append(blk)
-    _fl = _mag_flavor_block(m, [s.get("id") for s in ws[:4]])
+    _fl = _mag_flavor_block(m, [s.get("id") for s in ws[:4]], data)
     if _fl:
         lines.append("【州情速写】")
         lines.extend(_fl)
@@ -1280,7 +1280,7 @@ def _facts_household(m, data):
                             fixed_last=surname)
     if blk:
         lines.append(blk)
-    _fl = _mag_flavor_block(m, [p.get("state") for p in elites[:3]])
+    _fl = _mag_flavor_block(m, [p.get("state") for p in elites[:3]], data)
     if _fl:
         lines.append("【州情速写】")
         lines.extend(_fl)
@@ -1357,7 +1357,7 @@ def _facts_migrants(m, data):
     blk = _mag_person_names(data, "migration_change", [("移民代表", ck)])
     if blk:
         lines.append(blk)
-    _fl = _mag_flavor_block(m, [r.get("target_state") for r in migs[:3]])
+    _fl = _mag_flavor_block(m, [r.get("target_state") for r in migs[:3]], data)
     if _fl:
         lines.append("【州情速写】")
         lines.extend(_fl)
@@ -1385,7 +1385,7 @@ def _facts_transformed(m, data):
     blk = _mag_person_names(data, "migration_change", [("职业转变者代表", ck)])
     if blk:
         lines.append(blk)
-    _fl = _mag_flavor_block(m, [p.get("state") for p in pros[:3]])
+    _fl = _mag_flavor_block(m, [p.get("state") for p in pros[:3]], data)
     if _fl:
         lines.append("【州情速写】")
         lines.extend(_fl)
@@ -1440,7 +1440,7 @@ def _facts_assimilation(m, data):
     blk = _mag_person_names(data, "migration_change", [("改信者代表", ck)])
     if blk:
         lines.append(blk)
-    _fl = _mag_flavor_block(m, [c.get("state") for c in convs[:3]])
+    _fl = _mag_flavor_block(m, [c.get("state") for c in convs[:3]], data)
     if _fl:
         lines.append("【州情速写】")
         lines.extend(_fl)
@@ -1465,15 +1465,16 @@ def _facts_newhome(m, data):
     blk = _mag_person_names(data, "migration_change", [("移民代表", ck)])
     if blk:
         lines.append(blk)
-    _fl = _mag_flavor_block(m, [r.get("target_state") for r in migs[:3]])
+    _fl = _mag_flavor_block(m, [r.get("target_state") for r in migs[:3]], data)
     if _fl:
         lines.append("【州情速写】")
         lines.extend(_fl)
     return "\n".join(lines)
 
 
-def _mag_flavor_block(m, sids):
-    """按州 id 列表取州情速写行 (去重, 只取首个有数据的州)。"""
+def _mag_flavor_block(m, sids, data=None):
+    """按州 id 列表取州情速写行 (去重, 只取首个有数据的州)。
+    data 提供时按文风档位现代化 (低档保留文言, 高档换现代白话)。"""
     out = []
     seen = set()
     for sid in sids or []:
@@ -1486,6 +1487,8 @@ def _mag_flavor_block(m, sids):
                 out.append(ln)
         if out:
             break
+    if out and data is not None:
+        out = journal._state_flavor_lines_for_tier(out, data)
     return out
 
 
@@ -1532,6 +1535,8 @@ def render_facts(article_key, section_key, data):
                 or "（本板块数据不足，请据已知事实含蓄写作或略去。）")
         fl = ((art.get("state_flavor") or {}).get(section_key)) or []
         if fl:
+            # 州情速写按文风档位现代化 (低档保留文言, 高档换现代白话), 与报纸同口径
+            fl = journal._state_flavor_lines_for_tier(fl, data)
             base = base.rstrip("\n") + "\n\n【州情速写】\n" + "\n".join(fl)
         return base
     m["_player_wars"] = m.get("player_wars") or data.get("player_wars") or []
@@ -1680,9 +1685,11 @@ def build_crime_card_messages(article, data, lead_text):
         "以资料为准并在末行注明「正文偏差」（绑架案可写胁迫、囚禁、赎金与解救）。\n"
         "输出格式（严格按行，最多5行，无标题或多余文字）：\n"
         "1. 案件类型：…；案发地：…；案发现场：…\n"
-        "2. 三角色：受害者=姓名/身份；犯罪嫌疑人=姓名/身份；证人=姓名/身份\n"
+        "2. 三角色：受害者=姓名/身份；犯罪嫌疑人=姓名/身份；证人=姓名/身份"
+        "（资料若给出【真凶】则为四角色，补写：真凶=姓名/身份）\n"
         "3. 案发经过：…（2–3句，按正文概括，正文缺失则按资料类型简述）\n"
-        "4. 结局：…（受害者是否存活；是否破案；犯罪嫌疑人是否归案）\n"
+        "4. 结局：…（受害者是否存活；是否破案；犯罪嫌疑人是否归案；"
+        "蒙冤开释案写真凶在逃；错判昭雪案写真凶落网、原判撤销）\n"
         "5. 判决：…（资料给出的判决原文；未给出写「未定」）\n"
         + CRIME_TERM_RULE
     )
@@ -1719,8 +1726,16 @@ def _crime_card_fallback(data, key="crime"):
     tier = oc.get("solve_tier")
     tier_zh = {"convicted": "破案定罪", "acquitted": "无罪开释",
                "unsolved": "悬案收束"}.get(tier, "结果未知")
+    misc = oc.get("miscarriage")
+    if misc == "framed":
+        tier_zh = "无罪开释（蒙冤被诬）"
+    elif misc == "wrongful":
+        tier_zh = "错判昭雪"
     lines.append(f"结局：{tier_zh}；受害者是否死亡以资料为准。")
-    lines.append("判决：" + (oc.get("sentence") or "未定"))
+    sent = oc.get("sentence") or "未定"
+    if misc == "wrongful":
+        sent += "（后查真凶另有其人，原判撤销、冤情昭雪）"
+    lines.append("判决：" + sent)
     return "\n".join(lines[:5])
 
 

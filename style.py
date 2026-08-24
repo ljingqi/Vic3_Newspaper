@@ -818,6 +818,20 @@ def resolve_magazine_voice(data):
     return "\n".join(parts)
 
 
+def style_tier_from_data(data):
+    """按当前存档数据解析文风档位 (1~5, 与 resolve_newspaper_style 同口径)。
+    供州情速写等数据层按档位切换措辞 (低档传统、高档现代);
+    解析失败返回 None。"""
+    try:
+        tech_keys = data.get("tech_keys") or []
+        score = modernity_score(tech_keys)
+        cat = govt_category(data)
+        dop = dop_law(data)
+        return resolve_tier(score, cat, dop)
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # 新系统: 杂志文章标题指南 (按文风档位)
 # 每期文章标题不写死, 由模型依本指南拟题; 档位越低越庄重, 越高越现代/先锋。

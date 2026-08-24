@@ -121,6 +121,12 @@ DEFAULT_CONFIG = {
     "magazine_pool_override": None,
     # 刑事案例结局引擎 (刑法框架/破案/判决 三层), 关闭后走简化结局
     "crime_outcome_engine": True,
+    # 罪案蒙冤结局 (2026, 19世纪司法现实): 无罪开释中「无辜蒙冤被诬」占比 (默认约40%),
+    # 定罪中「错判入狱、真凶落网昭雪」占比 (默认约12%); 两种结局都会带出第四人「真凶」
+    "crime_framing_enabled": True,
+    "crime_framing_chance": 0.4,
+    "crime_miscarriage_enabled": True,
+    "crime_miscarriage_chance": 0.12,
     # 州情风味层: 报纸/杂志按州基础设施/行政力/社会演进指标生成州情速写
     "state_flavor_enabled": True,
     # 报纸「股市动态」专栏: 研发证券交易所后出现; 价值模型 (v10):
@@ -1095,9 +1101,10 @@ def _institution_level_zh(level):
         return "未知"
     return INSTITUTION_LEVEL_ZH.get(int(level), f"第{int(level)}档")
 
-def load_history(data, cfg, years_back=9):
+def load_history(data, cfg, years_back=10):
     """加载当前年份之前若干年的原始数据, 供模型做发展对比。
-    默认前 9 年 + 当年 = 历年发展对照 10 行。
+    默认前 10 年 + 当年 = 历年发展对照 11 行 (第一行保留最早可得的年份,
+    避免窗口滑动时首行年份缺失/空白)。
     仅读取当前会话文件夹的 data/（中央 data/ 逻辑已弃用）。"""
     folder = data.get("output_dir") or SESSION.get("folder") or ""
     cur = data.get("year")
@@ -1218,7 +1225,57 @@ FACT_GUIDE = (
     "未给出姓名的直接描写对象用身份/职业代称。"
     "描写建筑、机构与城邑的体量风貌时，用符合时代语境的自然措辞呈现其气象"
     "（如城邑繁盛、厂房林立、市井喧阗、机构初具规模、市镇街巷纵横）。"
+    "度量衡一律使用公制单位（吨、千克、千米、米、升、度、平方米），数值以资料为准。"
 )
+
+# 商品体量口径 (v2, 与 tools/goods_measure.json 及 Needs wiki 需求体系同源):
+# 涉及商品数量/消费场景的板块注入, 防止模型把抽象游戏单位读成实物件数、
+# 或写出「几百贵族一周只消费0.5辆汽车」式离谱小读数。
+_GOODS_GUIDE_SECTIONS = {"econ", "family", "peer", "unemployed", "comment"}
+_GOODS_GUIDE_CACHE = None
+
+# 货币规则只注入有金额数据的板块 (广告/政界/社会板块无金额数据, 不注入,
+# 避免模型自拟金额并主动换算主辅币, 如「学费比索60元（即600分）」)。
+_MONEY_SECTIONS = {"headline", "war", "diplo", "econ", "stock",
+                   "family", "peer", "unemployed", "comment"}
+
+
+def _goods_scale_guide(with_needs=True):
+    """商品体量口径提示块: 单位释义(SI 公制) + 昂贵品时间聚合规则 + 需求比例参考。
+    with_needs=False (访谈板块): 家庭级金额/数量已由程序折算成具体数字注入
+    (见 _consumption_breakdown_lines), 不再给比例, 避免模型另行换算;
+    with_needs=True (经济/社论等全国口径板块): 需求比例作为可直接引用的数据给出。
+    需求比例直接取 tools/goods_measure.json 的 _need_guide (游戏 buy_packages 口径)。"""
+    global _GOODS_GUIDE_CACHE
+    if _GOODS_GUIDE_CACHE is not None:
+        v = _GOODS_GUIDE_CACHE.get(with_needs)
+        if v is not None:
+            return v
+    lines = ["商品与需求体量口径：",
+             "- 游戏商品 1 单位 ≈ 基准价 1 英镑的抽象价值量，报端商品数量一律按资料措辞照写"
+             "（资料已折算为公制读数，如谷物按千克、织物按米、煤炭按吨）。",
+             "- 汽车、电话机、无线电、飞机、金银、艺术品等昂贵品若为周度小数值（每周不足1），"
+             "资料已按年/月口径叙述（如「约每年26辆」）。"]
+    if with_needs:
+        try:
+            with open(os.path.join(SCRIPT_DIR, "tools", "goods_measure.json"),
+                      encoding="utf-8") as fp:
+                d = json.load(fp)
+            ng = d.get("_need_guide") or {}
+            note = ng.get("note")
+            if note:
+                lines.append("- " + note)
+                for k, v in ng.items():
+                    if k == "note":
+                        continue
+                    share = "、".join(f"{kk}约{int(vv)}%" for kk, vv in v.items() if vv)
+                    lines.append(f"  · {k}：{share}。")
+        except Exception:
+            pass
+    if _GOODS_GUIDE_CACHE is None:
+        _GOODS_GUIDE_CACHE = {}
+    _GOODS_GUIDE_CACHE[with_needs] = "\n".join(lines)
+    return _GOODS_GUIDE_CACHE[with_needs]
 
 
 _TERRITORY_CAP = 8
@@ -1397,6 +1454,9 @@ def render_overview(data, history=None):
     gdp_v = data.get('gdp', '未知')
     gdp_s = _fm(data, gdp_v) if isinstance(gdp_v, (int, float)) else str(gdp_v)
     L.append(f"- GDP：{gdp_s}；人口：{data.get('pop', '未知')}；生活水平：{data.get('sol', '未知')};识字率：{data.get('literacy', '未知')}")
+    if isinstance(gdp_v, (int, float)) and isinstance(data.get('pop'), (int, float)) \
+            and data['pop'] > 0:
+        L.append(f"- 人均GDP：约{_fm(data, gdp_v / data['pop'])}/年（=GDP÷人口）")
     L.append(f"- 恶名：{_infamy_band(data.get('infamy'))}")
     if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
         L.append(f"- 政治倾向：激进派占人口约{data.get('radicals_pct', '?')}%，"
@@ -1917,6 +1977,10 @@ def render_econ(data, history=None):
     if pop_pct is not None:
         pop_line += f"（比去年同期{'增长' if pop_pct >= 0 else '减少'}{abs(pop_pct):.1f}%）"
     L.append(pop_line)
+    # 人均GDP 显式给出 (GDP÷人口, 年值, 与正文同币种口径): 供模型直接使用,
+    # 避免其自行估算后与访谈收入作错误比较
+    if isinstance(gdp, (int, float)) and isinstance(pop, (int, float)) and pop > 0:
+        L.append(f"- 人均GDP：约{_fm(data, gdp / pop)}/年（=GDP÷人口）")
     sol = data.get('sol', '未知')
     band = sol_band(sol)
     sol_line = f"- 平均生活水平：{sol}" + (f"（{band}）" if band else "")
@@ -2495,6 +2559,9 @@ def _family_budget_lines(fi, unit, rate=None):
     else:
         L.append(f"- 家庭月支出：约{_m(total_exp)}")
     L.append(f"- 月度结余：约{_m(total_inc - total_exp)}")
+    if pop > 0:
+        L.append(f"- 家庭人均月收入：约{_m(total_inc / pop)}"
+                 f"（全家{pop}口均摊）；人均月支出约{_m(total_exp / pop)}")
     return L
 
 
@@ -2514,6 +2581,191 @@ def _family_scale_lines(fi):
         f"- 受访家庭：户主夫妇{kids}（劳动力{workers}人、受抚养{deps}人），"
         "以下为其月账本：",
     ]
+
+
+# ---------------------------------------------------------------------------
+# 访谈板块消费折算 (2026): 程序端把家庭商品支出按消费画像权重 × 市价,
+# 折算成带数字的自然语言 (每月金额 + 每月公制数量), 模型直接照写,
+# 不再由模型根据需求比例自行换算。
+# 口径: budget_rates 为月人均率 (游戏镑), 商品支出按劳动力人数计;
+# 市价 = 基准价 × (1 + dev_pct/100) 重建; 数量经 goods_measure 的 per 乘数
+# (每游戏单位显示单位数) 折算为公制读数。
+# ---------------------------------------------------------------------------
+_GOODS_MEASURE_LOCAL_CACHE = None
+
+
+def _goods_measure_local():
+    """读取 tools/goods_measure.json 量词表 (journal.py 侧缓存, 含 unit/per/dec/base)。"""
+    global _GOODS_MEASURE_LOCAL_CACHE
+    if _GOODS_MEASURE_LOCAL_CACHE is not None:
+        return _GOODS_MEASURE_LOCAL_CACHE
+    table = {}
+    try:
+        with open(os.path.join(SCRIPT_DIR, "tools", "goods_measure.json"),
+                  encoding="utf-8") as fp:
+            d = json.load(fp)
+        for k, v in (d or {}).items():
+            if not k.startswith("_") and isinstance(v, dict):
+                table[k] = v
+    except Exception:
+        pass
+    _GOODS_MEASURE_LOCAL_CACHE = table
+    return table
+
+
+def _goods_unit_per(key):
+    """商品 key → (单位, per乘数, dec, 基准价); 未知返回 (None, 1.0, 0, None)。"""
+    m = _goods_measure_local().get(key)
+    if not m:
+        return None, 1.0, 0, None
+    return (m.get("unit") or "单位", float(m.get("per") or 1.0) or 1.0,
+            int(m.get("dec", 0)), m.get("base"))
+
+
+def _fmt_month_qty(name, q, unit, dec):
+    """月度数量自然语言: ≥1 取整/按 dec 保小数; 0.1~1 保 1 位;
+    <0.1 聚合为「约每N个月1/约每N年1单位」。"""
+    if q >= 100:
+        return f"{name}每月约{int(q + 0.5)}{unit}"
+    if q >= 1:
+        s = f"{q:.{dec}f}" if dec else f"{int(q + 0.5)}"
+        return f"{name}每月约{s}{unit}"
+    if q >= 0.1:
+        return f"{name}每月约{q:.1f}{unit}"
+    if q > 0:
+        n = max(1, round(1 / q))
+        if n >= 24:
+            return f"{name}约每{max(1, round(n / 12))}年1{unit}"
+        return f"{name}约每{n}个月1{unit}"
+    return f"{name}极少购置"
+
+
+def _consumption_breakdown_lines(profile, unit, rate=None):
+    """访谈板块消费结构: 返回 [金额行, 数量行]; 数据不足返回 []。
+    profile 为 family_interview/top_sol_peer/unemployed_interview 快照。"""
+    br = (profile or {}).get("budget_rates") or {}
+    wife_works = bool(profile.get("wife_works"))
+    workers = 1 + (1 if wife_works else 0)
+    goods_m = (br.get("goods") or 0.0) * workers
+    cgoods = (profile or {}).get("consumption_goods") or []
+    engel = profile.get("engel_coefficient")
+    if goods_m <= 1e-9 or not cgoods:
+        return []
+    items = [(g.get("key"), g.get("name"), g.get("weight"), g.get("dev_pct"))
+             for g in cgoods]
+    wsum = sum((w or 0) for _k, _n, w, _d in items)
+    if wsum <= 0:
+        return []
+    out = []
+    # 金额行: 恩格尔口径的食物金额 + 各主要商品金额 (程序折算, 带数字)
+    food_m = goods_m * (engel / 100.0) if isinstance(engel, (int, float)) else None
+    money_bits = []
+    for _k, nm, w, _d in items:
+        if not nm:
+            continue
+        mi = goods_m * (w or 0) / wsum
+        money_bits.append(f"{nm}约{format_money(mi, unit, rate)}")
+    if money_bits:
+        head = (f"- 消费结构（程序按消费画像折算）：该家庭每月商品消费约"
+                f"{format_money(goods_m, unit, rate)}")
+        if food_m is not None:
+            head += (f"，其中基本食物约{format_money(food_m, unit, rate)}"
+                     f"（恩格尔系数约{engel}%）")
+        head += "；主要商品金额：" + "、".join(money_bits) + "。"
+        out.append(head)
+    # 数量行: 金额 ÷ 市价 → 每月游戏单位 × per 乘数 → 公制读数。
+    # 只取权重最高的前 3 种商品, 避免稀疏小额商品 (如服务) 出现「约每数十年1单位」
+    # 式不可读读数; 其余商品的金额已在金额行给出。
+    ordered = sorted(items, key=lambda it: -(it[2] or 0))
+    qbits = []
+    for key, nm, w, dv in ordered[:3]:
+        if not nm:
+            continue
+        mi = goods_m * (w or 0) / wsum
+        unit_, per, dec, base = _goods_unit_per(key)
+        if unit_ is None:
+            continue
+        price = base
+        if isinstance(base, (int, float)) and base > 0 and isinstance(dv, (int, float)):
+            price = base * (1 + dv / 100.0)
+        if not isinstance(price, (int, float)) or price <= 0:
+            continue
+        qbits.append(_fmt_month_qty(nm, mi / price * per, unit_, dec))
+    if qbits:
+        out.append("- 主要消费商品（程序按消费画像与市价折算的估算月消费）："
+                   + "、".join(qbits) + "。")
+    return out
+
+
+# 州情速写按文风档位现代化 (2026): 数据层档位措辞固定为文言
+# (驿路初通/令行禁止/蒙学初开/市廛栉比…), 与现代档位 (3~5 档) 的白话文风不搭。
+# 渲染期按档位做短语替换: 低档 (1~2, 传统时代) 原样保留文言, 高档 (3~5) 换现代白话。
+# 与 journal_save.build_state_flavor 的档位措辞表同步; 长短语在前避免误替换。
+_STATE_FLAVOR_MODERN_REPL = (
+    ("无像样官道，商旅多行土路，雨季泥泞难行", "没有像样的官道，商旅多走土路，雨季泥泞难行"),
+    ("驿路土道初通，骡马车队是主要运力", "土路刚通，主要靠骡马车队运输"),
+    ("大道纵横，车马络绎，沿途驿站货栈渐多", "道路成网，车马往来频繁，沿途驿站货栈渐多"),
+    ("官道宽阔，码头货栈相连，人流货流不断", "干线宽阔，港口货栈相连，人流货流不断"),
+    ("国家行政触角几乎不到州县，各地各行其是", "行政力量几乎到不了州县，各地各行其是"),
+    ("基层由士绅宗族把持，衙门只管催科与刑名", "基层由地方士绅宗族把持，衙门只管收税和刑狱"),
+    ("衙门照章办事，但书吏短缺、力不从心", "衙门能照章办事，但人手不足、力不从心"),
+    ("政令可下州县，公文驿递通畅", "政令能下达州县，公文传递顺畅"),
+    ("书吏遍布，政策直抵村野", "行政人员充足，政策直达乡村"),
+    ("多为乡村聚落，城邑寥落", "以乡村聚落为主，城镇稀少"),
+    ("城邑初兴，街巷渐次成形", "城镇初具雏形，街道逐渐成形"),
+    ("市镇渐成规模，街巷纵横、商旅往来", "城镇已具规模，街道纵横、商旅往来"),
+    ("城邑繁盛，市廛栉比、商贾辐辏", "城市繁荣，商铺林立、商业活跃"),
+    ("都会气象，楼宇连云、人烟辐辏", "大都会气象，高楼林立、人口稠密"),
+    ("市廛栉比、商贾辐辏", "商铺林立、商业活跃"),
+    ("道路近满荷，货运积压", "道路接近满载，货运积压"),
+    ("壅塞不堪，市价受运力拖累", "堵塞严重，物价受运力拖累"),
+    ("车马畅行无阻", "车马通行顺畅"),
+    ("大道繁忙，时有拥堵", "道路繁忙，时有拥堵"),
+    ("政令不出都门", "行政力量几乎到不了基层"),
+    ("目不识丁之乡", "识字率很低"),
+    ("蒙学初开", "识字率较低，教育刚起步"),
+    ("书声渐起", "读书人渐多"),
+    ("民多识字", "民众普遍识字"),
+    ("知书达理", "识字率很高"),
+    ("流民四起", "大量失业，流民问题突出"),
+    ("生计艰难", "失业严重，生计艰难"),
+    ("就业尚稳", "就业状况尚稳"),
+    ("通衢大道", "干线公路通畅"),
+    ("驿路初通", "土路初通"),
+    ("商路纵横", "道路网成型"),
+    ("荒径野道", "道路原始"),
+    ("州县自治", "基层自治，衙门管得少"),
+    ("勉强敷用", "衙门照章办事但人手不足"),
+    ("令行禁止", "政令畅通"),
+    ("无远弗届", "行政覆盖完备"),
+    ("壅塞", "堵塞"),
+    ("通衢", "畅通"),
+    ("太平", "安定"),
+    ("微澜", "略有波动"),
+    ("暗流", "暗流涌动"),
+    ("动荡", "动荡不安"),
+)
+
+
+def _state_flavor_lines_for_tier(lines, data):
+    """州情速写行按文风档位切换: 档位 1~2 (传统时代) 保留文言措辞,
+    档位 3~5 (现代时代) 换成现代白话; 档位解析失败时原样返回。"""
+    if not lines:
+        return lines
+    try:
+        from style import style_tier_from_data
+        tier = style_tier_from_data(data)
+    except Exception:
+        tier = None
+    if not isinstance(tier, int) or tier < 3:
+        return lines
+    out = []
+    for ln in lines:
+        for src, dst in _STATE_FLAVOR_MODERN_REPL:
+            if src in ln:
+                ln = ln.replace(src, dst)
+        out.append(ln)
+    return out
 
 
 def _legacy_budget_lines(fi, unit, rate=None):
@@ -2662,11 +2914,17 @@ def render_family(data, style=None):
             L.append("- 收成状况：" + "、".join(HARVEST_NAMES.get(t, t) for t in hv))
         else:
             L.append("- 收成状况：正常（无旱涝、灾害等异常）")
+    unit = data.get("currency") or "英镑"
+    rate = _fx_rate(data, unit)
     cgoods = fi.get("consumption_goods") or []
     if cgoods:
-        names = [g.get("name") for g in cgoods if g.get("name")]
-        if names:
-            L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
+        bl = _consumption_breakdown_lines(fi, unit, rate)
+        if bl:
+            L.extend(bl)
+        else:
+            names = [g.get("name") for g in cgoods if g.get("name")]
+            if names:
+                L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
         trends = []
         for g in cgoods:
             d = g.get("dev_pct")
@@ -2705,8 +2963,6 @@ def render_family(data, style=None):
     workforce = fi.get("workforce")
     dependents = fi.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
-    unit = data.get("currency") or "英镑"
-    rate = _fx_rate(data, unit)
     if fi.get("budget_rates"):
         L.extend(_family_scale_lines(fi))
         L.extend(_family_budget_lines(fi, unit, rate))
@@ -2725,7 +2981,8 @@ def render_family(data, style=None):
     fs = fi.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
-    _sf = (fi.get("state_flavor") or {}).get("lines") or []
+    _sf = _state_flavor_lines_for_tier(
+        (fi.get("state_flavor") or {}).get("lines") or [], data)
     if _sf:
         L.append("- 【州情速写】")
         L.extend(_sf)
@@ -2813,11 +3070,17 @@ def render_peer(data, style=None):
             L.append("- 收成状况：" + "、".join(HARVEST_NAMES.get(t, t) for t in hv))
         else:
             L.append("- 收成状况：正常（无旱涝、灾害等异常）")
+    unit = data.get("currency") or "英镑"
+    rate = _fx_rate(data, unit)
     cgoods = peer.get("consumption_goods") or []
     if cgoods:
-        names = [g.get("name") for g in cgoods if g.get("name")]
-        if names:
-            L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
+        bl = _consumption_breakdown_lines(peer, unit, rate)
+        if bl:
+            L.extend(bl)
+        else:
+            names = [g.get("name") for g in cgoods if g.get("name")]
+            if names:
+                L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
         trends = []
         for g in cgoods:
             d = g.get("dev_pct")
@@ -2856,8 +3119,6 @@ def render_peer(data, style=None):
     workforce = peer.get("workforce")
     dependents = peer.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
-    unit = data.get("currency") or "英镑"
-    rate = _fx_rate(data, unit)
     if peer.get("budget_rates"):
         L.extend(_family_scale_lines(peer))
         L.extend(_family_budget_lines(peer, unit, rate))
@@ -2876,7 +3137,8 @@ def render_peer(data, style=None):
     fs = peer.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
-    _sf = (peer.get("state_flavor") or {}).get("lines") or []
+    _sf = _state_flavor_lines_for_tier(
+        (peer.get("state_flavor") or {}).get("lines") or [], data)
     if _sf:
         L.append("- 【州情速写】")
         L.extend(_sf)
@@ -2941,11 +3203,17 @@ def render_unemployed(data, style=None):
             L.append("- 收成状况：" + "、".join(HARVEST_NAMES.get(t, t) for t in hv))
         else:
             L.append("- 收成状况：正常（无旱涝、灾害等异常）")
+    unit = data.get("currency") or "英镑"
+    rate = _fx_rate(data, unit)
     cgoods = uni.get("consumption_goods") or []
     if cgoods:
-        names = [g.get("name") for g in cgoods if g.get("name")]
-        if names:
-            L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
+        bl = _consumption_breakdown_lines(uni, unit, rate)
+        if bl:
+            L.extend(bl)
+        else:
+            names = [g.get("name") for g in cgoods if g.get("name")]
+            if names:
+                L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
         trends = []
         for g in cgoods:
             d = g.get("dev_pct")
@@ -2984,8 +3252,6 @@ def render_unemployed(data, style=None):
     workforce = uni.get("workforce")
     dependents = uni.get("dependents")
     pop_total = (workforce or 0) + (dependents or 0)
-    unit = data.get("currency") or "英镑"
-    rate = _fx_rate(data, unit)
     if uni.get("budget_rates"):
         L.extend(_family_scale_lines(uni))
         L.extend(_family_budget_lines(uni, unit, rate))
@@ -3004,7 +3270,8 @@ def render_unemployed(data, style=None):
     fs = uni.get("food_security")
     if fs:
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
-    _sf = (uni.get("state_flavor") or {}).get("lines") or []
+    _sf = _state_flavor_lines_for_tier(
+        (uni.get("state_flavor") or {}).get("lines") or [], data)
     if _sf:
         L.append("- 【州情速写】")
         L.extend(_sf)
@@ -3090,8 +3357,10 @@ def render_history_table(data, history=None, include_flavor=True):
         header.append("交易所指数")
     L.append("| " + " | ".join(header) + " |")
     L.append("| " + " | ".join(["---"] * len(header)) + " |")
-    # 当年 + 前 9 年, 共 10 行; 传入更长历史时也只取最近 9 年
-    rows = ((history or [])[-9:]) + [data]
+    # 当年 + 前 10 年, 共 11 行; 传入更长历史时也只取最近 10 年。
+    # 防御: 跳过缺年份或整行全空的条目, 确保第一行永远有数据 (不会出现空首行)。
+    rows = [h for h in ((history or [])[-10:]) + [data]
+            if isinstance(h, dict) and h.get("year")]
     unit = data.get("currency") or DEFAULT_CURRENCY
     cur_rate = _fx_rate(data, unit)
     for h in rows:
@@ -3262,12 +3531,20 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
         if ads_guide:
             req = f"{req}\n{ads_guide}"
     parts = [st["voice"], FACT_GUIDE]
+    if key in _GOODS_GUIDE_SECTIONS:
+        # 访谈板块: 家庭级金额/数量已程序折算, 不再给需求比例 (防模型另行换算);
+        # 经济/社论等全国口径板块保留可直接引用的需求比例。
+        _gg = _goods_scale_guide(with_needs=(key in ("econ", "comment")))
+        if _gg:
+            parts.append(_gg)
     num_guide = st.get("number_guide")
     if num_guide:
         parts.append(f"数字格式要求：{num_guide.replace('{CURRENCY}', unit)}")
-    # 主辅币制: 涉及金额一律按资料币种的主辅币书写 (只列本国币种比例, 正向措辞)
-    parts.append(f"货币规则：金额一律按资料币种的主辅币书写（{currency_system_text(unit)}）；"
-                 "金额以资料给出者为限。")
+    # 主辅币制: 仅注入有金额数据的板块 (头版/战事/外交/经济/股市/访谈/社论);
+    # 政界/社会/广告等板块没有金额数据, 不注入币制规则, 避免模型自拟金额并换算。
+    if key in _MONEY_SECTIONS:
+        parts.append(f"货币规则：金额一律按资料币种的主辅币书写（{currency_system_text(unit)}）；"
+                     "金额以资料给出者为限。")
     parts.append(f"本期报纸：【国名】={country}，【都城】={capital}。抬头如下，行文须与之呼应：\n{masthead}\n\n"
                  f"请撰写「{title}」板块。要求：{req}")
     sys_msg = "\n\n".join(parts)

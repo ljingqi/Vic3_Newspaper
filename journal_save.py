@@ -810,12 +810,12 @@ def build_homeland_map():
     return hm
 
 def build_goods_map():
-    """建立 商品id → key / key → 基准价(cost) / key → 中文名 映射。
+    """建立 商品id → key / key → 基准价(cost) / key → 中文名 / key → 分类(cat) 映射。
     商品 id 按 common/goods 文件顺序递增, 与存档 price report / pop_needs 权重一致。"""
     global _GOODS_CACHE
     if _GOODS_CACHE is not None:
         return _GOODS_CACHE
-    order, cost, zh = [], {}, {}
+    order, cost, zh, cat = [], {}, {}, {}
     try:
         import glob
         for fn in sorted(glob.glob(os.path.join(GOODS_DIR, "*.txt"))):
@@ -831,6 +831,9 @@ def build_goods_map():
                     mc = re.match(r"^\s*cost\s*=\s*([0-9.]+)", line)
                     if mc and cur:
                         cost[cur] = float(mc.group(1))
+                    mcat = re.match(r"^\s*category\s*=\s*([a-z_]+)", line)
+                    if mcat and cur:
+                        cat[cur] = mcat.group(1)
     except Exception:
         pass
     for loc_dir in _loc_dirs():
@@ -847,7 +850,7 @@ def build_goods_map():
                             zh[m.group(1)] = m.group(2).strip()
         except Exception:
             pass
-    _GOODS_CACHE = {"order": order, "cost": cost, "zh": zh}
+    _GOODS_CACHE = {"order": order, "cost": cost, "zh": zh, "cat": cat}
     return _GOODS_CACHE
 
 
@@ -5525,7 +5528,7 @@ def _pool_state_ids(snap):
 
 
 def _pool_goods_text(go, gm):
-    """建筑 input/output_goods → 自然语言「商品约数量」串。"""
+    """建筑 input/output_goods → 自然语言「商品约数量」串 (带商品量词)。"""
     goods = (go or {}).get("goods") or {}
     order, zh = gm["order"], gm["zh"]
     items = []
@@ -5537,9 +5540,13 @@ def _pool_goods_text(go, gm):
         key = order[idx] if 0 <= idx < len(order) else None
         v = (gv or {}).get("value")
         if isinstance(v, (int, float)) and abs(v) > 1e-9:
-            items.append((abs(v), zh.get(key, key or str(gid)), v))
-    return "、".join(f"{name}约{round(v, 1)}" for _a, name, v in
-                     sorted(items, reverse=True)[:4])
+            items.append((abs(v), key, zh.get(key, key or str(gid)), v))
+    parts = []
+    for _a, key, name, v in sorted(items, reverse=True)[:4]:
+        qs = _goods_qty_text(key, v)
+        # 聚合文本自带「约」(如「每月约2辆」/「约每23个月1辆」), 不再重复前缀
+        parts.append(f"{name}{qs}" if "约" in qs else f"{name}约{qs}")
+    return "、".join(parts)
 
 
 def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None, place=None):
@@ -8275,14 +8282,21 @@ def _crime_nonviolence_note(crime_type, subtype=None):
 
 
 def _crime_evidence_outcome(outcome, trick, forensics):
-    """证据与勘验结局联动行 (方案A.3)。"""
+    """证据与勘验结局联动行 (方案A.3)。蒙冤/错判结局切换物证口径。"""
     parts = []
     if outcome:
         tier = outcome.get("solve_tier")
+        misc = outcome.get("miscarriage")
         if tier == "convicted":
-            parts.append("物证为定罪依据")
+            if misc == "wrongful":
+                parts.append("物证虽曾定罪，后证另有真凶")
+            else:
+                parts.append("物证为定罪依据")
         elif tier == "acquitted":
-            parts.append("物证不足以定罪")
+            if misc == "framed":
+                parts.append("物证存疑、指向他人")
+            else:
+                parts.append("物证不足以定罪")
         elif tier == "unsolved":
             parts.append("物证成为未解线索")
     if trick:
@@ -9335,13 +9349,95 @@ def _crime_solve_assessment(case, laws, insts, victim, murderer, witness):
     return {"score": round(score, 1), "tier": tier}
 
 
-def _crime_outcome_reason(tier, police_lv):
-    """破案结果的一句话说明 (以执法机构档位点缀, 其余模板化)。"""
+def _crime_outcome_reason(tier, police_lv, outcome=None):
+    """破案结果的一句话说明 (以执法机构档位点缀, 其余模板化)。
+    outcome 带 miscarriage (framed=蒙冤开释 / wrongful=错判昭雪) 时切换对应口径。"""
+    misc = (outcome or {}).get("miscarriage")
+    cname = (outcome or {}).get("culprit_name")
     if tier == "unsolved":
         return "线索寥寥，侦办乏力，案件悬而未决，真凶逍遥法外。"
     if tier == "acquitted":
+        if misc == "framed":
+            return (f"犯罪嫌疑人虽被锁定，然实系无辜蒙冤——真凶{cname or '另有其人'}"
+                    "仍逍遥法外，或有攀诬顶罪、屈打成招之弊。")
         return "犯罪嫌疑人虽被锁定，然证据不足或贵势庇护，法庭宣告无罪开释。"
+    if misc == "wrongful":
+        return (f"执法机构{police_lv}，案件告破，犯罪嫌疑人缉拿归案并移送审判；"
+                f"然后查真凶{cname or '另有其人'}落网，原判系错判，冤案昭雪。")
     return f"执法机构{police_lv}，案件告破，犯罪嫌疑人缉拿归案并移送审判。"
+
+
+def _crime_pick_culprit(case, pops, rnd, used_pids=None):
+    """蒙冤/错判结局的真凶 (第四人): 与嫌疑人同州, 排除三角色与专版已占用 POP。
+    无候选时返回 None (结局不点名真凶, 写「真凶身份未明」)。"""
+    used = set(used_pids or set())
+    for key in ("victim", "murderer", "witness"):
+        p = case.get(key)
+        if p:
+            used.add(p[0])
+    for vp in (case.get("victims") or []):
+        used.add(vp[0])
+    sid = ((case.get("murderer") or ({}, {}))[1] or {}).get("location")
+    pool = [(pid, o) for pid, o in (pops or {}).items()
+            if pid not in used and o.get("location") == sid]
+    if not pool:
+        pool = [(pid, o) for pid, o in (pops or {}).items() if pid not in used]
+    if not pool:
+        return None
+    return rnd.choice(pool)
+
+
+def _crime_culprit_name(culprit, female_pct, seed):
+    """真凶中文姓名 (确定性种子; 无名池或失败返回 None, 结局以「真凶身份未明」兜底)。"""
+    if not culprit:
+        return None
+    ck = culture_id_to_key(culprit[1].get("culture"))
+    if not ck:
+        return None
+    try:
+        return culture_person_name(ck, seed=seed, female_pct=female_pct)
+    except Exception:
+        return None
+
+
+def _crime_framing_chance(cfg, laws, insts, case, victim, murderer):
+    """蒙冤开释概率: config 默认 0.4, 侦办能力弱/嫌疑人受歧视或下层/无目击物证案件上浮。
+    纯函数 (全部来自已播种数据与配置), 同案恒定。"""
+    chance = float(cfg.get("crime_framing_chance", 0.4) or 0.4)
+    police = next((l for l in _POLICE_LAW_SOLVE if l in (laws or [])), None)
+    if police in ("law_no_police", "law_local_police"):
+        chance += 0.15
+    elif police in ("law_dedicated_police", "law_militarized_police"):
+        chance -= 0.1
+    chance -= ((insts or {}).get("institution_police") or 0) * 0.03
+    m_acc = _crime_acceptance_rank(murderer)
+    if m_acc is not None and m_acc >= 2:
+        chance += 0.15
+    if _pool_pop_class(murderer) == "lower_class":
+        chance += 0.1
+    if _pool_pop_class(victim) == "upper_class":
+        chance += 0.05
+    if case.get("crime_type") in ("theft", "robbery", "arson", "smuggling",
+                                  "forgery", "counterfeiting"):
+        chance += 0.05
+    return max(0.05, min(0.85, chance))
+
+
+def _crime_miscarriage_chance(cfg, laws, insts, case, victim, murderer):
+    """错判入狱概率: config 默认 0.12, 侦办能力弱/嫌疑人受歧视或下层时上浮。
+    纯函数, 同案恒定。"""
+    chance = float(cfg.get("crime_miscarriage_chance", 0.12) or 0.12)
+    police = next((l for l in _POLICE_LAW_SOLVE if l in (laws or [])), None)
+    if police in ("law_no_police", "law_local_police"):
+        chance += 0.08
+    m_acc = _crime_acceptance_rank(murderer)
+    if m_acc is not None and m_acc >= 2:
+        chance += 0.08
+    if _pool_pop_class(murderer) == "lower_class":
+        chance += 0.06
+    if _pool_pop_class(victim) == "upper_class":
+        chance += 0.04
+    return max(0.02, min(0.5, chance))
 
 
 def _crime_verdict_severity(case, laws, victim, murderer):
@@ -9611,6 +9707,9 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
     # 刑法框架 / 破案 / 判决 三层引擎 (config crime_outcome_engine=false 关闭)
     outcome = None
     trick = None
+    culprit = None        # 蒙冤/错判结局的第四人「真凶」 (引擎外初始化, 供角色表使用)
+    culprit_name = None
+    miscarriage = None
     try:
         from journal import load_config
         _cfg = load_config()
@@ -9646,6 +9745,33 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
             "solve_tier": solve["tier"],
             "sentence": None,
         }
+        # 蒙冤结局 (2026): 无罪开释中抽「无辜蒙冤被诬」, 定罪中抽「错判入狱」;
+        # 两种结局都带出第四人「真凶」 (独立种子, 不扰动主 rnd 序列, 同年恒定)
+        culprit = None
+        culprit_name = None
+        miscarriage = None
+        if (_cfg.get("crime_framing_enabled", True)
+                and _cfg.get("crime_miscarriage_enabled", True)):
+            misc_seed = f"{year}|crime_misc|{cid}|{profile}"
+            if small_key:
+                misc_seed += f"|{small_key}"
+            misc_rnd = random.Random(misc_seed)
+            if solve["tier"] == "acquitted":
+                if misc_rnd.random() < _crime_framing_chance(
+                        _cfg, laws, insts, case, victim[1], murderer[1]):
+                    miscarriage = "framed"
+                    culprit = _crime_pick_culprit(case, pops, misc_rnd, used_pids)
+            elif solve["tier"] == "convicted":
+                if misc_rnd.random() < _crime_miscarriage_chance(
+                        _cfg, laws, insts, case, victim[1], murderer[1]):
+                    miscarriage = "wrongful"
+                    culprit = _crime_pick_culprit(case, pops, misc_rnd, used_pids)
+        if culprit:
+            culprit_name = _crime_culprit_name(
+                culprit, female_pct,
+                f"{misc_seed}|name|{culprit[0]}")
+        outcome["miscarriage"] = miscarriage
+        outcome["culprit_name"] = culprit_name
         if solve["tier"] == "convicted":
             severity = _crime_verdict_severity(case, laws, victim[1],
                                                murderer[1])
@@ -9663,13 +9789,27 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
             outcome["severity"] = severity
             outcome["verdict_tier"] = tier
             outcome["sentence"] = sentence
-            verdict_line = f"判决：{sentence}"
-            verdict_reason = _crime_verdict_reason(case, tier, murderer[1])
+            if miscarriage == "wrongful":
+                verdict_line = (f"判决：{sentence}（后查真凶另有其人："
+                                f"{culprit_name or '身份未明'}，原判系错判，"
+                                "冤情昭雪）")
+                verdict_reason = (_crime_verdict_reason(case, tier, murderer[1])
+                                  + "后经复查，真凶另有其人，原判撤销、冤案昭雪。")
+            else:
+                verdict_line = f"判决：{sentence}"
+                verdict_reason = _crime_verdict_reason(case, tier, murderer[1])
         elif solve["tier"] == "acquitted":
             outcome["verdict_tier"] = "acquitted"
-            verdict_line = ("判决：无罪开释（犯罪嫌疑人身份已查明，"
-                            "然证据不足或贵势庇护）。")
-            verdict_reason = "依据现行刑法框架，证据不足以定罪。"
+            if miscarriage == "framed":
+                verdict_line = (f"判决：无罪开释（犯罪嫌疑人实系无辜蒙冤——"
+                                f"真凶另有其人：{culprit_name or '身份未明'}，"
+                                "仍逍遥法外）。")
+                verdict_reason = ("依据现行刑法框架，真凶另有其人，"
+                                  "犯罪嫌疑人系被诬陷、攀诬顶罪的无辜者。")
+            else:
+                verdict_line = ("判决：无罪开释（犯罪嫌疑人身份已查明，"
+                                "然证据不足或贵势庇护）。")
+                verdict_reason = "依据现行刑法框架，证据不足以定罪。"
         else:
             outcome["verdict_tier"] = "unsolved"
             verdict_line = "判决：无（案件未破，悬案收束）。"
@@ -9682,7 +9822,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
     if outcome:
         outcome_line = (
             f"本案结局：{_CRIME_SOLVE_TIER_ZH[outcome['solve_tier']]}"
-            f"——{_crime_outcome_reason(outcome['solve_tier'], police_lv)}；"
+            f"——{_crime_outcome_reason(outcome['solve_tier'], police_lv, outcome)}；"
             "正文按此结局收束，庭审与判决详情由《法网与衙门》板块按资料叙述。"
         )
 
@@ -9765,13 +9905,27 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
         else:
             name_rule = ("姓名未给出时，以「受害者」「犯罪嫌疑人」「证人」"
                          "及职业身份代称。")
-    # 三角色全表: 每个板块都原样附带, 防止模型在分板块写作时互换角色
+    # 蒙冤/错判结局: 第四人「真凶」(蒙冤开释案为逍遥法外的真凶, 错判昭雪案为
+    # 后来落网的真凶); 真凶姓名已给定, 全篇须原样使用并体现其下落
+    culprit_line = ""
+    if culprit:
+        ctxt = _pool_pop_text(culprit[0], culprit[1], ctx, loc, unit=unit,
+                              literacy_band=True, snap=snap)
+        if culprit_name:
+            culprit_line = f"\n- 【真凶】{culprit_name}，{ctxt}"
+            name_rule += "真凶（第四人）姓名已由资料给定，全篇必须原样使用。"
+        else:
+            culprit_line = f"\n- 【真凶】{ctxt}"
+            name_rule += "真凶身份资料已给定，全篇按资料写作（姓名未给出时以「真凶」代称）。"
+    # 全角色表: 每个板块都原样附带, 防止模型在分板块写作时互换角色
     role_table = (
-        "全篇三角色身份固定（身份/职业/文化/宗教/人数/"
+        "全篇" + ("四角色身份固定" if culprit else "三角色身份固定")
+        + "（身份/职业/文化/宗教/人数/"
         f"生活水平一律以资料为准；{name_rule}）：\n"
         + _role_line(victim, "受害者") + "\n"
         + _role_line(murderer, "犯罪嫌疑人") + "\n"
         + _role_line(witness, "证人")
+        + culprit_line
     )
     extra_victim_lines = []
     for i, (vp, nm) in enumerate(zip(extra_victims, extra_names), 1):
@@ -9866,7 +10020,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
                                f"（依据：{outcome['basis']}）。")
             close_lines.append(
                 f"破案结果：{_CRIME_SOLVE_TIER_ZH[outcome['solve_tier']]}——"
-                f"{_crime_outcome_reason(outcome['solve_tier'], police_lv)}")
+                f"{_crime_outcome_reason(outcome['solve_tier'], police_lv, outcome)}")
             close_lines.append(verdict_line)
             close_lines.append(f"判决理由：{verdict_reason}")
             if trick:
@@ -10000,7 +10154,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
                              f"（依据：{outcome['basis']}）。")
         justice_lines.append(
             f"破案结果：{_CRIME_SOLVE_TIER_ZH[outcome['solve_tier']]}——"
-            f"{_crime_outcome_reason(outcome['solve_tier'], police_lv)}")
+            f"{_crime_outcome_reason(outcome['solve_tier'], police_lv, outcome)}")
         justice_lines.append(verdict_line)
         justice_lines.append(f"判决理由：{verdict_reason}")
         if trick:
@@ -12362,6 +12516,175 @@ def _goods_zh(key):
     except Exception:
         return key
 
+
+# ---------------------------------------------------------------------------
+# 动态商品量词系统 (2026-08-24): 游戏商品数量为抽象单位 (1 单位 ≈ 基准价 1£
+# 对应价值量), 模型与读者无法理解「48单位发动机」的体量。量词表
+# tools/goods_measure.json 为每商品配 19 世纪中文语境量词 (谷物→石、煤炭→吨、
+# 织物→匹、发动机→台、舰船→艘…) 与换算系数 per (游戏单位/量词单位);
+# 未收录商品按游戏 category 兜底 (military/staple/industrial/luxury →
+# 件/担/吨/箱), 完全未知维持「单位」。数量级自动分级: ≥1亿 → X.X亿,
+# ≥1万 → X.X万。
+# ---------------------------------------------------------------------------
+_GOODS_MEASURE_PATH = os.path.join(SCRIPT_DIR, "tools", "goods_measure.json")
+_GOODS_MEASURE_CACHE = None
+
+
+def _goods_measure_table():
+    """量词表 {key: {unit, per, dec}} + 分类兜底 (懒加载 + 缓存)。"""
+    global _GOODS_MEASURE_CACHE
+    if _GOODS_MEASURE_CACHE is not None:
+        return _GOODS_MEASURE_CACHE
+    table, fb = {}, {}
+    try:
+        with open(_GOODS_MEASURE_PATH, encoding="utf-8") as fp:
+            d = json.load(fp)
+        for k, v in (d or {}).items():
+            if k.startswith("_"):
+                continue
+            if isinstance(v, dict):
+                table[k] = v
+            elif isinstance(v, str):
+                table[k] = {"unit": v, "per": 1, "dec": 0}
+        fb = d.get("_category_fallback") or {}
+    except Exception:
+        pass
+    _GOODS_MEASURE_CACHE = (table, fb)
+    return _GOODS_MEASURE_CACHE
+
+
+def _goods_measure(key):
+    """商品 key → (量词, per=每游戏单位显示单位数(乘数), dec=显示小数位)。"""
+    table, fb = _goods_measure_table()
+    m = table.get(key)
+    if m:
+        return (m.get("unit") or "单位",
+                float(m.get("per") or 1.0) or 1.0,
+                int(m.get("dec", 0)))
+    try:
+        cat = build_goods_map().get("cat") or {}
+        c = fb.get(cat.get(key)) or {}
+    except Exception:
+        c = {}
+    if c:
+        return (c.get("unit") or "单位",
+                float(c.get("per") or 1.0) or 1.0,
+                int(c.get("dec", 0)))
+    return ("单位", 1.0, 0)
+
+
+def _fmt_qty(x, dec):
+    """数量格式: dec=0 取整 (四舍五入, 非银行家舍入), 否则保留 dec 位小数。"""
+    if dec > 0:
+        return f"{x:.{dec}f}"
+    return f"{int(x + 0.5)}"
+
+
+# 公制量纲自动升格: 显示数值过大时把基本量词升级为更大的公制单位
+# (千克→吨、米→千米、克→千克、升→立方米), 避免「12.5万千克」式长串。
+_UNIT_SCALE_UP = (
+    ("千克", 1000.0, "吨"),
+    ("米", 1000.0, "千米"),
+    ("克", 1000.0, "千克"),
+    ("升", 1000.0, "立方米"),
+)
+
+
+def _scale_up_unit(unit, v):
+    """按公制升格表把 (单位, 数值) 逐级放大, 返回 (新单位, 新数值)。"""
+    for u, k, up in _UNIT_SCALE_UP:
+        if unit == u and abs(v) >= k:
+            unit, v = up, v / k
+            break
+    return unit, v
+
+
+def _goods_qty_text(key, qty):
+    """商品数量 → 带量词自然语言 (如「48台」「约123.4吨」「1.2万辆」)。
+
+    换算 (v3, SI 公制): qty_display = qty_game × per (per 为每游戏单位显示单位数,
+    见 tools/goods_measure.json); 公制量纲自动升格 (千克≥1000→吨、米≥1000→千米、
+    克≥1000→千克、升≥1000→立方米); 数量级分级: ≥1亿 → X.X亿, ≥1万 → X.X万;
+    其余按 dec 取整 (0) / 保留小数 (1)。
+    周度数量 <1 时自动聚合时间粒度: 每月量 ≥1 → 「每月约X」; 年量 ≥1 →
+    「每年约X」; 年量仍 <1 → 「约每N个月1/约每N年1」, 避免
+    「几百贵族一周只消费0.5辆汽车」式离谱小读数 (昂贵耐用品周量天然 <1,
+    属游戏 1 单位≈基准价 1£ 抽象价值的正常现象, 聚合后读数自然)。"""
+    unit, per, dec = _goods_measure(key)
+    try:
+        v = float(qty) * per
+    except (TypeError, ValueError):
+        v = 0.0
+    sign = "-" if v < 0 else ""
+    a = abs(v)
+    unit, a = _scale_up_unit(unit, a)
+    if a >= 1e8:
+        return f"{sign}{a / 1e8:.1f}亿{unit}"
+    if a >= 1e4:
+        return f"{sign}{a / 1e4:.1f}万{unit}"
+    if a >= 1:
+        return f"{sign}{_fmt_qty(a, dec)}{unit}"
+    if a <= 0:
+        return f"{sign}0{unit}"
+    # 每周不足 1: 按月/年聚合
+    monthly = a * 52 / 12
+    if monthly >= 1:
+        return f"{sign}每月约{_fmt_qty(monthly, dec)}{unit}"
+    annual = a * 52
+    if annual >= 1:
+        return f"{sign}每年约{_fmt_qty(annual, dec)}{unit}"
+    months = 12.0 / annual  # 每 1 单位所需月数
+    n = max(1, round(months))
+    if n >= 24:
+        return f"{sign}约每{max(1, round(n / 12))}年1{unit}"
+    return f"{sign}约每{n}个月1{unit}"
+
+
+_QTY_PERIOD_RE = re.compile(r"约每(\d+)(年|个月)1")
+
+
+def _qty_period_sentence(s, qs):
+    """把固定「每周运送」句式按聚合后的时间词改写成 每年/每月/约每N个月,
+    并去掉量词串里重复的时间词。
+    例: 「每周向对方运送0.5辆汽车」→ qs=「每年约26辆」→ 「每年向对方运送约26辆汽车」;
+        「每周向对方运送0.02辆汽车」→ qs=「约每23个月1辆」→
+        「约每23个月向对方运送1辆汽车」。"""
+    if not qs or "每周" not in s:
+        return s
+    if "每年" in qs:
+        s = s.replace("每周", "每年", 1)
+        return s.replace(qs, qs.replace("每年约", "约", 1), 1)
+    if "每月" in qs:
+        s = s.replace("每周", "每月", 1)
+        return s.replace(qs, qs.replace("每月约", "约", 1), 1)
+    m = _QTY_PERIOD_RE.match(qs)
+    if m:
+        span = f"约每{m.group(1)}{m.group(2)}"
+        s = re.sub(r"每周向([^，。；]*?)运送",
+                   f"{span}向\\1运送", s, count=1)
+        if s != qs:
+            s = s.replace(qs, qs[len(span):], 1)
+    return s
+
+
+_GOODS_KEY_BY_ZH = None
+
+
+def _goods_key_by_zh(zh):
+    """商品中文名 → key (反查, 旧数据 meta 只存中文名时用; 惰性构建)。"""
+    global _GOODS_KEY_BY_ZH
+    if _GOODS_KEY_BY_ZH is None:
+        m = {}
+        for k, v in ARTICLE_GOODS.items():
+            m.setdefault(v, k)
+        try:
+            for k, v in (build_goods_map().get("zh") or {}).items():
+                m.setdefault(v, k)
+        except Exception:
+            pass
+        _GOODS_KEY_BY_ZH = m
+    return _GOODS_KEY_BY_ZH.get(zh)
+
 def _concept_zh():
     """加载本地化 concept_* 中文名 (游戏+已启用 mod)。"""
     global _CONCEPT_ZH
@@ -12479,13 +12802,14 @@ def _iter_treaty_articles(data):
 
 def _article_detail(a):
     """条款附加数据 → (展示文本, 结构化信息)。
-    inputs 为键值对列表(如 [{"goods": X}, {"quantity": N}]), 成对拼成"轻武器15单位";
-    结构化信息供渲染层拼自然语句 (如"巴西向奥地利移交27单位的咖啡")。
-    free_text 条款的 inputs 为 [{"text": "..."}], 原文直出。"""
+    inputs 为键值对列表(如 [{"goods": X}, {"quantity": N}]), 成对拼成"轻武器15支";
+    结构化信息供渲染层拼自然语句 (如"巴西向奥地利移交27袋咖啡")。
+    free_text 条款的 inputs 为 [{"text": "..."}], 原文直出。
+    商品数量走动态量词系统 (_goods_qty_text): 量词+换算系数见 tools/goods_measure.json。"""
     inputs = (a.get("inputs") or [])
     if not inputs:
         return None, None
-    goods = qty = law = state = text = None
+    goods = qty = law = state = text = sr = None
     for it in inputs:
         if not isinstance(it, dict):
             continue
@@ -12497,12 +12821,26 @@ def _article_detail(a):
             law = it["law_type"]
         elif "state" in it:
             state = it["state"]
+        elif "strategic_region" in it:
+            sr = it["strategic_region"]
         elif "text" in it:
             text = it["text"]
     if goods is not None:
         gz = _goods_zh(goods)
-        return (f"{gz}{qty}单位" if qty is not None else gz), \
-               {"kind": "goods", "goods": gz, "quantity": qty}
+        meta = {"kind": "goods", "goods": gz, "quantity": qty, "key": goods}
+        if qty is not None:
+            return f"{gz}{_goods_qty_text(goods, qty)}", meta
+        return gz, meta
+    if sr is not None:
+        # 非殖民化协议条款: 存档 inputs 为 {"strategic_region": "region_great_plains"},
+        # 查本地化得「大平原」; 解析不了回退去除前缀的键名, 再不济「战略区域」。
+        sr_zh = _load_loc_all().get(sr)
+        if not sr_zh:
+            sr_zh = re.sub(r"^region_", "", str(sr)).replace("_", "")
+        if not sr_zh or sr_zh == str(sr):
+            sr_zh = "战略区域"
+        return sr_zh, {"kind": "strategic_region", "region": sr_zh,
+                       "region_key": sr}
     if text is not None:
         return text, {"kind": "free_text", "text": text}
     if law is not None:
@@ -12532,6 +12870,15 @@ def _article_natural(article_type, fname, sname, meta):
         return f"{fname}强制{sname}接受该条约"
     meta = meta or {}
     kind = meta.get("kind")
+    if article_type == "non_colonization_agreement" and kind == "strategic_region":
+        # 非殖民化协议: 模板占位 $concept_strategic_region$ 填区域名 (如「大平原」),
+        # 避免通用词「战略区域」丢失具体区域。
+        region = meta.get("region") or "战略区域"
+        tmpl = _article_templates().get(ARTICLE_TEMPLATE_KEYS.get(article_type))
+        if tmpl:
+            return _render_article_template(
+                tmpl.replace("$concept_strategic_region$", region), fname, sname)
+        return f"{fname}同意不在{region}进行殖民"
     if article_type == "money_transfer" and kind == "quantity":
         # 游戏内实际逻辑: 每周转移固定数额, 币种按付款方国家取
         qty = meta.get("quantity")
@@ -12546,8 +12893,15 @@ def _article_natural(article_type, fname, sname, meta):
             gz = meta.get("goods") or "货物"
             if article_type == "goods_transfer":
                 qty = meta.get("quantity")
-                s = s.replace("$concept_goods$",
-                              f"{qty}单位的{gz}" if qty is not None else gz)
+                if qty is not None:
+                    # 动态量词: 48单位发动机 → 48台发动机 (key 优先, 旧数据按中文名反查)
+                    gk = meta.get("key") or _goods_key_by_zh(gz)
+                    qs = _goods_qty_text(gk or gz, qty)
+                    s = s.replace("$concept_goods$", f"{qs}{gz}")
+                    # 每周数量 <1 已按月/年聚合 (如「约每年26辆」), 同步改写固定句式
+                    s = _qty_period_sentence(s, qs)
+                else:
+                    s = s.replace("$concept_goods$", gz)
             elif article_type in ("no_tariffs", "no_subventions",
                                   "prohibit_trade_with_global_market"):
                 s = s.replace("$concept_good$", gz)
@@ -14862,7 +15216,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
     country_name = (country or {}).get("name") or snap.get("player") or "未知"
     style = _country_enterprise_style(country_name)
     # 地方企业候选 + 州产出规模 (先算, 供国家级公司新设上市定价共用)
-    target = int(_cfg.get("stock_local_enterprise_count", 5) or 5)
+    target = int(_cfg.get("stock_local_enterprise_count", 6) or 6)
     cands, state_scale = _local_enterprise_candidates(melted, ctx, snap, gm)
     # 西方姓氏体: 州本土文化姓氏池 (仅非东亚国家需要)
     state_surnames = (_state_homeland_surnames(melted, ctx, snap)
