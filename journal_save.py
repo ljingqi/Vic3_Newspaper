@@ -6278,6 +6278,17 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         er = _pool_tariff_rate((country or {}).get("export_tariffs"), gid,
                                "export", exporter_policy)
         ir = importer.get("tariff") or 0.0
+        # 出口侧金额按我国币种, 消费者侧金额按进口国币种
+        # (与 lead 段「当地市价」同口径, 币种不同时附折合说明)。
+        imp_cur = importer.get("currency") or unit
+
+        def _imp_fmt(v):
+            """消费者侧金额: 进口国币种 + (币种不同时)折合我国币种说明。"""
+            s = format_money(v, imp_cur, _fx_rate(snap, imp_cur))
+            if imp_cur != unit:
+                s += f"（折合约{_fm_pounds(snap, v)}）"
+            return s
+
         if isinstance(gate, (int, float)) and gate > 0:
             # 现实口径: 出口关税/补贴按出厂价计税; 进口关税按
             # 「出厂价 + 出口关税/补贴金额」(到岸价值) 计税。
@@ -6285,18 +6296,20 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             import_base = gate + export_duty
             import_duty = import_base * ir / 100.0
             total = gate + export_duty + import_duty
-            bits = [f"出厂价约{round(gate, 2)}"]
+            bits = [f"出厂价约{_fm_pounds(snap, gate)}"]
             if abs(er) >= 1e-9:
                 bits.append(
                     f"出口补贴{-er}%×出厂价{_fm_pounds(snap, gate)}" if er < 0
                     else f"出口关税{er}%×出厂价{_fm_pounds(snap, gate)}")
             if abs(ir) >= 1e-9:
                 bits.append(
-                    f"进口补贴{-ir}%×（到岸价{_fm_pounds(snap, import_base)}）" if ir < 0
-                    else f"进口关税{ir}%×（到岸价{_fm_pounds(snap, import_base)}）")
-        cust_lines.append(
-            f"该消费者购买时共花费约{_fm_pounds(snap, total)}（"
-            + "＋".join(bits) + "）。")
+                    f"进口补贴{-ir}%×（到岸价{_imp_fmt(import_base)}）" if ir < 0
+                    else f"进口关税{ir}%×（到岸价{_imp_fmt(import_base)}）")
+            cust_lines.append(
+                f"该消费者购买时共花费约{_imp_fmt(total)}（"
+                + "＋".join(bits) + "）。")
+        else:
+            cust_lines.append("（当地价格资料不足，请据终端顾客收支含蓄写作。）")
     else:
         picked = _pool_pick_pops(pops, classes=("lower_class", "middle_class"),
                                  n=2, rnd=rnd)
@@ -6347,6 +6360,12 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     _fl_mine = _pool_flavor_lines(melted, ctx, snap, country, prices, pops,
                                   (by_state, btype_map, objs),
                                   [o.get("state") for _b, o in producers])
+    # 本文涉及的币种列表 (我国币种 + 出口目的地币种, 供杂志货币规则提示词用)
+    _units = [unit]
+    if importer:
+        imp_cur = importer.get("currency")
+        if imp_cur and imp_cur != unit and imp_cur not in _units:
+            _units.append(imp_cur)
     return {"sections": {
         "lead": "\n".join(lead),
         "workshop": "\n".join(workshop_lines),
@@ -6354,7 +6373,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         "customer": "\n".join(cust_lines),
     }, "section_titles": section_titles, "state_flavor": {
         "lead": _fl, "workshop": _fl, "mine": _fl_mine or _fl, "customer": _fl,
-    }}
+    }, "units": _units}
 
 
 def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
@@ -10237,11 +10256,13 @@ def _pool_country_objects(melted):
 
 
 # ---------------------------------------------------------------------------
-# 汇率体系 (2026-08-23): 人均GDP(已合并人口口径) + 贸易开放度代理 + 历史锚。
+# 汇率体系 (2026-08-23): 人均GDP(国家总人口口径) + 贸易开放度代理 + 历史锚。
 # rate = 1 英镑兑 X 主币 = 基准锚 × 相对人均GDP因子 × 贸易开放因子 × 扰动,
 # 较上年漂移钳制 ±30%、较基准锚总偏离 ±60%; 汇率只作用于显示,
 # GDP 同比/股市演化等计算仍走游戏镑原值。玩家币种用玩家本国数据,
 # 其余币种用锚定国 (currency.FX_ANCHOR_TAG) 数据。
+# 人均GDP 分母 = 国家总人口 (trend_population/州三阶层人口合计, 无并入进度加权;
+# 2026-08-24 由「已合并人口」口径改为「总人口」)。
 # ---------------------------------------------------------------------------
 
 _FX_IDOBJ = re.compile(rb'"(\d+)":\{')
@@ -10263,8 +10284,9 @@ _FX_NOISE = 0.02        # 确定性年度扰动 ±2%
 
 def _fx_scan_state_data(melted):
     """一次扫描 states.database → {cid: {pop, pop_inc, tcu}}。
-    pop = 三阶层人口合计; pop_inc = Σ(pop × incorporation) (已合并人口口径,
-    未并入州按并入进度折算, 殖民地人口按其进度计入);
+    pop = 三阶层人口合计 (国家总人口口径, 人均GDP 分母);
+    pop_inc = Σ(pop × incorporation) (已合并人口口径, fx_pop_scope=incorporated
+    时才启用, 2026-08-24 起默认总人口口径);
     tcu = Σ trade_capacity_usage (自由贸易下海关收入信号失效时的贸易量回退代理)。"""
     si = melted.find(b'"states":{"database":{')
     if si < 0:
@@ -10321,8 +10343,8 @@ def _fx_effective_tariff_rate(laws):
 def _fx_country_metrics(cid, countries, state_scan, laws_by_cid=None, cfg=None):
     """锚定国/玩家经济指标: (gdp, pop_eff, trade_open)。
     gdp = 国家 GDP 时序当前值 (游戏镑);
-    pop_eff = 已合并人口 Σ(pop×incorporation) (fx_pop_scope=incorporated,
-    缺州数据时回退总人口) 或总人口;
+    pop_eff = 国家总人口 (人均GDP 分母, 2026-08-24 起默认总人口口径;
+    fx_pop_scope=incorporated 时用已合并人口 Σ(pop×incorporation));
     trade_open = 贸易量代理/GDP: 关税收入反推 (有效税率≥1%时),
     否则回退 Σtrade_capacity_usage —— 自由贸易法下依然可用。"""
     cfg = cfg or {}
@@ -11830,9 +11852,11 @@ def build_journal_data(snap):
     data["exchange_rates"] = snap.get("exchange_rates") or {}
     data["player_country_id"] = snap.get("player_country_id")
     data["govt"] = snap.get("govt_zh") or gov_to_name(snap.get("govt", "other"))
-    # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国), 供抬头/报头使用
+    # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国; 军政府→墨西哥共和国),
+    # 供抬头/报头使用; 军事独裁政府按共和法判断拼接
     from journal import full_country_name
-    data["player_full"] = full_country_name(data["player"], data["govt"])
+    data["player_full"] = full_country_name(data["player"], data["govt"],
+                                            snap.get("govt_law"))
     # 政体原始键 (如 gov_constitutional_empire), 供采访地点按政体标注"省/州"
     data["govt_key"] = snap.get("govt")
     # 首都: 由首都 state 的 hub 名(城市)解析, 失败回退州域名; 不再让模型凭空猜测

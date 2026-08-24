@@ -53,7 +53,7 @@
   "stock_monthly_wick_spread": 0.05,
   "stock_investment_enabled": true,
   "exchange_rate_enabled": true,
-  "fx_pop_scope": "incorporated",
+  "fx_pop_scope": "all",
   "currency_base_scale": 1.0,
   "fx_gdp_alpha": 0.35,
   "fx_trade_beta": 0.15,

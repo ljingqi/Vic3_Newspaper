@@ -1494,12 +1494,22 @@ STATE_FLAVOR_RULE = (
     "必须自然化入正文，与速写保持一致；州情指标以速写给出者为限。"
 )
 
-CURRENCY_RULE = (
-    "货币金额一律按资料给出的主辅币书写（如 1法郎=100生丁；"
-    "英镑为 1镑=20先令=240便士；卢比为 1卢比=16安那=192派），"
-    "禁止自造币名（毛/苏/铜板/银币等），不得自创汇率换算；"
-    "金额以资料给出者为限。"
-)
+def _currency_rule(data, article_key=None):
+    """货币书写规则 (正向, 只列与本文相关的币种)。
+
+    主币 = 我国币种 (data["currency"]); 文章数据可携带 units 列表
+    (如货架文出口目的地的币种, 由 journal_save._pool_shelf_data 提供)。
+    只输出相关币种的主辅币比例, 不再罗列他国币制, 也不用负向措辞。
+    """
+    base = data.get("currency") or journal.DEFAULT_CURRENCY
+    units = [base]
+    extra = ((data.get("magazine") or {}).get(article_key) or {}).get("units") or []
+    for u in extra:
+        if u and u != base and u not in units:
+            units.append(u)
+    segs = [f"{u}按「{journal.currency_system_text(u)}」书写" for u in units]
+    return ("货币金额一律按资料给出的币种书写：" + "；".join(segs)
+            + "。金额以资料给出者为限。")
 
 
 def _article_has_flavor(data, article_key):
@@ -1750,8 +1760,9 @@ def build_intro_messages(data):
         special_note = ("\n\n本期为《社会与法》专版：头版大案 + 两则案情简报。"
                         "导言须点明专版定位，预告大案与两则简报，并说明本期"
                         "三篇特稿同为罪案报道。")
-    # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国); 政体字段随之从抬头移除
-    full = journal.full_country_name(country, govt_zh)
+    # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国; 军政府→墨西哥共和国);
+    # 政体字段随之从抬头移除
+    full = journal.full_country_name(country, govt_zh, data.get("govt_law"))
     sys_msg = (
         f"你是《{country}》杂志的总编辑。本刊定位为19世纪的非虚构文学月刊, "
         "聚焦具体人物的命运, 以小人物与大人物映照时代大局。\n\n"
@@ -1829,7 +1840,7 @@ def build_lead_messages(article, data, intro):
         sys_msg += f"\n{STATE_FLAVOR_RULE}"
     if article["key"] in _CRIME_KEYS:
         sys_msg += f"\n{CRIME_TERM_RULE}"
-    sys_msg += f"\n{CURRENCY_RULE}"
+    sys_msg += f"\n{_currency_rule(data, article['key'])}"
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
         f"请先为全篇文章拟一个与本刊文风相称的标题，再写开篇板块《{sec['title']}》正文。"
@@ -1858,7 +1869,7 @@ def build_section_messages(article, section, data, intro, lead_text,
         sys_msg += f"\n{STATE_FLAVOR_RULE}"
     if article["key"] in _CRIME_KEYS:
         sys_msg += f"\n{CRIME_TERM_RULE}"
-    sys_msg += f"\n{CURRENCY_RULE}"
+    sys_msg += f"\n{_currency_rule(data, article['key'])}"
     lead_head = (f"本文开篇板块《{article['sections'][0]['title']}》内容摘要"
                  f"（以下为摘要，全文较长）:\n")
     if article["key"] in ("crime", "crime_big") and crime_card:

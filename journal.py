@@ -161,8 +161,8 @@ DEFAULT_CONFIG = {
     # 汇率体系 (2026-08-23): 1 英镑兑各币种汇率 = 历史铸币平价锚 × 相对人均GDP
     # 因子 × 贸易开放因子 × 确定性扰动, 逐年漂移钳制; 只作用于显示数值
     "exchange_rate_enabled": True,
-    # 汇率人口口径: incorporated=已合并人口(Σ州人口×并入进度) | all=总人口
-    "fx_pop_scope": "incorporated",
+    # 汇率人口口径: all=国家总人口 (人均GDP分母) | incorporated=已合并人口(Σ州人口×并入进度)
+    "fx_pop_scope": "all",
     # 历史平价锚放大系数 (1.0=纯历史铸币平价, 调大可整体放大展示金额)
     "currency_base_scale": 1.0,
     # 人均GDP 因子指数 (巴拉萨-萨缪尔森式 PPP 锚)
@@ -662,7 +662,9 @@ GOVT_NAMES = {
 #   - 「第二/第三/第四共和国」是正式国名的一部分 (法兰西第三共和国), 整段保留;
 #   - 游戏本地化的「君主国」按中文国名惯例写作「王国」(普鲁士王国而非普鲁士君主国),
 #     「凯撒国/沙皇国」按惯例作「帝国」(奥地利帝国/俄罗斯帝国);
-#   - 军事独裁政府/英王陛下政府/临时政府等不算国名后缀, 不拼接, 保留原国名;
+#   - 军事独裁政体按共和国法律拼接: 军政府(游戏保证总统共和法)→「共和国」;
+#     军事独裁政府仅在共和法下拼「共和国」, 独裁法下保留原国名;
+#     英王陛下政府/临时政府等不算国名后缀, 不拼接, 保留原国名;
 #   - 国名已以「国」结尾 (美利坚合众国/法兰西共和国/教宗国) 视为已完成, 直接豁免;
 #   - 国名已含后缀 (德川幕府+幕府) 不重复拼接。
 
@@ -681,6 +683,10 @@ _LEGACY_GOVT_ZH = {
     "french_2nd_republic_parliamentary": "第二共和国",
     "french_3rd_republic_parliamentary": "第三共和国",
     "french_4th_republic_parliamentary": "第四共和国",
+    "gov_junta": "军政府",
+    "junta": "军政府",
+    "gov_military_dictatorship": "军事独裁政府",
+    "military_dictatorship": "军事独裁政府",
 }
 
 # journal.py 旧口径的政体中文名 (带「制」等) → 规范政体名, 便于取后缀
@@ -717,25 +723,46 @@ _POLITY_TAIL_STD = {
 }
 
 
-def _polity_suffix(govt):
-    """政体名 → 拼入国名的正式后缀; 查不到(军事独裁政府等)返回 None。"""
+# 军事独裁政体 → 拼入国名的后缀 (2026-08-24 调研, 依据游戏本体定义):
+#   game/common/government_types/02_presidential_republics.txt:
+#   - gov_junta (军政府) 的 possible 强制要求 law_presidential_republic
+#     (总统共和法 + 无投票权 + 征兵/常备军 + 军方执政), 故法律上恒为共和国
+#     → 军政府 无条件拼「共和国」(墨西哥+军政府→墨西哥共和国);
+#   - gov_military_dictatorship (军事独裁政府) 可由 law_presidential_republic
+#     或 law_autocracy 产生 → 仅在共和法下拼「共和国」, 独裁法下不拼接。
+_JUNTA_REPUBLIC_LAWS = (
+    "law_presidential_republic", "law_parliamentary_republic",
+    "law_council_republic",
+)
+
+def _polity_suffix(govt, govt_law=None):
+    """政体名 → 拼入国名的正式后缀; 查不到(英王陛下政府等)返回 None。
+
+    govt_law: 现行政体法原始键 (如 law_presidential_republic), 用于判断
+    军事独裁政府是否基于共和法 (军政府恒为共和法, 见模块注释)。
+    """
     if not govt:
         return None
     g = _LEGACY_GOVT_ZH.get(govt) or _GOVT_ZH_ALIAS.get(govt, govt)
     g = g.strip()
     if not g:
         return None
+    if g == "军政府":
+        return "共和国"
+    if g == "军事独裁政府":
+        return "共和国" if govt_law in _JUNTA_REPUBLIC_LAWS else None
     for tail in _POLITY_TAILS:
         if g.endswith(tail):
             return _POLITY_TAIL_STD.get(tail, tail)
     return None
 
 
-def full_country_name(country, govt):
+def full_country_name(country, govt, govt_law=None):
     """把「国名 + 政体」拼成正式国名, 如 大清+专制帝国→大清帝国。
 
     - 国名已以「国」结尾 (美利坚合众国等) → 豁免, 原样返回;
-    - 政体名查不到国体后缀 (军事独裁政府等) → 不拼接, 原样返回;
+    - 政体名查不到国体后缀 (英王陛下政府等) → 不拼接, 原样返回;
+    - 军政府/军事独裁政府(共和法下) → 拼「共和国」(墨西哥共和国);
     - 国名已以该后缀结尾 (德川幕府+幕府) → 不重复拼接。
     """
     country = (country or "").strip()
@@ -743,7 +770,7 @@ def full_country_name(country, govt):
         return country
     if country.endswith("国"):
         return country
-    suffix = _polity_suffix(govt)
+    suffix = _polity_suffix(govt, govt_law)
     if not suffix:
         return country
     if country.endswith(suffix):
@@ -1363,7 +1390,8 @@ def render_overview(data, history=None):
     L = []
     capital = data.get('capital', '') or '（数据缺失，请根据国名常识补填该国的广为人知的都城名）'
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
-    full = full_country_name(data.get('player', '未知'), govt_zh)
+    full = full_country_name(data.get('player', '未知'), govt_zh,
+                             data.get("govt_law"))
     L.append(f"【国家】{full}  【都城】{capital}  【政体】{govt_zh}  【年份】{data.get('year', '?')}（{data.get('date', '')}）")
     unit = data.get("currency") or "英镑"
     gdp_v = data.get('gdp', '未知')
@@ -3180,7 +3208,7 @@ def build_masthead_messages(data, style=DEFAULT_STYLE):
     capital = data.get("capital", "")
     cap_note = capital if capital else "（数据缺失，请根据国名常识选用该国广为人知的都城名）"
     # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国); 政体字段随之从抬头移除
-    full = full_country_name(country, govt_zh)
+    full = full_country_name(country, govt_zh, data.get("govt_law"))
     sys_msg = (
         f"你是这份{st['name']}报纸的总编辑。本期报纸的关键变量如下，抬头中的国名必须**原样保留**正式国名：\n"
         f"【国名】{country}（合并政体后的正式国名：{full}）\n"
@@ -3237,10 +3265,9 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     num_guide = st.get("number_guide")
     if num_guide:
         parts.append(f"数字格式要求：{num_guide.replace('{CURRENCY}', unit)}")
-    # 主辅币制: 所有涉及金额的书写统一按资料币种的主辅币格式, 禁止自造币名
-    parts.append(f"货币规则：{currency_system_text(unit)}；金额一律按此主辅币"
-                 "书写（如 1法郎=100生丁），禁止自造币名（毛/苏/铜板/银币等），"
-                 "不得自创汇率换算。")
+    # 主辅币制: 涉及金额一律按资料币种的主辅币书写 (只列本国币种比例, 正向措辞)
+    parts.append(f"货币规则：金额一律按资料币种的主辅币书写（{currency_system_text(unit)}）；"
+                 "金额以资料给出者为限。")
     parts.append(f"本期报纸：【国名】={country}，【都城】={capital}。抬头如下，行文须与之呼应：\n{masthead}\n\n"
                  f"请撰写「{title}」板块。要求：{req}")
     sys_msg = "\n\n".join(parts)
