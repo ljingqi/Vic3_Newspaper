@@ -397,7 +397,7 @@ DOP_NOTES = {
     "law_anarchy": "当前实行无政府式民众自治，报纸无官方管制，可尖锐批评一切权力。",
     "law_universal_suffrage": "当前实行普选制，舆论开放，报纸可面向全体公民自由报道与评议。",
     "law_census_voting": "当前实行按识字与财产的人口普查投票，舆论较为开放，报纸面向有产与识字阶层。",
-    "law_single_party_state": "当前为一党制国家，报纸须与执政党路线保持一致，报道以建设成就为主线。",
+    "law_single_party_state": "当前为一党制国家，刊物与执政党路线保持一致，报道以建设成就、工业化与群众动员为主线。",
     "law_wealth_voting": "当前实行财富投票，舆论由有产者主导，报纸措辞审慎、偏向工商利益。",
     "law_landed_voting": "当前实行地产投票，舆论由地主与乡绅主导，报纸行文须顾及土地贵族的体面。",
     "law_elder_council": "当前由长老会议主政，报纸行文尊重长老与传统。",
@@ -431,6 +431,46 @@ GOVT_STANCE = {
     "chiefdom": "当前为酋邦/部族政体，报名宜带传统与社群色彩。",
     "other": "",
 }
+
+
+# ---------------------------------------------------------------------------
+# 极权主义政权 (一党制) 专属现代化文风
+# 一党制国家 (长枪党等) 不走文风档位的仿古/自由派基调, 一律使用现代
+# 机关报/统合宣传路线: 明快刚健的现代白话, 报道以建设成就与群众动员为主线。
+# ---------------------------------------------------------------------------
+
+TOTALITARIAN_DOPS = ("law_single_party_state",)
+
+TOTALITARIAN_STANCE = (
+    "当前为一党制国家，报名与行文宜带统合与动员色彩，使用现代白话。"
+)
+
+TOTALITARIAN_NEWS_NAME = "国家建设报（统合·现代）"
+
+TOTALITARIAN_NEWS_VOICE = (
+    "你是一位供职于现代国家机关刊物（党报/建设报）的总编辑，面向全体国民。"
+    "文风明快刚健、组织化，以现代白话书写；"
+    "报道以建设成就、工业化与群众动员为主线，"
+    "把个人命运纳入民族复兴的集体叙事，行文肯定而昂扬。"
+    "年份一律按公历纪年书写（如1878年）。{ERA}{VOTE}"
+    "使用简体中文与 Markdown。"
+    "铁律：仅基于给定事实合理演绎；"
+    "数据缺失时相应内容简写或略去；行文中以「本报」指代本报刊名。"
+)
+
+TOTALITARIAN_NEWS_MASTHEAD = (
+    "【报名】报名须与国名或都城相关，本政权宜采用《XX日报》《XX建设报》"
+    "《XX先锋报》《XX统合报》等现代体例，如都城墨西哥城可作《墨西哥城日报》。"
+    "若首都或政体数据缺失，则退而用国名拟定，如《墨西哥日报》。"
+)
+
+_TOTALITARIAN_MAG_VOICE = (
+    "本刊为国家统合运动旗下的现代机关刊物，编辑立场与执政党路线一致。"
+    "文风明快刚健、组织化，以现代白话书写；"
+    "叙事重心放在建设现场——工厂、铁路、课堂、诊室与街巷，"
+    "把个人命运纳入民族复兴的集体叙事，报道以建设成就、工业化与群众动员为主线。"
+    "年份一律按公历纪年书写（如1878年）。"
+)
 
 
 # 治理原则法律 -> 政体类别 (最可靠口径: 存档现行治理法)
@@ -797,6 +837,18 @@ def resolve_newspaper_style(data, cfg=None):
     tier = resolve_tier(score, cat, dop)
     tmpl = MODERNITY_TIERS[tier]
     stance = GOVT_STANCE.get(cat, "")
+    if dop in TOTALITARIAN_DOPS:
+        # 极权主义政权 (一党制): 现代机关报文风, 数字一律阿拉伯, 不随档位仿古
+        tmpl = dict(tmpl)
+        tmpl["name"] = TOTALITARIAN_NEWS_NAME
+        tmpl["voice"] = TOTALITARIAN_NEWS_VOICE
+        tmpl["masthead"] = TOTALITARIAN_NEWS_MASTHEAD
+        tmpl["number_format"] = "arabic"
+        tmpl["number_guide"] = (
+            "一律使用阿拉伯数字并加千分位分隔符（如46,077,267{CURRENCY}、"
+            "21,862,816人、69.45%）。"
+        )
+        stance = TOTALITARIAN_STANCE
     vote = DOP_NOTES.get(dop, "")
     # 时代定位按科技实际水平(基础档)描述; 政体/投票权只决定最终文风档位
     era = build_era_profile(tech_keys, _tier_from_score(score))
@@ -823,10 +875,14 @@ def resolve_newspaper_style(data, cfg=None):
 def resolve_magazine_voice(data):
     """动态杂志基调: 政体底色 + 投票权现状 + 时代定位。"""
     cat = govt_category(data)
-    base = GOVT_PROMPTS.get(cat, GOVT_PROMPTS["other"])
+    dop = dop_law(data)
+    if dop in TOTALITARIAN_DOPS:
+        # 极权主义政权 (一党制): 现代机关刊物文风, 不走仿古基调
+        base = _TOTALITARIAN_MAG_VOICE
+    else:
+        base = _strip_name_guide(GOVT_PROMPTS.get(cat, GOVT_PROMPTS["other"]))
     tech_keys = data.get("tech_keys") or []
     score = modernity_score(tech_keys)
-    dop = dop_law(data)
     tier = resolve_tier(score, cat, dop)
     parts = [base]
     note = DOP_NOTES.get(dop)
@@ -834,6 +890,39 @@ def resolve_magazine_voice(data):
         parts.append(f"投票权现状：{note}")
     parts.append(f"时代定位：{build_era_profile(tech_keys, _tier_from_score(score))}")
     return "\n".join(parts)
+
+
+def _strip_name_guide(prompt):
+    """剥离基调文本中的「刊名…」句子: 杂志刊名已由程序派生 (derive_magazine_name)
+    并以【刊名】变量下发, 不再把拟名规则交给模型, 避免与既定刊名重复/误导。"""
+    if not prompt:
+        return prompt
+    sents = [s for s in str(prompt).split("。") if s.strip()]
+    keep = [s for s in sents if "刊名" not in s]
+    return "。".join(keep) + ("。" if keep else "")
+
+
+# 杂志刊名后缀: 按文风档位派生 (与 MAGAZINE_TITLE_GUIDES / MODERNITY_TIERS 呼应)。
+# 档位 resolve_tier 由科技分支 (score) + 政体法律 (cat) + 投票权法律 (dop) 共同
+# 决定, 故法律或科技变化时刊名后缀随之变化; 未变化时全年稳定, 不再逐年重拟。
+_MAGAZINE_NAME_SUFFIX = {
+    1: "纪事",
+    2: "月刊",
+    3: "杂志",
+    4: "评论",
+    5: "思潮",
+}
+
+
+def derive_magazine_name(data):
+    """本期杂志刊名: 首都名 (缺省国名) + 文风档位后缀, 确定性派生。"""
+    base = str(data.get("capital") or data.get("player") or "未知").strip()
+    try:
+        tier = style_tier_from_data(data)
+    except Exception:
+        tier = 3
+    suffix = _MAGAZINE_NAME_SUFFIX.get(tier, "月刊")
+    return f"{base}{suffix}"
 
 
 def style_tier_from_data(data):

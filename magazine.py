@@ -281,7 +281,7 @@ POOL = {
                 "以样本州的下层民众为主角，写国家服务覆盖到最基层的一日：识字、收支、"
                 "接受度以数据为准，写课堂、诊室或衙门中的具体场景。"
                 "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情"
-                "对应写作其投资得失，行情数字以资料为限，不得另造。"
+                "对应写作其投资得失，行情数字一律以资料给出者为限。"
             )},
             {"key": "lights", "title": "灯火与课本", "req": (
                 "以全国识字率与激进派占比收束，展望国家与民众的关系，行文含蓄克制。"
@@ -304,7 +304,7 @@ POOL = {
                 "以样本州某一人群为主角：资料已明确其投票资格，严格按资料写"
                 "投票日履行权利或站在门外的场景。"
                 "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情"
-                "对应写作其投资得失，行情数字以资料为限，不得另造。"
+                "对应写作其投资得失，行情数字一律以资料给出者为限。"
             )},
             {"key": "future", "title": "来年的潮水", "req": (
                 "以政治运动与立法动态收束，展望选举与权利的未来，立法结果以资料为准。"
@@ -324,7 +324,7 @@ POOL = {
                 "以样本州一户下层家庭的收支、消费画像与恩格尔系数，写物价如何落在餐桌上，"
                 "数据以给定为准。"
                 "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情"
-                "对应写作其投资得失，行情数字以资料为限，不得另造。"
+                "对应写作其投资得失，行情数字一律以资料给出者为限。"
             )},
             {"key": "market", "title": "市场的涨落", "req": (
                 "罗列几件商品的市价（及资料给出的较上年涨落），写市场涨落背后的贸易与生产。"
@@ -1603,7 +1603,11 @@ def _voice(data):
         prompt = style.resolve_magazine_voice(data)
     else:
         cat = style.govt_category(data)
-        prompt = style.GOVT_PROMPTS.get(cat, style.GOVT_PROMPTS["other"])
+        if style.dop_law(data) in style.TOTALITARIAN_DOPS:
+            prompt = style._TOTALITARIAN_MAG_VOICE
+        else:
+            prompt = style._strip_name_guide(
+                style.GOVT_PROMPTS.get(cat, style.GOVT_PROMPTS["other"]))
     m = data.get("magazine") or {}
     at_war = data.get("player_at_war")
     if at_war is None:
@@ -1671,16 +1675,50 @@ def _intro_framework(data):
 
 
 def _intro_article_preview(data):
-    """导言用三篇特稿预告: 文章默认标题 + 主题 (最终标题由模型按文风拟题)。"""
+    """导言用三篇特稿预告: 文章标题 (预生成/默认) + 主题。
+    标题由 _generate_article_titles 预生成后统一下发, 导言与正文同名,
+    不再出现导言写默认题 (如《为人民服务》) 而正文另拟题的不同名。"""
     arts = _build_article_list(data)
+    pre = (((data.get("magazine") or {}).get("pool") or {})
+           .get("article_titles") or {})
     marks = "①②③④⑤"
     parts = []
     for i, a in enumerate(arts, 1):
-        title = a.get("default_title") or a.get("title") or a.get("key")
+        title = (pre.get(a["key"]) or a.get("default_title")
+                 or a.get("title") or a.get("key"))
         theme = a.get("theme") or ""
         mark = marks[i - 1] if i <= len(marks) else f"{i}."
         parts.append(f"{mark}《{title}》" + (f"（{theme}）" if theme else ""))
     return " ".join(parts)
+
+
+def _generate_article_titles(data, cfg):
+    """一期文章标题预生成 (一次 LLM 调用, 按文章顺序每行一个):
+    供导言预告与各板块统一使用, 保证同一篇文章全刊同名。"""
+    articles = _build_article_list(data)
+    guide = style.resolve_magazine_title_guide(data)
+    voice = _voice(data)
+    themes = "\n".join(
+        f"{i + 1}. " + (a.get("theme") or a.get("default_title") or a["key"])
+        for i, a in enumerate(articles))
+    sys_msg = (
+        f"你是《{data.get('player', '未知')}》杂志的特稿编辑。本刊基调:\n{voice}\n\n"
+        f"{guide}\n"
+        "为本期特稿各拟一个正式标题：每个标题不超过24字，与主题一一对应；"
+        "输出时每行一个，标题文字紧贴行首。"
+    )
+    user_msg = f"本期{len(articles)}篇特稿主题:\n{themes}"
+    msgs = [{"role": "system", "content": sys_msg},
+            {"role": "user", "content": user_msg}]
+    text = journal.call_deepseek(msgs, cfg).strip()
+    cands = [re.sub(r"^[①②③④⑤\d]+[.、)]?\s*", "", ln).strip("《》 \t")
+             for ln in text.splitlines() if ln.strip()]
+    out = {}
+    for i, a in enumerate(articles):
+        fallback = a.get("default_title") or a.get("title") or a["key"]
+        cand = cands[i] if i < len(cands) else ""
+        out[a["key"]] = cand if 2 <= len(cand) <= 24 else fallback
+    return out
 
 
 def _lead_digest(text, limit=260, tail=180):
@@ -1826,20 +1864,22 @@ def build_intro_messages(data):
     # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国; 军政府→墨西哥共和国);
     # 政体字段随之从抬头移除
     full = journal.full_country_name(country, govt_zh, data.get("govt_law"))
+    mag_name = style.derive_magazine_name(data)
     sys_msg = (
         f"你是《{country}》杂志的总编辑。本刊定位为19世纪的非虚构文学月刊, "
         "聚焦具体人物的命运, 以小人物与大人物映照时代大局。\n\n"
         f"本期关键变量(抬头中的国名必须原样保留正式国名):\n"
+        f"【刊名】《{mag_name}》(经编辑部审定, 导言抬头一律使用该刊名)\n"
         f"【国名】{country}（合并政体后的正式国名：{full}）\n"
         f"【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
         f"本刊基调:\n{_voice(data)}\n\n"
         f"{count_txt}: {preview}。{special_note}\n\n"
         f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}\n"
-        "请先拟定刊名(据都城/国名+政体惯例, 如《巴黎纪事月刊》), 撰写杂志导言: "
-        f"概括本年度大势, 预告{count_txt}, 并点明本刊的政体立场。"
+        "撰写杂志导言: 概括本年度大势, 预告"
+        f"{count_txt}, 并点明本刊的政体立场。"
         "导言正文控制在约400–600字。"
         "输出格式:\n"
-        "# 《刊名》\n"
+        f"# 《{mag_name}》\n"
         f"国名：{full}｜都城：Y｜年份：W\n\n"
         "导言正文..."
     )
@@ -1851,12 +1891,13 @@ def build_intro_messages(data):
             "\n本期我国无战事记录，各板块均按和平年代写作。"
         )
     user_msg = (
-        f"本期杂志: 【国名】{country}（正式国名 {full}）, 【都城】{capital}, "
-        f"【政体】{govt_zh}, 【年份】{year}。"
-        f"\n抬头中的国名按正式国名「{full}」一字不改写入。"
+        f"本期杂志: 【刊名】《{mag_name}》, 【国名】{country}（正式国名 {full}）, "
+        f"【都城】{capital}, 【政体】{govt_zh}, 【年份】{year}。"
+        f"\n抬头中的国名按正式国名「{full}」一字不改写入, "
+        f"刊名按「{mag_name}」原样写入。"
         "\n\n本期数据框架（以下资料为唯一事实依据）：\n"
         f"{_intro_framework(data)}\n\n"
-        "请据上述变量与数据框架拟定刊名并撰写导言。"
+        "请据此撰写导言。"
     )
     return [{"role": "system", "content": sys_msg},
             {"role": "user", "content": user_msg}]
@@ -1885,17 +1926,12 @@ def _article_display_title(article, generated=None):
 def build_lead_messages(article, data, intro):
     sec = article["sections"][0]
     facts = render_facts(article["key"], sec["key"], data)
-    title_guide = ""
-    try:
-        title_guide = style.resolve_magazine_title_guide(data)
-    except Exception:
-        pass
+    title = _article_display_title(article)
     sys_msg = (
-        f"你是本刊特稿《{_article_display_title(article)}》的主笔。本刊基调:\n{_voice(data)}\n\n"
+        f"你是本刊特稿《{title}》的主笔。本刊基调:\n{_voice(data)}\n\n"
         f"这是文章的开篇板块《{sec['title']}》, 需立起全篇的人物与场景。要求: {sec['req']}\n\n"
         f"篇幅要求：开篇板块正文控制在800–1200字，立起人物与场景。\n\n"
-        f"文章标题拟题指南（为本期特稿拟一个正式标题，与正文分开）: {title_guide}\n\n"
-        "注意：本期三篇文章标题各不相同、各具面目。\n\n"
+        f"本篇文章标题已定为《{title}》，正文按该标题撰写。\n\n"
         f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}"
     )
     if _article_has_flavor(data, article["key"]):
@@ -1905,10 +1941,9 @@ def build_lead_messages(article, data, intro):
     sys_msg += f"\n{_currency_rule(data, article['key'])}"
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
-        f"请先为全篇文章拟一个与本刊文风相称的标题，再写开篇板块《{sec['title']}》正文。"
-        f"相关数据如下:\n"
-        f"{facts}\n\n输出格式：第一行直接输出文章标题（无井号、无『标题：』前缀，"
-        f"不超过24字），空一行后输出开篇板块正文，正文使用 Markdown 格式。"
+        f"请撰写开篇板块《{sec['title']}》正文。相关数据如下:\n"
+        f"{facts}\n\n输出格式：第一行输出文章标题《{title}》，空一行后输出开篇板块正文，"
+        "正文使用 Markdown 格式。"
         "开篇正文分为 2~4 个自然段（每段聚焦一个场景或时序），"
         "段与段之间以空行分隔（Markdown 段落）。"
     )
@@ -2140,10 +2175,24 @@ def generate_magazine(data, cfg, force=True):
         journal.log(f"[{year}年] 保存杂志数据失败: {e}")
 
     articles = _build_article_list(data)
+    # 文章标题预生成 (一次调用): 导言预告与全部板块统一使用同一标题,
+    # 避免导言写默认题(如《为人民服务》)而正文另拟题的刊内不同名。
+    try:
+        title_cfg = dict(cfg)
+        title_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 600)
+        pre_titles = _generate_article_titles(data, title_cfg)
+        for a in articles:
+            pt = pre_titles.get(a["key"])
+            if pt:
+                a["default_title"] = pt
+        ((data.setdefault("magazine", {})).setdefault("pool", {})
+         )["article_titles"] = pre_titles
+    except Exception as e:
+        journal.log(f"[{year}年] 文章标题预生成失败, 使用默认标题: {e}")
     n_lead = len(articles)
     n_rest = sum(len(a["sections"]) - 1 for a in articles)
-    journal.log(f"[{year}年] 开始生成杂志: 导言 + {n_lead}首板块 + {n_rest}板块 "
-                f"(共{1 + n_lead + n_rest}次调用)...")
+    journal.log(f"[{year}年] 开始生成杂志: 标题预生成 + 导言 + {n_lead}首板块 + {n_rest}板块 "
+                f"(共{2 + n_lead + n_rest}次调用)...")
     intro_cfg = dict(cfg)
     intro_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 1500)
     intro = journal.call_deepseek(build_intro_messages(data), intro_cfg).strip()
@@ -2172,6 +2221,11 @@ def generate_magazine(data, cfg, force=True):
             fallback = (article.get("default_title")
                         or article.get("title") or article["key"])
             title, body = _parse_article_title(text, fallback)
+            # 标题一致性安全网: 预生成标题已由程序给定, 模型偏离时强制回收,
+            # 保证导言预告/首板块/后续板块全刊同名。
+            fixed = article.get("default_title") or article.get("title")
+            if fixed and title != fixed:
+                title = fixed
             if article["key"] in _CRIME_KEYS:
                 # 罪案称谓安全网: 提示词已要求, 此处兜底硬性词汇要求
                 title = title.replace("凶手", "嫌疑人")

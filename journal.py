@@ -1278,19 +1278,19 @@ SECTION_DEFS = [
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
      "以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，融入叙事作风味。"
      "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
-     "其投资得失，行情数字以资料为限，不得另造。"),
+     "其投资得失，行情数字一律以资料给出者为限。"),
     ("peer", "邻里富户", "与民生访谈同一建筑内生活水平最高的人群（富户），"
      "以同样的访谈体写其衣食住行与收支，并体现该人群政治倾向与参与比例最高的两个政治运动，"
      "与民生访谈形成贫富对照，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
      "融入叙事作风味。"
      "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
-     "其投资得失，行情数字以资料为限，不得另造。"),
+     "其投资得失，行情数字一律以资料给出者为限。"),
     ("unemployed", "失业民生", "仅当样本州失业率超过5%时发送：报道该州失业状况，"
      "采访失业人群中人口最多的一群（同访谈体），体现给定失业率，并体现该人群政治倾向"
      "与参与比例最高的两个政治运动，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
      "融入叙事作风味。"
      "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
-     "其投资得失，行情数字以资料为限，不得另造。"),
+     "其投资得失，行情数字一律以资料给出者为限。"),
     ("comment", "本报评论", "编辑部评论，结合历年发展对照，评述国运与民生之变迁。"),
     ("ads", "广告与启示", "围绕本期提供的已研发科技创作一两条趣味广告："
      "至少一条须直接体现所选科技，富有时代气息。"),
@@ -2365,16 +2365,18 @@ def render_epidemic(data, history=None):
                 prev_ep = pe
                 break
     prev_by_id = {o.get("id"): o for o in (prev_ep or {}).get("outbreaks") or []}
+    # 行政区划称谓随政体 (州/省), 与杂志疫情特稿同口径
+    div = _division_label(data.get("govt_key")) or "州"
     for ob in ob_list:
         waves_txt = "分多波袭来" if (ob.get("waves") or 1) > 1 else "一波未平"
         L.append(f"- 疫病：{ob.get('disease')}（俗称{ob.get('alias')}），自{ob.get('since')}年"
                  f"流行至今，本年已第{ob.get('age')}年（预计持续{ob.get('total_duration')}年，"
                  f"{waves_txt}）。")
         L.append(f"- 传播途径：{ob.get('trans')}；本时代应对此病的通行手段：{ob.get('measures')}。")
-        L.append(f"- 蔓延情形（波及 {len(ob.get('states') or [])} 个州）：")
+        L.append(f"- 蔓延情形（波及 {len(ob.get('states') or [])} 个{div}）：")
         for s in ob.get("states") or []:
             L.append(f"  - 「{s.get('name')}」{s.get('status')}：累计染病 "
-                     f"{_fmt_epidemic_num(s.get('infected'))} 人（约占该州人口"
+                     f"{_fmt_epidemic_num(s.get('infected'))} 人（约占该{div}人口"
                      f"{s.get('infection_rate_pct')}%）、死亡 {_fmt_epidemic_num(s.get('deaths'))} 人")
         if ob.get("spread_to"):
             L.append(f"- 本年疫情由疫区新传至：「{'、'.join(ob['spread_to'])}」")
@@ -3925,11 +3927,19 @@ def build_masthead_messages(data, style=DEFAULT_STYLE):
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
     country = data.get("player", "未知")
     year = data.get("year", "?")
-    # 若首都缺失, 提示模型据国名常识选用该国广为人知的都城名
+    # 都城缺失时才下发「按国名常识补填都城名」的指引; 都城已知时不出现该句
     capital = data.get("capital", "")
     cap_note = capital if capital else "（数据缺失，请根据国名常识选用该国广为人知的都城名）"
+    cap_fallback = ("都城数据缺失，请根据国名常识选用该国广为人知的都城名。"
+                    if not capital else "")
     # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国); 政体字段随之从抬头移除
     full = full_country_name(country, govt_zh, data.get("govt_law"))
+    _reqs = ["抬头中的国名按正式国名**一字不改**写入。"]
+    if cap_fallback:
+        _reqs.append(cap_fallback)
+    _reqs.append(f"只输出 Markdown 抬头，格式：\n# 《报名》"
+                 f"\n国名：{full}｜都城：{cap_note}｜年份：{year}")
+    _numbered = "\n".join(f"{i}. {r}" for i, r in enumerate(_reqs, 1))
     sys_msg = (
         f"你是这份{st['name']}报纸的总编辑。本期报纸的关键变量如下，抬头中的国名必须**原样保留**正式国名：\n"
         f"【国名】{country}（合并政体后的正式国名：{full}）\n"
@@ -3937,16 +3947,16 @@ def build_masthead_messages(data, style=DEFAULT_STYLE):
         f"【政体】{govt_zh}\n"
         f"【年份】{year}\n\n"
         f"{st['masthead']}\n\n"
-        "请据此取报名并撰写抬头。要求：\n"
-        "1. 抬头中的国名按正式国名**一字不改**写入。\n"
-        "2. 都城若缺失，请用该国广为人知的都城名。\n"
-        f"3. 只输出 Markdown 抬头，格式：\n# 《报名》\n国名：{full}｜都城：{cap_note}｜年份：{year}"
+        f"请据此取报名并撰写抬头。要求：\n{_numbered}"
     )
+    _user_cap = ("都城数据缺失，请根据国名常识选用该国广为人知的都城名"
+                 if cap_fallback else "")
     user_msg = (
         f"本期报纸：【国名】={country}（正式国名 {full}），【都城】={cap_note}，"
         f"【政体】={govt_zh}，【年份】={year}。"
-        f"请据此撰写抬头（抬头中的国名须按正式国名「{full}」一字不改写入；"
-        "都城若缺失，请根据常识补填该国广为人知的都城名）。"
+        f"请据此撰写抬头（抬头中的国名须按正式国名「{full}」一字不改写入"
+        + (f"；{_user_cap}" if _user_cap else "")
+        + "）。"
     )
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
@@ -3991,6 +4001,10 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
         ads_guide = st.get("ads_guide")
         if ads_guide:
             req = f"{req}\n{ads_guide}"
+    elif key == "epidemic":
+        # 疫情专电板块要求中的行政区域称谓随政体 (州/省) 动态替换
+        div = _division_label(data.get("govt_key")) or "州"
+        req = req.replace("首发与蔓延的州", f"首发与蔓延的{div}")
     parts = [st["voice"], FACT_GUIDE]
     num_guide = st.get("number_guide")
     if num_guide:

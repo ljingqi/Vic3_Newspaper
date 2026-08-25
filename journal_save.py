@@ -1645,18 +1645,21 @@ def _aggregate_pops(data, state_ids, pops=None):
 # 家庭采访: 随机选一个玩家州的一个 POP, 提取其生活水平/收支/消费结构
 # ---------------------------------------------------------------------------
 
-# weekly_budget 13 分量的经验含义 (存档引擎内部顺序, 2026-08-17 实采校准):
+# weekly_budget 13 分量的经验含义 (存档引擎内部顺序, 2026-08-25 全库实采校准):
 #   收入: 0=工资, 1=自给产出(农民为主), 2=被抚养者收入,
 #         3=福利救济 (Social Security: 工资低于门槛者的政府补贴),
 #         4=分红/投资收入, 5=杂项收入, 6=政府转移支付
-#   支出: 7=商品消费, 8=(未用), 9=所得税, 10=消费税, 11=红利税, 12=人头税
-#   人头税按总人口征收 (law_per_capita_based_taxation, 中档费率0.7;
-#   实采校验: 税额/劳动力最高 1.79>0.7 不可能, 税额/总人口最高 0.46<0.7 吻合)。
+#   支出: 7=商品消费, 8=(未用), 9=所得税, 10=人头税, 11=红利税, 12=消费税
+#   第10槽=人头税 (Poll Taxes 总称, 含土地税变体: 土地税向农民/农户征收,
+#   人均税向非农民征收, 二者并入同一槽位; 任何税收法律下都随税级征收),
+#   按总人口征收 (实采: 槽10 与总人口相关 0.908 > 与劳动力相关 0.889)。
+#   第12槽=消费税, 仅当存档 taxed_goods 非空 (玩家对指定商品开征) 才征收,
+#   按劳动力均摊; taxed_goods 缺失时槽12恒为0, 提示词不得出现「消费税」。
 _FAMILY_INCOME_SLOTS = ((0, "工资"), (1, "自给收入"), (2, "被抚养者收入"),
                         (3, "福利救济"), (4, "分红/投资收入"),
                         (5, "杂项收入"), (6, "政府转移支付"))
-_FAMILY_EXPENSE_SLOTS = ((7, "商品消费"), (9, "所得税"), (10, "消费税"),
-                         (11, "红利税"), (12, "人头税"))
+_FAMILY_EXPENSE_SLOTS = ((7, "商品消费"), (9, "所得税"), (10, "人头税"),
+                         (11, "红利税"), (12, "消费税"))
 
 # 游戏出生/死亡率基础公式常数 (00_defines.txt, NPops 段, 按月)
 _GROWTH_MIN_BIRTH = 0.00060
@@ -2058,6 +2061,29 @@ def _building_production_methods(data, bid):
     return [p for p in pms if isinstance(p, str)] if isinstance(pms, list) else []
 
 
+# 「否定态」生产方式 (如 无冷藏/无飞艇/无灯街道): 描述缺省/未采用状态, 不构成
+# 生产方式事实, 一律不传给模型, 以免模型注意力被「无」字带偏。判定须同时满足
+# 键名符合游戏缺省约定 (pm_no_*/pm_unrefrigerated/*_no_effect) 与中文名以「无」
+# 开头; 无花果园(无花果=fig)、无线电生产、国家无神论(pm_no_urban_clergy)等
+# 语义真实的生产方式不受影响。
+_ABSENT_PM_KEY_RE = re.compile(r"(?:^pm_no_|_no_effect|^pm_unrefrigerated)")
+_ABSENT_PM_ZH_RE = re.compile(r"^无")
+
+
+def _is_absent_pm(pm_key, zh_name):
+    """判定某生产方式是否为「否定态」(缺省/未采用) 项。"""
+    if not _ABSENT_PM_KEY_RE.search(str(pm_key or "")):
+        return False
+    return bool(zh_name and _ABSENT_PM_ZH_RE.match(str(zh_name)))
+
+
+def _drop_absent_pms(pairs):
+    """按 (pm_key, 中文名) 对剔除否定态生产方式, 返回保留的中文名列表。"""
+    if not pairs:
+        return pairs
+    return [nm for pk, nm in pairs if not _is_absent_pm(pk, nm)]
+
+
 def _pm_names_zh(pms, drop_raw=False):
     """生产方式 key 列表 → 中文名列表 (本地化, 含 $引用$ 解析)。
     drop_raw=True 时丢弃未本地化的 key (与杂志 shelf 口径一致), 否则保留原 key。
@@ -2065,7 +2091,7 @@ def _pm_names_zh(pms, drop_raw=False):
     if not pms:
         return None
     loc = _load_loc_all()
-    names = []
+    pairs = []
     for pm in pms:
         nm = loc.get(pm) or pm
         seen = {pm}
@@ -2078,8 +2104,9 @@ def _pm_names_zh(pms, drop_raw=False):
         if drop_raw and (nm == pm or "$" in str(nm)
                          or str(nm).startswith("pm_")):
             continue
-        if nm and nm not in names:
-            names.append(nm)
+        if nm and all(n != nm for _pk, n in pairs):
+            pairs.append((pm, nm))
+    names = _drop_absent_pms(pairs)
     return names or None
 
 
@@ -2934,6 +2961,39 @@ def _family_children_count(rng, birth_rate_pct=None):
     return rng.choices(range(8), weights=weights)[0]
 
 
+def _pop_budget_rates(wb, wf, dep):
+    """weekly_budget 槽位 → 家庭账本口径月人均率 (家庭采访/餐桌账本共用)。
+    支出按劳动力均摊, 唯人头税 (槽10, 含土地税变体) 按总人口征收 (实采校验);
+    槽12 为消费税, 仅 taxed_goods 非空时非零。返回未取整 dict。"""
+    wf_f = float(wf) if wf else 0.0
+    dep_f = float(dep) if dep else 0.0
+    pop_f = wf_f + dep_f
+    _m = 52 / 12
+
+    def _slot_rate(idx, denom):
+        v = wb[idx] if idx < len(wb) and isinstance(wb[idx], (int, float)) else 0.0
+        return v / denom * _m if denom > 0 else 0.0
+
+    def _exp_rate(idx, denom):
+        v = wb[idx] if idx < len(wb) and isinstance(wb[idx], (int, float)) else 0.0
+        return abs(v) / denom * _m if denom > 0 else 0.0
+
+    return {
+        "wage": _slot_rate(0, wf_f),
+        "subsistence": _slot_rate(1, wf_f),
+        "dependent": _slot_rate(2, dep_f),
+        "welfare": _slot_rate(3, wf_f),
+        "dividends": _slot_rate(4, wf_f),
+        "other": _slot_rate(5, wf_f),
+        "transfers": _slot_rate(6, wf_f),
+        "goods": _exp_rate(7, wf_f),
+        "income_tax": _exp_rate(9, wf_f),
+        "consumption_tax": _exp_rate(12, wf_f),
+        "dividend_tax": _exp_rate(11, wf_f),
+        "poll_tax": _exp_rate(10, pop_f),
+    }
+
+
 def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
                      building_map=None, incorporation=None, harvest_conditions=None,
                      pop_needs=None, hub_names=None, price_map=None, vital=None,
@@ -2996,34 +3056,8 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
     # 分红/投资/自给/补贴与全部支出分项均按劳动力均摊 (家庭账本口径:
     # 「支出除以劳动力人数」); 唯人头税按总人口征收 (实采校验)。游戏中妇女
     # 默认计入受抚养人口, 是否计入劳动力由女权法律决定 (wife_works 由上层判定)。
-    wf_f = float(wf) if wf else 0.0
-    dep_f = float(dep) if dep else 0.0
-    pop_f = wf_f + dep_f
-    _m = 52 / 12
-
-    def _slot_rate(idx, denom):
-        v = wb[idx] if idx < len(wb) and isinstance(wb[idx], (int, float)) else 0.0
-        return v / denom * _m if denom > 0 else 0.0
-
-    def _exp_rate(idx, denom):
-        v = wb[idx] if idx < len(wb) and isinstance(wb[idx], (int, float)) else 0.0
-        return abs(v) / denom * _m if denom > 0 else 0.0
-
-    budget_rates = {
-        "wage": _slot_rate(0, wf_f),
-        "subsistence": _slot_rate(1, wf_f),
-        "dependent": _slot_rate(2, dep_f),
-        "welfare": _slot_rate(3, wf_f),
-        "dividends": _slot_rate(4, wf_f),
-        "other": _slot_rate(5, wf_f),
-        "transfers": _slot_rate(6, wf_f),
-        "goods": _exp_rate(7, wf_f),
-        "income_tax": _exp_rate(9, wf_f),
-        "consumption_tax": _exp_rate(10, wf_f),
-        "dividend_tax": _exp_rate(11, wf_f),
-        "poll_tax": _exp_rate(12, pop_f),
-    }
-    budget_rates = {k: round(v, 4) for k, v in budget_rates.items()}
+    budget_rates = {k: round(v, 4)
+                    for k, v in _pop_budget_rates(wb, wf, dep).items()}
     # 社会阶层与合成分红 (2026-08-24, 测试集六): 中上阶级人群无论是否有真实
     # 分红都给一个股票标的; 真实分红为 0 时按月收入比例合成一份「分红/投资
     # 收入」 (股息率按阶级取 中产6%/上等9%, 19 世纪地方企业合理区间), 供
@@ -5736,10 +5770,14 @@ _POOL_DOP_LAWS = (
     "law_landed_voting", "law_wealth_voting", "law_census_voting",
     "law_universal_suffrage", "law_anarchy", "law_single_party_state",
 )
-# 神圣庄严的权利入池资格: 仅当全国实行上述四类选举法律之一
+# 神圣庄严的权利入池资格: 实行四类选举法律之一, 或实行一党制 (游戏内
+# 一党制国家带 country_voting_power_base_add, 依 country_has_voting_franchise
+# 判定必有选举, 惟参选政党仅执政党一家; 实采: 一党制墨西哥各州存在
+# population_eligible_voters 数据)。
 _POOL_VOTE_LAWS = frozenset((
     "law_landed_voting", "law_wealth_voting",
     "law_census_voting", "law_universal_suffrage",
+    "law_single_party_state",
 ))
 
 # 罪案与法网: 警察机构(Policing)法律组 / 国内安全(Internal Security)法律组
@@ -5751,6 +5789,29 @@ _POOL_INTERNAL_SECURITY_LAWS = (
     "law_no_home_affairs", "law_national_guard", "law_secret_police",
     "law_shinsengumi", "law_guaranteed_liberties",
 )
+# 为人民服务: 其余机构的现行法组 (福利/劳工权利/殖民事务)
+_POOL_WELFARE_LAWS = (
+    "law_no_social_security", "law_chiefs_distribute_aid", "law_poor_laws",
+    "law_wage_subsidies", "law_old_age_pension",
+)
+_POOL_LABOR_RIGHTS_LAWS = (
+    "law_no_workers_rights", "law_regulatory_bodies", "law_worker_protections",
+)
+_POOL_COLONIAL_LAWS = (
+    "law_no_colonial_affairs", "law_frontier_colonization",
+    "law_colonial_resettlement", "law_colonial_exploitation",
+)
+# 机构 → (法律称谓, 该机构对应的法律组): 国家机构投入须点出当下施行的具体法律
+# (如内务法律为秘密警察), 否则模型不知道法律细节而写作失真。
+_POOL_INSTITUTION_LAW_GROUPS = {
+    "institution_home_affairs": ("内务法律", _POOL_INTERNAL_SECURITY_LAWS),
+    "institution_police": ("警务法律", _POOL_POLICING_LAWS),
+    "institution_schools": ("教育法律", _POOL_EDUCATION_LAWS),
+    "institution_health_system": ("卫生法律", _POOL_HEALTH_LAWS),
+    "institution_social_security": ("福利法律", _POOL_WELFARE_LAWS),
+    "institution_workplace_safety": ("劳工权利法律", _POOL_LABOR_RIGHTS_LAWS),
+    "institution_colonial_affairs": ("殖民法律", _POOL_COLONIAL_LAWS),
+}
 
 # 机构投资等级 → 自然语言档位 (单一来源在 journal.py, 经 _journal 复用,
 # 提示词不传 1级/2级 这类裸数字)
@@ -5805,7 +5866,8 @@ def _pool_building_text(melted, ctx, cid, bid, obj, loc, gm, pops=None, place=No
     for p in pms:
         v = loc.get(p)
         if v and "$" not in v and v != p and not str(v).startswith("pm_"):
-            pms_zh.append(v)
+            if not _is_absent_pm(p, v):
+                pms_zh.append(v)
     if pms_zh:
         bits.append("采用" + "、".join(pms_zh))
     try:
@@ -6650,20 +6712,24 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     insts = _country_institution_levels(melted, cid) or {}
     unit = currency_unit(country_obj=country)
     laws = query_laws(melted, cid)
-    edu = next((l for l in _POOL_EDUCATION_LAWS if l in laws), None)
-    health = next((l for l in _POOL_HEALTH_LAWS if l in laws), None)
     state_ids = _pool_state_ids(snap)
     states = snap.get("states") or []
     if insts:
         lead = ["国家机构投入：" + "；".join(
             f"{loc.get(k, k)}：{_journal._institution_level_zh(v)}"
             for k, v in sorted(insts.items())) + "。"]
+        # 机构对应法律组的现行法 (如 内务法律为秘密警察): 机构与法律一一对应,
+        # 让模型按实际法律写作, 不再凭机构档位空猜。
+        for k, v in sorted(insts.items()):
+            grp = _POOL_INSTITUTION_LAW_GROUPS.get(k)
+            if not grp:
+                continue
+            label, law_group = grp
+            law = next((l for l in law_group if l in laws), None)
+            if law:
+                lead.append(f"{label}为{loc.get(law, law)}。")
     else:
         lead = ["（该国暂无机构投入记录，机构均按未设立处理。）"]
-    if edu:
-        lead.append(f"教育法律为{loc.get(edu, edu)}。")
-    if health:
-        lead.append(f"卫生法律为{loc.get(health, health)}。")
     if not insts:
         lead.append("（机构数据不足，请据法律与民情含蓄写作。）")
     pops = ctx.player_pops(state_ids)
@@ -6752,7 +6818,7 @@ _POOL_VOTE_RULES = {
     "law_autocracy": ("独裁制", "不设选举"),
     "law_neo_absolutism": ("新专制", "不设选举"),
     "law_bakufu": ("幕府制", "不设选举"),
-    "law_single_party_state": ("一党制", "无自由选举"),
+    "law_single_party_state": ("一党制", "选举依法举行，参选政党仅执政党一家"),
     "law_anarchy": ("无政府", "无正式选举程序"),
 }
 
@@ -6799,6 +6865,10 @@ def _pool_vote_verdict(pop, dop, citizenship, church=None, state_religion=None):
         if ok:
             return True, "该人群拥有投票权——属于地产投票认可的显贵阶层"
         return False, "该人群因为职业不拥有投票权"
+    if dop == "law_single_party_state":
+        # 一党制国家依游戏机制照常举行选举 (country_voting_power_base_add>0),
+        # 惟参选政党仅执政党一家; 未被文化/宗教歧视的人群拥有投票权。
+        return True, "该人群拥有投票权——一党制下选举照常举行，惟参选政党仅执政党一家"
     rule = _POOL_VOTE_RULES.get(dop)
     if rule:
         return False, f"该人群不拥有投票权——{rule[1]}"
@@ -7005,6 +7075,24 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
                     household.append(f"恩格尔系数约{prof['engel']}%。")
             except Exception:
                 pass
+        # 家庭分项账本 (与人群采访同口径): 抽出该下层人群的月人均收支率,
+        # 按代表家庭构成 (户主+配偶+子女) 折算成分项月收入/支出/结余。
+        try:
+            _fi = {
+                "budget_rates": _pop_budget_rates(
+                    o.get("weekly_budget") or [], o.get("workforce"),
+                    o.get("dependents")),
+                "children_count": _family_children_count(random.Random(
+                    f"{snap.get('year')}|{cid}|price|family")),
+                "wife_works": snap.get("women_law") in (
+                    "law_women_in_the_workplace", "law_womens_suffrage"),
+                "wealth": o.get("wealth"),
+            }
+            _bl = _journal._family_budget_lines(
+                _fi, unit, _fx_rate(snap, unit))
+            household.extend(_bl)
+        except Exception:
+            pass
         household.extend(_pool_investment_lines(snap, st_zh, o, "mag_price"))
     market = ["本刊关注的几件商品与市价："]
     for r in rows[:5]:
@@ -11356,9 +11444,10 @@ def _magazine_pool_eligibility(melted, snap, ctx, country):
     # 罪案与法网: 有 POP 在国家建筑中工作即可 (成案细节构建期再判定, 失败走兜底)
     crime = any(obj.get("workplace") in objs
                 for obj in pops.values())
-    # 神圣庄严的权利只在全国真正举行选举时入池: 游戏 00_distribution_of_power.txt 中
-    # 仅地产/财产/资格/普选四法带 inherit_free_elections_effect(幕府/独裁/寡头/
-    # 技术官僚/一党制等治理法均无选举)
+    # 神圣庄严的权利只在真正举行选举时入池: 游戏 00_distribution_of_power.txt 中
+    # 地产/财产/资格/普选四法带 inherit_free_elections_effect; 一党制虽无
+    # 自由竞选, 但依游戏机制照常举行选举 (参选政党仅执政党一家), 故一并入池;
+    # 幕府/独裁/寡头/技术官僚等治理法不设选举, 不入池。
     laws = query_laws(melted, snap.get("country_id"))
     voting = bool(set(laws or []) & _POOL_VOTE_LAWS)
     return {
@@ -11441,6 +11530,8 @@ def _pool_epidemic_data(melted, snap, ctx, rnd, country, cid, data):
     origin = next((s for s in states if s.get("since") == ob.get("since")),
                   states[0])
     nat = ep.get("national") or {}
+    # 行政区划称谓随政体 (州/省), 与报纸疫情专电同口径
+    div = _pool_division_label(snap) or "州"
 
     def _fmt(n):
         return format(int(round(n or 0)), ",")
@@ -11467,9 +11558,9 @@ def _pool_epidemic_data(melted, snap, ctx, rnd, country, cid, data):
 
     state_rows = "\n".join(
         f"- 「{s.get('name')}」{s.get('status')}：累计染病 {_fmt(s.get('infected'))} 人"
-        f"（约占该州人口 {s.get('infection_rate_pct')}%）、死亡 {_fmt(s.get('deaths'))} 人"
+        f"（约占该{div}人口 {s.get('infection_rate_pct')}%）、死亡 {_fmt(s.get('deaths'))} 人"
         for s in states[:5])
-    extra_states = (f"\n- 另有 {len(states) - 5} 州情形从略。"
+    extra_states = (f"\n- 另有 {len(states) - 5} {div}情形从略。"
                     if len(states) > 5 else "")
     waves_txt = "分多波袭来" if (ob.get("waves") or 1) > 1 else "一波未平"
     techs_txt = "、".join(resp.get("techs") or []) or "（未掌握相关科技）"
@@ -11485,7 +11576,7 @@ def _pool_epidemic_data(melted, snap, ctx, rnd, country, cid, data):
             f"在我国流行，本年已是第{ob.get('age')}年，预计持续{ob.get('total_duration')}年"
             f"（{waves_txt}）。\n"
             f"- 传播途径：{ob.get('trans')}；本时代应对此病的通行手段：{ob.get('measures')}。\n"
-            f"- 首发与蔓延：疫情首发于「{origin.get('name')}」，本年波及 {len(states)} 个州。\n"
+            f"- 首发与蔓延：疫情首发于「{origin.get('name')}」，本年波及 {len(states)} 个{div}。\n"
             f"{state_rows}{extra_states}\n"
             f"- 全国累计染病 {_fmt(nat.get('infected'))} 人、死亡 {_fmt(nat.get('deaths'))} 人。"),
         "healers": (
@@ -11494,8 +11585,9 @@ def _pool_epidemic_data(melted, snap, ctx, rnd, country, cid, data):
             f"- 疫区人物样本（真实居民档案）：\n{pop_txt}"),
         "households": (
             f"- 疫区实况：最重疫区「{top.get('name')}」累计染病 {_fmt(top.get('infected'))} 人"
-            f"（约占该州人口 {top.get('infection_rate_pct')}%）、死亡 {_fmt(top.get('deaths'))} 人。\n"
-            f"- 本年疫情新传至：{('、'.join(ob.get('spread_to')) if ob.get('spread_to') else '无新州')}。\n"
+            f"（约占该{div}人口 {top.get('infection_rate_pct')}%）、死亡 {_fmt(top.get('deaths'))} 人。\n"
+            + (f"- 本年疫情新传至：{'、'.join(ob.get('spread_to'))}。\n"
+               if ob.get('spread_to') else "- 本年疫情尚无扩散。\n")
             + (f"- {abroad_txt}。\n" if abroad_txt else "")
             + (f"- 疫区人物样本：\n{pop_txt}" if pop_txt else "")),
         "aftermath": (
@@ -16342,9 +16434,23 @@ EPIDEMIC_MAX_DURATION = 3             # 普通疫情时长封顶 (年)
 EPIDEMIC_MAX_DURATION_SEVERE = 5      # 特别严重疫情时长封顶 (年)
 EPIDEMIC_SEVERITY_THRESHOLD = 4       # severity >= 4 视为特别严重
 EPIDEMIC_INST_PER_LEVEL = 0.02        # 卫生机构每级缓解
-EPIDEMIC_MITIG_TECHS = ("modern_sewerage", "modern_nursing", "quinine")
+# 全部可作疫情应对的科技 (键与游戏科技定义一致; 中文名在模拟处本地化)。
+EPIDEMIC_ALL_TECHS = ("modern_sewerage", "modern_nursing", "quinine",
+                      "pharmaceuticals")
+# 病种 → 对该病种有效的防治科技 (医学史 + 游戏本体科技定义):
+#   奎宁只抗疟疾 (30_society.txt: quinine 仅用于疟疾区殖民); 下水道/清洁供水只对
+#   粪口传播病有效 (霍乱/伤寒/痢疾/脊灰); 制药与现代护理为通用支持治疗。
+#   猩红热/天花/麻疹等无特效药可用的病种, 只列通用科技, 不再出现无效药物。
+EPIDEMIC_DISEASE_TECHS = {
+    "malaria": ("quinine", "pharmaceuticals", "modern_nursing"),
+    "cholera": ("modern_sewerage", "pharmaceuticals", "modern_nursing"),
+    "typhoid": ("modern_sewerage", "pharmaceuticals", "modern_nursing"),
+    "dysentery": ("modern_sewerage", "pharmaceuticals", "modern_nursing"),
+    "polio": ("modern_sewerage", "pharmaceuticals", "modern_nursing"),
+}
+_EPIDEMIC_DEFAULT_TECHS = ("pharmaceuticals", "modern_nursing")
 _EPIDEMIC_TECH_MITIG = {"modern_sewerage": 0.08, "modern_nursing": 0.04,
-                        "quinine": 0.03}
+                        "quinine": 0.03, "pharmaceuticals": 0.03}
 _EPIDEMIC_LAW_MITIG = {
     "law_no_health_system": 0.0,
     "law_charitable_health_system": 0.05,
@@ -16534,12 +16640,23 @@ def _epidemic_urban_band(by_state, btype_map, objs, sid, workforce):
     return 3
 
 
-def _epidemic_mitigation_bits(health_law, health_inv, techs, literacy):
+def _epidemic_mitigation_bits(health_law, health_inv, techs, literacy,
+                              disease_key=None):
     """(m_base, m_inst, mitig_techs, mitigation_pct)。
     m_base: 法律+科技+识字率的全国性缓解; m_inst: 卫生机构的全国性缓解
-    (殖民地州不享受机构缓解, 由调用方按并入状态扣减)。"""
+    (殖民地州不享受机构缓解, 由调用方按并入状态扣减)。
+    disease_key 给定时只统计对该病种有效的科技 (EPIDEMIC_DISEASE_TECHS),
+    供提示词「相关科技/缓解力度」按病种展示; 缺省统计全部缓解科技
+    (疫情模拟的通用缓解口径, 保证跨病种扩散动力学不变)。"""
     m = _EPIDEMIC_LAW_MITIG.get(health_law, 0.0)
-    mitig_techs = [t for t in EPIDEMIC_MITIG_TECHS if t in set(techs or [])]
+    tech_set = set(techs or [])
+    if disease_key is not None:
+        cand = set(EPIDEMIC_DISEASE_TECHS.get(disease_key,
+                                              _EPIDEMIC_DEFAULT_TECHS))
+        mitig_techs = [t for t in EPIDEMIC_ALL_TECHS
+                       if t in cand and t in tech_set]
+    else:
+        mitig_techs = [t for t in EPIDEMIC_ALL_TECHS if t in tech_set]
     for t in mitig_techs:
         m += _EPIDEMIC_TECH_MITIG.get(t, 0.0)
     if isinstance(literacy, (int, float)) and literacy >= 40:
@@ -16827,12 +16944,21 @@ def _simulate_epidemic_year(melted, snap, ctx, year, ledger):
         })
     nat_inf = sum(o["totals"]["infected"] for o in out_outbreaks)
     nat_death = sum(o["totals"]["deaths"] for o in out_outbreaks)
+    # 应对展示口径: 按本期主导疫情 (最早爆发) 的病种, 只列对该病种有效的
+    # 防治科技与对应缓解力度, 避免把奎宁等特效药写到不适用病种上。
+    dom_dk = next((o.get("disease_key") for o in out_outbreaks), None)
+    if dom_dk:
+        m_base_dis, _mi, mitig_techs_dis = _epidemic_mitigation_bits(
+            health_law, health_inv, techs, snap.get("literacy"),
+            disease_key=dom_dk)
+    else:
+        m_base_dis, mitig_techs_dis = m_base, mitig_techs
     response = {
         "health_law": (_journal.law_zh(health_law) if health_law
                        else "未建立卫生法律"),
         "health_institution": _journal._institution_level_zh(health_inv),
-        "techs": [tech_zh_map.get(t, t) for t in mitig_techs],
-        "mitigation_pct": round(min(m_base + m_inst, EPIDEMIC_MITIG_CAP)
+        "techs": [tech_zh_map.get(t, t) for t in mitig_techs_dis],
+        "mitigation_pct": round(min(m_base_dis + m_inst, EPIDEMIC_MITIG_CAP)
                                 * 100),
     }
     return {
