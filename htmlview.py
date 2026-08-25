@@ -875,12 +875,16 @@ def _collect_chart_data(base_dir):
         if raw.get("capital"):
             capital = raw["capital"]     # 取最新年首都 hub 名
         lit = _parse_literacy(raw.get("literacy"))
+        pi = raw.get("price_index") or {}
         macro.append({
             "year": year,
             "gdp": raw.get("gdp"),
             "pop": raw.get("pop"),
             "sol": raw.get("sol"),
             "literacy": lit,
+            # 问题3 (v4 2026): 实际GDP(游戏镑)/通胀率, 图表侧直接展示
+            "gdp_real": pi.get("real_gdp") if isinstance(pi.get("real_gdp"), (int, float)) else None,
+            "inflation": pi.get("inflation") if isinstance(pi.get("inflation"), (int, float)) else None,
         })
         sm = raw.get("stock_market") or {}
         market.append({

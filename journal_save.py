@@ -195,6 +195,8 @@ _LOC_PLACEHOLDER_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9-]*\$")
 _PROVINCE_ID_BY_COLOR = None
 _REGION_HUB_KEYS = None
 _PROVINCE_HUB_TYPES = None
+# 特许公司名映射缓存: {"key": (id(data), len(data)), "map": {公司id: 显示名}}
+_COMPANY_NAMES_CACHE = {"key": None, "map": {}}
 
 def _loc_dirs():
     """本地化目录列表: 游戏原版 + 当前 playset 已启用的 mod (mod 覆盖原版)。
@@ -309,10 +311,34 @@ def load_country_names():
     _NAME_CACHE = names
     return names
 
+def _company_display_names_map(melted, loc=None):
+    """companies.database → {公司id: 显示名} (custom_name 优先, 复用公司解析)。
+
+    供特许公司附庸国名解析使用: 存档国对象 founding_company 指向公司 id,
+    游戏内特许公司附庸国显示公司名, 但国对象本身不持久化该名。
+    按 (id(data), len(data)) 缓存: 同一熔解缓存对象内只解析一次。"""
+    if not melted:
+        return {}
+    key = (id(melted), len(melted))
+    if _COMPANY_NAMES_CACHE.get("key") == key:
+        return _COMPANY_NAMES_CACHE["map"]
+    loc = _load_loc_all() if loc is None else loc
+    out = {}
+    for cid, cobj in _companies_database(melted).items():
+        nm = _company_display_name(cobj, loc)
+        if nm and nm != "未知公司":
+            out[cid] = nm
+    _COMPANY_NAMES_CACHE["key"] = key
+    _COMPANY_NAMES_CACHE["map"] = out
+    return out
+
+
 def load_current_country_names(data, index=None):
     """加载 {TAG: 当前中文名}: 默认本地化名 + 存档中 dynamic_name 覆盖。
     存档国家对象带 dynamic_name.dynamic_country_name (如 dyn_c_great_qing),
     本地化映射到当前名 (如 大清), 覆盖默认名 (如 中华)。
+    特许公司附庸国 (D00-D99, government=gov_chartered_company, 带 founding_company)
+    用公司显示名覆盖 (游戏内即公司名, 如 达能食品), 不再落入「文化+革命」兜底。
     另对动态内战国 (D00-D99) 兜底: 存档无 dynamic_name 且本地化无该标签时,
     用主文化名 + 革命 (如 英格兰革命)。游戏内此类国家显示为「XX革命/叛乱」,
     实测存档不持久化其名字 (D00 无 dynamic_name 字段), 故按文化名兜底。"""
@@ -327,11 +353,33 @@ def load_current_country_names(data, index=None):
             continue
         if tag and dyn_key and loc.get(dyn_key):
             names[tag] = _resolve_country_dyn_name(tag, dyn_key, loc) or names[tag]
+    # 特许公司附庸国: 公司名覆盖 (须在 D00 兜底之前, 且仅对有 founding_company 者)
+    fc_ids = {entry.get("founding_company")
+              for entry in index.values()
+              if isinstance(entry.get("founding_company"), int)}
+    company_names = {}
+    if fc_ids:
+        try:
+            company_names = _company_display_names_map(data)
+        except Exception:
+            pass
+    for entry in index.values():
+        fc = entry.get("founding_company")
+        if not isinstance(fc, int):
+            continue
+        tag = entry.get("definition")
+        cn = company_names.get(fc)
+        if tag and cn:
+            names[tag] = cn
     for entry in index.values():
         tag = entry.get("definition")
         if not tag or not re.fullmatch(r"D\d{2}", tag):
             continue
         if tag in names:
+            continue
+        # 特许公司附庸国 (无公司名可解析时) 不再兜底成「文化+革命」
+        if entry.get("government") == "gov_chartered_company" \
+                or isinstance(entry.get("founding_company"), int):
             continue
         cults = entry.get("cultures") or []
         cname = culture_id_to_name(cults[0]) if cults else None
@@ -4100,6 +4148,15 @@ def _build_indexes(data):
                 dyn_name = (obj.get("dynamic_name") or {}).get("dynamic_country_name")
                 if dyn_name:
                     entry["dyn_name"] = dyn_name
+                # 特许公司附庸国: 存档国对象带 founding_company (公司id) 与
+                # government=gov_chartered_company, 用于把国名解析为公司名
+                # (游戏内特许公司附庸显示公司名, 国对象本身无 name/dynamic_name)。
+                fc = obj.get("founding_company")
+                if isinstance(fc, int):
+                    entry["founding_company"] = fc
+                gov = obj.get("government")
+                if isinstance(gov, str):
+                    entry["government"] = gov
                 pre = obj.get("prestige")
                 if isinstance(pre, dict):
                     chans = pre.get("channels") or {}
@@ -5632,7 +5689,10 @@ def _pool_state_ids(snap):
 
 
 def _pool_goods_text(go, gm):
-    """建筑 input/output_goods → 自然语言「商品约数量」串 (带商品量词)。"""
+    """建筑 input/output_goods → 自然语言「商品约数量」串 (带商品量词, 年化)。
+
+    v4 (2026): 产出/消耗按年化读数 (每周×52×per×prod), 显式「每年约X」,
+    杜绝「产出黄金约18千克」式裸数字被误读为年度 (实为每周)。"""
     goods = (go or {}).get("goods") or {}
     order, zh = gm["order"], gm["zh"]
     items = []
@@ -5647,9 +5707,9 @@ def _pool_goods_text(go, gm):
             items.append((abs(v), key, zh.get(key, key or str(gid)), v))
     parts = []
     for _a, key, name, v in sorted(items, reverse=True)[:4]:
-        qs = _goods_qty_text(key, v)
-        # 聚合文本自带「约」(如「每月约2辆」/「约每23个月1辆」), 不再重复前缀
-        parts.append(f"{name}{qs}" if "约" in qs else f"{name}约{qs}")
+        qs = _goods_prod_text(key, v)
+        # 聚合文本自带「每年约」/「约每N年1」, 不再重复前缀
+        parts.append(f"{name}{qs}")
     return "、".join(parts)
 
 
@@ -10741,7 +10801,10 @@ def _exchange_rates_data(melted, snap, ctx, country, cid, prev_snap=None,
         g = t = 1.0
         prev = (prev_rates.get(currency) or {}).get("rate")
         if currency == DEFAULT_CURRENCY:
-            rate = 1.0                            # 英镑: 本位, 恒为 1
+            # 英镑: 本位。v4 (2026) 起随 currency_base_scale 放大金额
+            # (1 游戏镑 = S 显示镑, 与其余币种一致), 汇率行展示时再除以 S
+            # 显示为 1:1。
+            rate = scale
         else:
             metrics = None
             if currency == player_cur:
@@ -10812,6 +10875,126 @@ def _fm_pounds(snap, v, currency=None):
     """游戏镑数值 → 主辅币文本 (按快照中该币种汇率换算)。"""
     return format_money(v, currency or snap.get("currency") or DEFAULT_CURRENCY,
                         _fx_rate(snap, currency))
+
+
+# ---------------------------------------------------------------------------
+# 价格指数 / 实际GDP / 通胀率 (问题3, v4 2026): 12 商品等权拉氏指数,
+# 纯游戏镑口径 (与金额放大/汇率无关, 名义/实际同乘 S)。
+# ---------------------------------------------------------------------------
+_PRICE_INDEX_BASKET = ("grain", "fish", "groceries", "meat", "fabric",
+                       "clothes", "furniture", "wood", "coal", "iron",
+                       "tools", "steel")
+
+
+def _goods_prices_by_key(raw, gm=None):
+    """raw/snapshot 的 stock_market.goods_prices {gid: 游戏镑/单位} → {key: 价格}。"""
+    gm = gm or build_goods_map()
+    order = gm.get("order") or []
+    gp = ((raw.get("stock_market") or {}).get("goods_prices") or {})
+    out = {}
+    for gid_s, p in gp.items():
+        try:
+            gid = int(gid_s)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= gid < len(order):
+            k = order[gid]
+            if k in _PRICE_INDEX_BASKET and isinstance(p, (int, float)) and p > 0:
+                out[k] = p
+    return out
+
+
+def _price_index_value(prices_now, prices_base):
+    """等权拉氏价格指数: index = Σ(p_now/p_base)/n × 100 (缺失商品跳过;
+    有效商品不足半数时返回 None)。"""
+    vals = []
+    for k in _PRICE_INDEX_BASKET:
+        p0 = prices_base.get(k)
+        p1 = prices_now.get(k)
+        if isinstance(p0, (int, float)) and p0 > 0 \
+                and isinstance(p1, (int, float)) and p1 > 0:
+            vals.append(p1 / p0)
+    if len(vals) < max(3, len(_PRICE_INDEX_BASKET) // 2):
+        return None
+    return round(sum(vals) / len(vals) * 100.0, 1)
+
+
+def compute_price_index(raw, base_raw=None, prev_index=None, gdp=None):
+    """计算单年价格指数块 {index, inflation, real_gdp} (游戏镑口径)。
+
+    base_raw 提供基准年价格 (缺省用商品基准价 cost);
+    prev_index 提供上年指数 → inflation = index/prev − 1;
+    gdp 为当年名义GDP (游戏镑, 缺省取 raw.gdp) → real_gdp = gdp÷(index/100)。"""
+    gm = build_goods_map()
+    prices_now = _goods_prices_by_key(raw, gm)
+    if base_raw is not None:
+        prices_base = _goods_prices_by_key(base_raw, gm)
+    else:
+        cost = gm.get("cost") or {}
+        prices_base = {k: cost.get(k) for k in _PRICE_INDEX_BASKET
+                       if isinstance(cost.get(k), (int, float)) and cost[k] > 0}
+    idx = _price_index_value(prices_now, prices_base)
+    if idx is None:
+        return None
+    out = {"index": idx}
+    if base_raw is not None and isinstance(base_raw.get("year"), int):
+        out["base_year"] = base_raw["year"]
+    if isinstance(prev_index, (int, float)) and prev_index > 0:
+        out["inflation"] = round((idx / prev_index - 1.0) * 100.0, 2)
+    g = gdp if gdp is not None else raw.get("gdp")
+    if isinstance(g, (int, float)) and g > 0:
+        out["real_gdp"] = round(g / (idx / 100.0), 2)
+    return out
+
+
+def _load_price_base_raw(journal_dir, player, year):
+    """读取会话最早的 raw (基准年价格) 与 上年 raw (上年指数)。
+    返回 (base_raw, prev_index)。会话文件夹按玩家名前缀匹配 (同
+    _prev_year_candidates 策略, 取最新会话)。"""
+    base_raw = None
+    prev_index = None
+    if not journal_dir:
+        return base_raw, prev_index
+    try:
+        entries = sorted(os.listdir(journal_dir))
+    except OSError:
+        return base_raw, prev_index
+    best = None
+    best_key = None
+    for folder in entries:
+        if not _same_session_folder(str(player), folder):
+            continue
+        rd = os.path.join(journal_dir, folder, "data")
+        if not os.path.isdir(rd):
+            continue
+        files = []
+        for fn in os.listdir(rd):
+            m = re.fullmatch(r"raw_(\d{4})\.json", fn)
+            if m:
+                files.append((int(m.group(1)), os.path.join(rd, fn)))
+        if not files:
+            continue
+        files.sort()
+        m2 = re.match(r"^(.*?)(\d+)$", str(folder))
+        key = (m2.group(1), int(m2.group(2))) if m2 else (str(folder), 0)
+        if best_key is None or key > best_key:
+            best_key = key
+            best = files
+    if not best:
+        return base_raw, prev_index
+    for y, p in best:
+        try:
+            with open(p, encoding="utf-8") as f:
+                r = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if base_raw is None:
+            base_raw = r
+        if y == year - 1:
+            pi = r.get("price_index") or {}
+            if isinstance(pi.get("index"), (int, float)):
+                prev_index = pi["index"]
+    return base_raw, prev_index
 
 
 def _pool_world_prices(melted):
@@ -12273,6 +12456,8 @@ def build_journal_data(snap):
     data["war_goals"] = snap.get("war_goals") or []
     # 州情风味层 + 股市动态 (报纸板块消费)
     data["stock_market"] = snap.get("stock_market")
+    # 价格指数/实际GDP/通胀率 (问题3, v4 2026): 游戏镑口径, 随 raw 持久化
+    data["price_index"] = snap.get("price_index")
     data["society_flavor_lines"] = snap.get("society_flavor_lines") or []
     # 国家名解析表: 供跨年战争合并时按 cid/tag 重新解析参与者名,
     # 避免上一年烘焙的旧名(如动态国家 D00)原样泄漏到今年
@@ -12743,23 +12928,34 @@ def _goods_measure_table():
 
 
 def _goods_measure(key):
-    """商品 key → (量词, per=每游戏单位显示单位数(乘数), dec=显示小数位)。"""
+    """商品 key → (量词, per=每游戏单位显示单位数(乘数), dec=显示小数位,
+    ppu=价格显示换算(缺省同 per), prod=生产数量放大系数(缺省 1))。
+
+    v4 (2026): per 按史实单价重标定 (per = base×S÷目标史实单价, 纯显示常量);
+    ppu 为价格显示专用换算 (如黄金: per 500 克/单位 保数量读数, ppu 12.8 千克/单位
+    保 505 比索/千克 的史实金价); prod 为生产数量放大系数 (如黄金 3)。"""
     table, fb = _goods_measure_table()
     m = table.get(key)
     if m:
+        per = float(m.get("per") or 1.0) or 1.0
         return (m.get("unit") or "单位",
-                float(m.get("per") or 1.0) or 1.0,
-                int(m.get("dec", 0)))
+                per,
+                int(m.get("dec", 0)),
+                float(m.get("ppu") or per),
+                float(m.get("prod") or 1.0) or 1.0)
     try:
         cat = build_goods_map().get("cat") or {}
         c = fb.get(cat.get(key)) or {}
     except Exception:
         c = {}
     if c:
+        per = float(c.get("per") or 1.0) or 1.0
         return (c.get("unit") or "单位",
-                float(c.get("per") or 1.0) or 1.0,
-                int(c.get("dec", 0)))
-    return ("单位", 1.0, 0)
+                per,
+                int(c.get("dec", 0)),
+                float(c.get("ppu") or per),
+                float(c.get("prod") or 1.0) or 1.0)
+    return ("单位", 1.0, 0, 1.0, 1.0)
 
 
 def _fmt_qty(x, dec):
@@ -12780,10 +12976,15 @@ _UNIT_SCALE_UP = (
 
 
 def _scale_up_unit(unit, v):
-    """按公制升格表把 (单位, 数值) 逐级放大, 返回 (新单位, 新数值)。"""
-    for u, k, up in _UNIT_SCALE_UP:
-        if unit == u and abs(v) >= k:
-            unit, v = up, v / k
+    """按公制升格表把 (单位, 数值) 逐级放大 (可多级: 克→千克→吨), 返回 (新单位, 新数值)。"""
+    for _ in range(len(_UNIT_SCALE_UP)):
+        moved = False
+        for u, k, up in _UNIT_SCALE_UP:
+            if unit == u and abs(v) >= k:
+                unit, v = up, v / k
+                moved = True
+                break
+        if not moved:
             break
     return unit, v
 
@@ -12799,7 +13000,7 @@ def _goods_qty_text(key, qty):
     「每年约X」; 年量仍 <1 → 「约每N个月1/约每N年1」, 避免
     「几百贵族一周只消费0.5辆汽车」式离谱小读数 (昂贵耐用品周量天然 <1,
     属游戏 1 单位≈基准价 1£ 抽象价值的正常现象, 聚合后读数自然)。"""
-    unit, per, dec = _goods_measure(key)
+    unit, per, dec, _ppu, _prod = _goods_measure(key)
     try:
         v = float(qty) * per
     except (TypeError, ValueError):
@@ -12827,6 +13028,34 @@ def _goods_qty_text(key, qty):
     if n >= 24:
         return f"{sign}约每{max(1, round(n / 12))}年1{unit}"
     return f"{sign}约每{n}个月1{unit}"
+
+
+def _goods_prod_text(key, qty):
+    """生产/消耗数量 → 年化带量词自然语言 (「每年约2.8吨」「约每3年1千克」)。
+
+    v4 (2026): 建筑产出/消耗的存档值为周度量, 旧版对周量≥1显示单位时输出裸数字
+    (如「产出黄金约18千克」, 实际为每周, 模型误读为年度 → 18kg/年 荒谬感)。
+    本函数一律显式年化: annual = qty_game × per × prod × 52 (prod 为生产放大
+    系数, 如黄金 3), 并带「每年约X」时间词; 年量仍 <1 时输出「约每N年1单位」。
+    公制量纲升格与 万/亿 分级同 _goods_qty_text。"""
+    unit, per, dec, _ppu, prod = _goods_measure(key)
+    try:
+        v = float(qty) * per * prod * 52.0
+    except (TypeError, ValueError):
+        v = 0.0
+    sign = "-" if v < 0 else ""
+    a = abs(v)
+    unit, a = _scale_up_unit(unit, a)
+    if a >= 1e8:
+        return f"{sign}每年约{a / 1e8:.1f}亿{unit}"
+    if a >= 1e4:
+        return f"{sign}每年约{a / 1e4:.1f}万{unit}"
+    if a >= 1:
+        return f"{sign}每年约{_fmt_qty(a, dec)}{unit}"
+    if a <= 0:
+        return f"{sign}每年0{unit}"
+    n = max(1, round(1.0 / a))  # 每 1 单位所需年数
+    return f"{sign}约每{max(1, n)}年1{unit}"
 
 
 _QTY_PERIOD_RE = re.compile(r"约每(\d+)(年|个月)1")
@@ -15604,6 +15833,17 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
         snap["exchange_rates"] = _exchange_rates_data(
             melted, snap, ctx, country, cid, prev_snap=prev_snap,
             journal_dir=journal_dir)
+    # 价格指数/实际GDP/通胀率 (问题3, v4 2026): 依赖 stock_market.goods_prices,
+    # 在股市层之后计算; 基准年=会话最早 raw, 上年指数取前一年 raw 的落盘值。
+    if _cfg.get("price_index_enabled", True) and snap.get("stock_market"):
+        try:
+            base_raw, prev_index = _load_price_base_raw(
+                journal_dir, snap.get("player"), year)
+            snap["price_index"] = compute_price_index(
+                snap, base_raw=base_raw, prev_index=prev_index,
+                gdp=snap.get("gdp"))
+        except Exception as e:
+            print(f"[price-index] 计算失败, 跳过: {e}")
     if journal_dir:
         snap["_extras_year"] = year
     return snap

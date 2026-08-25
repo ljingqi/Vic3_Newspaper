@@ -167,8 +167,20 @@ DEFAULT_CONFIG = {
     # 汇率体系 (2026-08-23): 1 英镑兑各币种汇率 = 历史铸币平价锚 × 相对人均GDP
     # 因子 × 贸易开放因子 × 确定性扰动, 逐年漂移钳制; 只作用于显示数值
     "exchange_rate_enabled": True,
+    # 全局现实金额放大 (方案B, 2026): currency_base_scale 乘在汇率锚上,
+    # 所有金额显示 (GDP/工资/物价/税收/股价) 同乘 S。游戏 1 单位商品≈基准价
+    # 1£ 的抽象价值量远小于史实购买力, S≈16 使 1867 墨西哥人均GDP≈180 比索/年、
+    # 劳工家庭月收入≈30 比索, 接近 1900 年前后西欧水平; 同时 goods_measure.json
+    # 的 per 按 per = base×S÷目标史实单价 重标定, 保证单价/数量/收入三端自洽。
+    # 已知取舍: 游戏人口虚增 3~4 倍, GDP 总量会远超史实, 以人均口径为准。
+    "currency_base_scale": 16.0,
     # 汇率人口口径: all=国家总人口 (人均GDP分母) | incorporated=已合并人口(Σ州人口×并入进度)
     "fx_pop_scope": "all",
+    # 价格指数/实际GDP/通胀率 (问题3, v4 2026): 12 商品等权拉氏指数,
+    # 基准年=会话最早年份, 纯游戏镑口径 (不受金额放大/汇率影响)
+    "price_index_enabled": True,
+    # 经济要闻是否附「名义GDP / 实际GDP(按基准年价格) / 通胀率」行
+    "econ_real_gdp_enabled": True,
     # 历史平价锚放大系数 (1.0=纯历史铸币平价, 调大可整体放大展示金额)
     "currency_base_scale": 1.0,
     # 人均GDP 因子指数 (巴拉萨-萨缪尔森式 PPP 锚)
@@ -182,10 +194,9 @@ DEFAULT_CONFIG = {
     # 经济要闻是否附「本年度 1 英镑兑 X 法郎」汇率行
     "fx_show_in_econ": True,
     # 访谈板块 (民生访谈/先富观察/失业民生) 非主食商品数量读数放大系数:
-    # 游戏货币为抽象价值量, 直接换算的月度数量过小 (如「每14个月1千克」),
-    # 该系数把非主食商品读数放大到可读区间 (按墨西哥样本, 12 时咖啡约
-    # 每月1千克、煤油约2升、衣物约每8个月1件, 已属合理)。
-    "interview_consumption_qty_scale": 12.0,
+    # v4 (2026) 起 per 已按史实单价重标定 (per = base×S÷目标史实单价),
+    # 金额÷市价×per 直接给出真实量级, 放大系数归 1; 保留配置以便微调。
+    "interview_consumption_qty_scale": 1.0,
     # 访谈板块食品类 (奢侈食物/刺激品/嗜好品) 每月数量下限 (千克/升),
     # 防止「约每N个月1千克」式离谱小读数; 0 = 不设下限。
     # (「基本食物」不再用该下限兜底, 改由热量锚定计算, 见下。)
@@ -2065,13 +2076,56 @@ def render_econ(data, history=None):
         except Exception:
             show = True
         if show:
-            line = f"- 汇率：本年度 1 英镑兑 {fx['rate']:.2f}{unit}"
+            # v4 (2026): currency_base_scale 全局金额放大乘在汇率锚上, 汇率行
+            # 展示不含放大的史实平价口径 (1 英镑兑 ~4 比索), 金额换算仍走
+            # 含 S 的 rate (format_money 内部), 避免「1英镑兑65比索」式违和。
+            try:
+                _scale = float(load_config().get("currency_base_scale", 1.0) or 1.0)
+            except (TypeError, ValueError):
+                _scale = 1.0
+            disp_rate = fx["rate"] / _scale if _scale > 0 else fx["rate"]
+            line = f"- 汇率：本年度 1 英镑兑 {disp_rate:.2f}{unit}"
             yoy = fx.get("yoy")
             if yoy is not None:
                 word = "升值" if yoy < 0 else "贬值"
                 line += f"（{unit}较上年{word}约{abs(yoy):.1f}%）"
             L.append(line)
+    # 名义/实际GDP 与通胀率 (问题3, v4 2026): 实际GDP 按基准年价格,
+    # 通胀率 = 价格指数同比; 纯比率不受金额放大影响
+    pi = data.get("price_index") or {}
+    if pi and isinstance(pi.get("index"), (int, float)):
+        show = True
+        try:
+            show = load_config().get("econ_real_gdp_enabled", True)
+        except Exception:
+            show = True
+        if show:
+            if isinstance(gdp, (int, float)) and isinstance(pi.get("real_gdp"), (int, float)):
+                rg = f"- 实际GDP（按{_price_index_base_note(data)}价格）：约{_fm(data, pi['real_gdp'])}"
+                if isinstance(gdp, (int, float)) and gdp > 0 and pi["real_gdp"] > 0:
+                    gap = (gdp / pi["real_gdp"] - 1.0) * 100.0
+                    if abs(gap) < 0.05:
+                        rg += "（与名义GDP基本持平，物价稳定）"
+                    else:
+                        up = gap > 0
+                        rg += (f"（名义{'高于' if up else '低于'}实际约{abs(gap):.1f}%，"
+                               f"即物价总体{'上涨' if up else '回落'}约{abs(gap):.1f}%）")
+                L.append(rg)
+            inf = pi.get("inflation")
+            if inf is not None:
+                word = "通胀" if inf >= 0 else "通缩"
+                L.append(f"- 通胀率：物价较上年{word}约{abs(inf):.1f}%")
+            else:
+                L.append("- 通胀率：基准年份，无同比")
     return "\n".join(L)
+
+
+def _price_index_base_note(data):
+    """价格指数基准年说明: 取会话最早可得年份 (首个含 goods_prices 的 raw)。"""
+    base_year = data.get("price_index", {}).get("base_year")
+    if isinstance(base_year, int):
+        return f"{base_year}年"
+    return "基准年"
 
 def render_politics(data, history=None):
     L = []
@@ -2674,12 +2728,37 @@ def _goods_measure_local():
 
 
 def _goods_unit_per(key):
-    """商品 key → (单位, per乘数, dec, 基准价); 未知返回 (None, 1.0, 0, None)。"""
+    """商品 key → (单位, per乘数, dec, 基准价, ppu价格换算, prod生产放大)。
+
+    v4 (2026): per 已按史实单价重标定 (per = base÷目标史实单价, 物理量,
+    用于生产/条约数量读数, 与金额放大无关); ppu = per×currency_base_scale
+    (价格显示与消费数量专用: 价格公式 base×S×FX÷ppu 中 S 相消 → 显示史实
+    单价; 消费数量 mi÷单价×ppu 含 S → 与放大后的收入匹配)。gold.prod=3
+    放大金矿产量。未知返回 (None, 1.0, 0, None, 1.0, 1.0)。"""
     m = _goods_measure_local().get(key)
     if not m:
-        return None, 1.0, 0, None
-    return (m.get("unit") or "单位", float(m.get("per") or 1.0) or 1.0,
-            int(m.get("dec", 0)), m.get("base"))
+        return None, 1.0, 0, None, 1.0, 1.0
+    per = float(m.get("per") or 1.0) or 1.0
+    return (m.get("unit") or "单位", per,
+            int(m.get("dec", 0)), m.get("base"),
+            per * _money_scale(),
+            float(m.get("prod") or 1.0) or 1.0)
+
+
+_MONEY_SCALE_CACHE = None
+
+
+def _money_scale():
+    """全局现实金额放大系数 (currency_base_scale, 缺省 1.0)。"""
+    global _MONEY_SCALE_CACHE
+    if _MONEY_SCALE_CACHE is not None:
+        return _MONEY_SCALE_CACHE
+    try:
+        v = float(load_config().get("currency_base_scale", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        v = 1.0
+    _MONEY_SCALE_CACHE = v if v > 0 else 1.0
+    return _MONEY_SCALE_CACHE
 
 
 def _goods_need(key):
@@ -2716,7 +2795,7 @@ def _is_staple_kcal_good(key):
     need = _goods_need(key)
     if not need or "基本食物" not in need:
         return False
-    unit_, _per, _dec, _base = _goods_unit_per(key)
+    unit_, _per, _dec, _base, _ppu, _prod = _goods_unit_per(key)
     return unit_ == "千克" and _staple_kcal_per_kg(key) is not None
 
 
@@ -2759,18 +2838,19 @@ def _fmt_month_qty(name, q, unit, dec, lumpy=False):
 
 
 def _goods_unit_price_text(data, g, unit=None):
-    """主要消费商品每单位市价文本: 基准价×(1+dev/100)÷per → 主辅币。
-    dev_pct 为市价相对正常价 (基准价) 的偏离率, per 为每游戏单位的显示
-    单位数 (千克/件/升…); 数据不足或抽象单位 (如「单位」) 返回 None。"""
+    """主要消费商品每单位市价文本: 基准价×(1+dev/100)÷ppu → 主辅币。
+    dev_pct 为市价相对正常价 (基准价) 的偏离率, ppu 为价格显示换算
+    (每游戏单位显示单位数, 缺省同 per; 黄金用 ppu 保史实金价);
+    数据不足或抽象单位 (如「单位」) 返回 None。"""
     key = g.get("key")
     d = g.get("dev_pct")
     if not key or not isinstance(d, (int, float)):
         return None
-    unit_, per, _dec, base = _goods_unit_per(key)
+    unit_, _per, _dec, base, ppu, _prod = _goods_unit_per(key)
     if unit_ is None or unit_ == "单位" or not isinstance(base, (int, float)) \
-            or base <= 0 or per <= 0:
+            or base <= 0 or ppu <= 0:
         return None
-    price = base * (1 + d / 100.0) / per
+    price = base * (1 + d / 100.0) / ppu
     unit = unit or data.get("currency") or DEFAULT_CURRENCY
     return (f"{_consumption_goods_name(g.get('name'))}每{unit_}约"
             f"{format_money(price, unit, _fx_rate(data, unit))}")
@@ -2854,9 +2934,13 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         if not nm:
             continue
         mi = goods_m * (w or 0) / wsum
-        unit_, per, dec, base = _goods_unit_per(key)
+        unit_, per, dec, base, ppu, _prod = _goods_unit_per(key)
         if unit_ is None:
             continue
+        max_month = None
+        _mm = (_goods_measure_local().get(key) or {}).get("max_month")
+        if isinstance(_mm, (int, float)) and _mm > 0:
+            max_month = float(_mm)
         price = base
         if isinstance(base, (int, float)) and base > 0 and isinstance(dv, (int, float)):
             price = base * (1 + dv / 100.0)
@@ -2865,11 +2949,19 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         if key in staple_qty:
             q = staple_qty[key]
         else:
-            q = mi / price * per * qty_scale
+            # v4 (2026): 数量按 ppu 折算 (与价格行同口径; 黄金等 ppu≠per 的商品
+            # 消费量以价格行为准, 避免「价格按 12.8kg/单位 但数量按 500g/单位」
+            # 的两套读数打架)。per 已按史实单价重标定, qty_scale 归 1。
+            q = mi / price * ppu * qty_scale
             if food_min > 0 and unit_ in ("千克", "升"):
                 need = _goods_need(key)
                 if need and any(k in need for k in ("食物", "刺激", "嗜好")):
                     q = max(q, food_min)
+        # v4 消费上限 (goods_measure.json 的 max_month, 显示单位/月):
+        # 游戏需求权重偶有过度分配 (如煤油 14.8%), 按史实单价换算后读数虚高
+        # (每月数十升), 加显示上限使其回到现实量级 (如煤油 ≤20 升/月)。
+        if max_month and q > max_month:
+            q = max_month
         # 可读性守卫: 每月不足 1/120 单位 (约每10年1单位) 的稀疏商品跳过,
         # 其金额已在金额行给出; 避免「约每数十年1单位」式不可读读数。
         if q <= 0 or 1.0 / q >= 120:
@@ -3519,8 +3611,13 @@ def render_history_table(data, history=None, include_flavor=True):
     # 交易所指数列: 仅当本年股票模块触发 (stock_market 存在) 时出现;
     # 未开市年份显示 "—"
     has_stock = bool(data.get("stock_market"))
+    # 实际GDP/通胀率列 (问题3, v4 2026): 任一年有 price_index 数据即出现
+    has_pi = any((h.get("price_index") or {}).get("index") is not None
+                 for h in ([data] + list(history or [])))
     header = ["年份", "GDP", "人口", "生活水平", "识字率", "激进派%",
               "效忠派%", "第一大族", "第一大教"]
+    if has_pi:
+        header += ["实际GDP", "通胀率"]
     if has_stock:
         header.append("交易所指数")
     L.append("| " + " | ".join(header) + " |")
@@ -3550,6 +3647,18 @@ def render_history_table(data, history=None, include_flavor=True):
         cells = [str(h.get('year', '?')), gdp_s,
                  str(h.get('pop', '?')), str(h.get('sol', '?')),
                  str(h.get('literacy', '?')), rad_s, loy_s, topc, top_r]
+        if has_pi:
+            pi = h.get("price_index") or {}
+            if isinstance(pi.get("real_gdp"), (int, float)):
+                row_rate = _fx_rate(h, unit) if h.get("exchange_rates") else cur_rate
+                cells.append(format_money(pi["real_gdp"], unit, row_rate))
+            else:
+                cells.append("—")
+            inf = pi.get("inflation")
+            if isinstance(inf, (int, float)):
+                cells.append(f"{inf:+.1f}%")
+            else:
+                cells.append("—")
         if has_stock:
             ex = ((h.get("stock_market") or {}).get("exchange_index") or {})
             close = ex.get("close")
