@@ -286,18 +286,65 @@ def _clean_loc_name(value, loc=None):
     return v.strip()
 
 
+def _is_company_building_type(bt):
+    """公司建筑类型: 公司总部 (building_company_X) 与区域公司总部
+    (building_regional_company_X) 同属公司持有语义, 显示名都回退查
+    company_X (游戏定义公司建筑显示名键为 company_<名>, 存档带 building_ 前缀)。"""
+    return bool(bt and (bt.startswith("building_company_")
+                        or bt.startswith("building_regional_company_")))
+
+
 def _building_type_zh(btype, loc=None):
-    """建筑类型中文名: 先查原键; 公司建筑 (building_company_X) 回退查 company_X
-    (游戏定义公司建筑显示名键为 company_<名>, 存档建筑类型带 building_ 前缀,
-    如 building_company_john_cockerill → company_john_cockerill);
+    """建筑类型中文名: 先查原键; 公司建筑 (building_company_X /
+    building_regional_company_X) 回退查 company_X
+    (如 building_company_john_cockerill → company_john_cockerill,
+    building_regional_company_basic_agriculture_2 → company_basic_agriculture_2);
     均查不到时回退原始键 (与旧行为一致, 避免空名)。"""
     if not btype:
         return btype
     loc = _load_loc_all() if loc is None else loc
     zh = loc.get(btype)
-    if not zh and btype.startswith("building_company_"):
-        zh = loc.get("company_" + btype[len("building_company_"):])
+    if not zh:
+        for prefix in ("building_company_", "building_regional_company_"):
+            if btype.startswith(prefix):
+                zh = loc.get("company_" + btype[len(prefix):])
+                if zh:
+                    break
     return zh or btype
+
+_COMPANY_OF_BUILDING_CACHE = {"key": None, "map": {}}
+
+
+def _company_of_building(melted, ob):
+    """建筑 id → (归属公司对象, 母国中文名)。
+
+    公司总部 (company.building == ob) 与区域公司总部 (ob ∈ regional_hqs)
+    都解析; 供所有权展示「持有者为X国X公司」与外国公司判定。
+    按 (id(data), len(data)) 缓存: 同一熔解缓存对象内只解析一次。"""
+    if not melted or ob is None:
+        return None, None
+    key = (id(melted), len(melted))
+    if _COMPANY_OF_BUILDING_CACHE.get("key") != key:
+        mp = {}
+        names = {}
+        try:
+            index, _gp, _dp = _build_indexes(melted)
+            names = build_country_id_names(melted, index)
+        except Exception:
+            names = {}
+        for _cid, cobj in _companies_database(melted).items():
+            ctry = cobj.get("country")
+            entry = (cobj, names.get(ctry) if isinstance(ctry, int) else None)
+            hq = cobj.get("building")
+            if isinstance(hq, int):
+                mp.setdefault(hq, entry)
+            for rh in (cobj.get("regional_hqs") or []):
+                if isinstance(rh, int):
+                    mp.setdefault(rh, entry)
+        _COMPANY_OF_BUILDING_CACHE["key"] = key
+        _COMPANY_OF_BUILDING_CACHE["map"] = mp
+    return _COMPANY_OF_BUILDING_CACHE["map"].get(ob, (None, None))
+
 
 def load_country_names():
     """从本地化(含 mod 覆盖)加载 {TAG: 中文名} 映射。"""
@@ -3629,7 +3676,7 @@ def _building_ownership(data, bid, player_id=None, building_obj=None):
             continue
         ob = ident.get("building")
         if ob == bid:
-            if btype and btype.startswith("building_company_"):
+            if _is_company_building_type(btype):
                 dist["company"] += lv
             else:
                 dist["laborer"] += lv
@@ -3638,8 +3685,13 @@ def _building_ownership(data, bid, player_id=None, building_obj=None):
         octry = None
         if ob_st is not None:
             octry = _state_fields(data, ob_st).get("country")
-        if ob_bt and ob_bt.startswith("building_company_"):
-            if octry is not None and octry != owner_ctry:
+        if _is_company_building_type(ob_bt):
+            # 公司/区域公司总部: 外国公司判定用公司母国 (区域总部可设在别国),
+            # 解析不到公司时回退按总部所在国判定
+            _comp, _cn = _company_of_building(data, ob)
+            _home = _comp.get("country") if _comp is not None else None
+            _ref = _home if _home is not None else octry
+            if _ref is not None and _ref != owner_ctry:
                 dist["foreign_company"] += lv
             else:
                 dist["company"] += lv
@@ -3655,7 +3707,7 @@ def _self_owned_kind(btype):
     """自持份额 (identity==自身) 按建筑类型的持有人语义。"""
     if not btype:
         return "laborer", "当地劳动力"
-    if btype.startswith("building_company_"):
+    if _is_company_building_type(btype):
         return "company", "公司"
     if (btype in _WORKFORCE_SELF_OWNED_TYPES
             or btype.startswith(_WORKFORCE_SELF_OWNED_PREFIXES)):
@@ -3715,7 +3767,9 @@ def _workforce_summary(workforce_map, bid, limit=3):
 
 
 def _owner_building_info(data, ob, objs=None, workforce=None):
-    """私有/公司份额的持有建筑信息 (含从业职业摘要); 找不到返回 None。"""
+    """私有/公司份额的持有建筑信息 (含从业职业摘要); 找不到返回 None。
+    公司/区域公司总部建筑附归属公司信息 (company_name 自定义名优先 /
+    company_country_zh 母国 / hq_kind 总部或区域总部)。"""
     if objs is not None and ob in objs:
         bt = objs[ob].get("building")
         st = objs[ob].get("state")
@@ -3729,6 +3783,16 @@ def _owner_building_info(data, ob, objs=None, workforce=None):
         "building_zh": bzh,
         "state_zh": _state_zh_cached(data, st) if st is not None else None,
     }
+    if _is_company_building_type(bt):
+        comp, cname_zh = _company_of_building(data, ob)
+        if comp is not None:
+            cn = _company_display_name(comp, loc)
+            if cn and cn != "未知公司":
+                info["company_name"] = cn
+            info["company_country_zh"] = cname_zh
+            info["hq_kind"] = ("区域总部"
+                               if bt.startswith("building_regional_company_")
+                               else "总部")
     wf = _workforce_summary(workforce, ob)
     if wf:
         info["workforce"] = wf
@@ -3785,9 +3849,14 @@ def _ownership_holders(data, bid, player_id=None, building_obj=None,
         octry = None
         if ob_st is not None:
             octry = _state_fields(data, ob_st).get("country")
-        if ob_bt and ob_bt.startswith("building_company_"):
+        if _is_company_building_type(ob_bt):
+            # 公司/区域公司总部: 外国公司判定用公司母国 (区域总部可设在别国),
+            # 解析不到公司时回退按总部所在国判定
+            _comp, _cn = _company_of_building(data, ob)
+            _home = _comp.get("country") if _comp is not None else None
+            _ref = _home if _home is not None else octry
             k = ("foreign_company"
-                 if (octry is not None and octry != owner_ctry) else "company")
+                 if (_ref is not None and _ref != owner_ctry) else "company")
         else:
             k = "foreign" if (octry is not None and octry != owner_ctry) else "private"
         d = by_kind.setdefault(k, {"levels": 0, "owner_bids": {}})
@@ -3835,11 +3904,22 @@ def _ownership_sentence(holders):
             if top:
                 extras.append("从业者以" + top + "为主")
         ow = h.get("owner")
-        if h.get("kind") in ("private", "company") and ow and ow.get("building_zh"):
-            place = "的".join(x for x in (ow.get("state_zh"),
-                                          ow.get("building_zh")) if x)
-            if place:
-                extras.append("持有者为" + place)
+        kind = h.get("kind")
+        if kind in ("private", "company", "foreign_company") and ow:
+            cname = ow.get("company_name")
+            if cname:
+                # 公司份额: 外国公司带母国 (区域总部可设在别国), 本国公司带州
+                if ow.get("company_country_zh") and kind == "foreign_company":
+                    extras.append("持有者为" + ow["company_country_zh"] + "的" + cname)
+                else:
+                    place = "的".join(x for x in (ow.get("state_zh"), cname) if x)
+                    if place:
+                        extras.append("持有者为" + place)
+            elif ow.get("building_zh"):
+                place = "的".join(x for x in (ow.get("state_zh"),
+                                              ow.get("building_zh")) if x)
+                if place:
+                    extras.append("持有者为" + place)
         return "、".join(extras)
 
     top = items[0]
@@ -6329,44 +6409,41 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     focus_zh = hub_zh or tstate_zh
     if source == "traded":
         active_line = (
-            f"该州交易的大宗商品中，最活跃商品为「{good['zh']}」"
-            + (f"，市价约{_fm_pounds(snap, good['price'])}"
+            f"这里交易最活跃的商品是{good['zh']}"
+            + (f"，市价约{_fm_goods_price(snap, good['price'])}"
                if isinstance(good["price"], (int, float)) else "") + "。")
     else:
         active_line = (
-            f"本期从我国可自产的制成品中选取市价居前的「{good['zh']}」"
-            + (f"（市价约{_fm_pounds(snap, good['price'])}）"
-               if isinstance(good["price"], (int, float)) else "")
-            + "作为货架焦点。")
+            f"我国可自产的制成品中，{good['zh']}的市价居于前列"
+            + (f"，约{_fm_goods_price(snap, good['price'])}"
+               if isinstance(good["price"], (int, float)) else "") + "。")
     if importer:
-        dest = f"经我国贸易中心出口至{importer['country']}"
-        extra = []
+        export_bits = [f"{good['zh']}经我国贸易中心出口至{importer['country']}"]
         if importer.get("state_zh"):
-            extra.append(f"该国商埠：{importer['state_zh']}")
+            export_bits.append(f"目的地商埠为{importer['state_zh']}")
         if isinstance(importer.get("market_price"), (int, float)):
             imp_cur = importer.get("currency") or unit
-            imp_price = format_money(importer["market_price"], imp_cur,
-                                     _fx_rate(snap, imp_cur))
+            imp_price = _fm_goods_price(snap, importer["market_price"], imp_cur)
             if imp_cur != unit:
-                imp_price += (f"（折合约{_fm_pounds(snap, importer['market_price'])}）")
-            extra.append(f"当地市价约{imp_price}")
-        export_line = dest + (f"（{'，'.join(extra)}）" if extra else "") + "。"
+                imp_price += (f"（折合约{_fm_goods_price(snap, importer['market_price'])}）")
+            export_bits.append(f"当地市价约{imp_price}")
+        export_line = "，".join(export_bits) + "。"
     else:
         export_line = "（出口去向资料不足，本期按本地市场情况写作。）"
     lead = [
-        f"本期货架焦点：{focus_zh}的贸易中心。",
+        f"本期走访{focus_zh}的贸易中心。",
         _pool_building_text(melted, ctx, cid, tb, tobj, loc, gm, pops=pops,
                             place=hub_zh),
         active_line,
-        (f"「{good['zh']}」为可直接被居民消费的制成品，"
-         "产业链至少经过原料→加工两个环节"
+        (f"{good['zh']}是可直接被居民消费的制成品，从原料到成品"
+         "至少经过两个环节"
          + (f"（主要原料：{'、'.join(lead_inputs_zh[:4])}）"
             if lead_inputs_zh else "")
-         + (f"；通常由{'、'.join(producers_zh[:3])}加工"
+         + (f"，通常由{'、'.join(producers_zh[:3])}加工"
             if producers_zh else "") + "。"),
         export_line,
     ]
-    workshop_lines = [f"生产「{good['zh']}」的本地建筑："]
+    workshop_lines = [f"生产{good['zh']}的本地建筑："]
     wk_ck = None
     if producers:
         for b, o in producers[:2]:
@@ -6410,7 +6487,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                 up_chain.append((zh.get(kkey, kkey), b2, o2))
     if up_chain:
         for name, b2, o2 in up_chain[:2]:
-            mine_lines.append(f"- 上游「{name}」：" + _pool_building_text(
+            mine_lines.append(f"- 上游{name}：" + _pool_building_text(
                 melted, ctx, cid, b2, o2, loc, gm, pops=pops))
             up_kind = _pool_btype_kind([o2.get("building")])
             up_label = {"mine": "矿工样本", "field": "农工样本",
@@ -6472,10 +6549,11 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         imp_cur = importer.get("currency") or unit
 
         def _imp_fmt(v):
-            """消费者侧金额: 进口国币种 + (币种不同时)折合我国币种说明。"""
-            s = format_money(v, imp_cur, _fx_rate(snap, imp_cur))
+            """消费者侧金额: 进口国币种 + (币种不同时)折合我国币种说明。
+            商品单价口径 (与 lead 段同源): 汇率÷S, 见 _fm_goods_price。"""
+            s = _fm_goods_price(snap, v, imp_cur)
             if imp_cur != unit:
-                s += f"（折合约{_fm_pounds(snap, v)}）"
+                s += f"（折合约{_fm_goods_price(snap, v)}）"
             return s
 
         if isinstance(gate, (int, float)) and gate > 0:
@@ -6485,18 +6563,19 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             import_base = gate + export_duty
             import_duty = import_base * ir / 100.0
             total = gate + export_duty + import_duty
-            bits = [f"出厂价约{_fm_pounds(snap, gate)}"]
+            bits = [f"出厂价约{_fm_goods_price(snap, gate)}"]
             if abs(er) >= 1e-9:
                 bits.append(
-                    f"出口补贴{-er}%×出厂价{_fm_pounds(snap, gate)}" if er < 0
-                    else f"出口关税{er}%×出厂价{_fm_pounds(snap, gate)}")
+                    f"出口补贴约{abs(er):g}%" if er < 0
+                    else f"出口关税约{abs(er):g}%")
             if abs(ir) >= 1e-9:
                 bits.append(
-                    f"进口补贴{-ir}%×（到岸价{_imp_fmt(import_base)}）" if ir < 0
-                    else f"进口关税{ir}%×（到岸价{_imp_fmt(import_base)}）")
+                    f"进口补贴约{abs(ir):g}%，按到岸价{_imp_fmt(import_base)}计"
+                    if ir < 0
+                    else f"进口关税约{abs(ir):g}%，按到岸价{_imp_fmt(import_base)}计")
             cust_lines.append(
-                f"该消费者购买时共花费约{_imp_fmt(total)}（"
-                + "＋".join(bits) + "）。")
+                f"该消费者购买时共花费约{_imp_fmt(total)}，"
+                + "，".join(bits) + "。")
         else:
             cust_lines.append("（当地价格资料不足，请据终端顾客收支含蓄写作。）")
     else:
@@ -6515,7 +6594,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         cust_lines.append(_blk)
     if not importer and isinstance(good["price"], (int, float)):
         cust_lines.append(
-            f"「{good['zh']}」当前市价约{_fm_pounds(snap, good['price'])}，"
+            f"{good['zh']}当前市价约{_fm_goods_price(snap, good['price'])}，"
             "可作为家庭账本的一笔支出参照。")
 
     # 动态板块标题: 按生产/上游环节实际形态命名,
@@ -6864,19 +6943,19 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
         down = sorted(rows, key=lambda r: (_yoy_pct(r) if _yoy_pct(r) is not None else 1e9))[:3]
         lead.append("本年度市场物价涨落：")
         lead.append("上涨最明显：" + "、".join(
-            f"{r['zh']}（市价约{_fm_pounds(snap, r['price'])}{_yoy_txt(r)}）"
+            f"{r['zh']}（市价约{_fm_goods_price(snap, r['price'])}{_yoy_txt(r)}）"
             for r in up) + "。")
         lead.append("下跌最明显：" + "、".join(
-            f"{r['zh']}（市价约{_fm_pounds(snap, r['price'])}{_yoy_txt(r)}）"
+            f"{r['zh']}（市价约{_fm_goods_price(snap, r['price'])}{_yoy_txt(r)}）"
             for r in down) + "。")
     else:
         hi = sorted(rows, key=lambda r: -(r["price"] if isinstance(r["price"], (int, float)) else 0))[:3]
         lo = sorted(rows, key=lambda r: r["price"] if isinstance(r["price"], (int, float)) else float("inf"))[:3]
         lead.append("本年度市场物价：")
         lead.append("市价最高：" + "、".join(
-            f"{r['zh']}（市价约{_fm_pounds(snap, r['price'])}）" for r in hi) + "。")
+            f"{r['zh']}（市价约{_fm_goods_price(snap, r['price'])}）" for r in hi) + "。")
         lead.append("市价最低：" + "、".join(
-            f"{r['zh']}（市价约{_fm_pounds(snap, r['price'])}）" for r in lo) + "。")
+            f"{r['zh']}（市价约{_fm_goods_price(snap, r['price'])}）" for r in lo) + "。")
     state_ids = _pool_state_ids(snap)
     pops = ctx.player_pops(state_ids)
     states = snap.get("states") or []
@@ -6929,7 +7008,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
         household.extend(_pool_investment_lines(snap, st_zh, o, "mag_price"))
     market = ["本刊关注的几件商品与市价："]
     for r in rows[:5]:
-        market.append(f"- {r['zh']}：市价约{_fm_pounds(snap, r['price'])}"
+        market.append(f"- {r['zh']}：市价约{_fm_goods_price(snap, r['price'])}"
                       f"{_yoy_txt(r)}")
     street = ["街市与生计收束素材："]
     if wage is not None:
@@ -10877,6 +10956,25 @@ def _fm_pounds(snap, v, currency=None):
                         _fx_rate(snap, currency))
 
 
+def _fm_goods_price(snap, v, currency=None):
+    """商品单价 → 主辅币文本 (史实单价口径, v4 2026 动态物价体系)。
+
+    全局金额放大 currency_base_scale (S) 只作用于收入/总价等「金额」,
+    商品单价按 goods_measure.json 重标定 (per = base×S÷目标史实单价),
+    显示换算用 汇率÷S, 与 journal._goods_unit_price_text 同口径, 避免
+    「一桶烈酒 4,514 古尔登」式把 S 放大重复计入单价而离谱。
+    每游戏单位显示价 = 游戏镑 × 锚定汇率×g×t (S 相消)。"""
+    rate = _fx_rate(snap, currency)
+    try:
+        scale = float(_journal.load_config().get("currency_base_scale", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        scale = 1.0
+    if scale <= 0:
+        scale = 1.0
+    return format_money(v, currency or snap.get("currency") or DEFAULT_CURRENCY,
+                        rate / scale)
+
+
 # ---------------------------------------------------------------------------
 # 价格指数 / 实际GDP / 通胀率 (问题3, v4 2026): 12 商品等权拉氏指数,
 # 纯游戏镑口径 (与金额放大/汇率无关, 名义/实际同乘 S)。
@@ -11680,6 +11778,7 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
         "culture": ri.get("culture"),
         "religion": ri.get("religion"),
         "home_region": ri.get("home_region"),
+        "company": ri.get("company"),
         "activity": snap.get("ruler_activity"),
     }
 
@@ -12136,7 +12235,7 @@ def _pick_building(melted, state_id, rnd=None, buildings_index=None, building_ty
                 building_type_map = _building_type_map(melted, [state_id])
             t = building_type_map.get(b)
         if t and (loc.get(t) or "") not in ("", t) \
-                and not t.startswith("building_company_") \
+                and not _is_company_building_type(t) \
                 and not t.startswith("building_port"):
             pairs.append((b, t))
     if not pairs:
@@ -12410,6 +12509,7 @@ def build_journal_data(snap):
     data["ruler_culture"] = ri.get("culture")
     data["ruler_religion"] = ri.get("religion")
     data["ruler_home_region"] = ri.get("home_region")
+    data["ruler_company"] = ri.get("company")
     # 主流文化(国族): 来自国家对象的 primary cultures 列表(本地化中文名),
     # 与按人口占比排序的 pop_cultures 分开传递, 供社会板块提示词使用
     prim = []
@@ -12588,6 +12688,20 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
     # 程序侧拼装统治者活动；走访类先从首都州选真实 POP，供家庭采访复用同一 POP。
     snap["ruler_info"] = _ruler_info(melted, cid, (country or {}).get("ruler"),
                                      snap.get("govt"), chars=chars)
+    # 统治者兼公司总裁联动 (2026-08-25): 统治者角色 id 恰为某国家级公司 CEO 时,
+    # 在 ruler_info 记下公司名, 供报纸/杂志政界动态引用 (如「另任蒙特雷钢铁总裁」)。
+    _ri = snap.get("ruler_info") or {}
+    _ruler_cid = (country or {}).get("ruler")
+    if _ri and isinstance(_ruler_cid, int):
+        try:
+            for _cid2, _cobj in _companies_database(melted).items():
+                if _cobj.get("country") == cid and _cobj.get("ceo") == _ruler_cid:
+                    _cn = _company_display_name(_cobj, _load_loc_all())
+                    if _cn and _cn != "未知公司":
+                        _ri["company"] = _cn
+                    break
+        except Exception:
+            pass
     capital_id = (country or {}).get("capital")
     visit_pop_obj = _pick_visit_pop(snap, capital_id, pops_index=pops_index)
     ruler_act, act_kind, visit_state = _assemble_ruler_activity(
@@ -13850,6 +13964,22 @@ def _state_pollution_band(pct):
     return "极重"
 
 
+# 污染/荒废度档位 → 一句自然短语 (供州情速写, 2026-08-25):
+# 与路网档位同口径, 一句短语描述环境状况, 不另开括号。
+_STATE_POLLUTION_PHRASES = {
+    "轻微": "烟气尚稀",
+    "中等": "烟囱渐密",
+    "严重": "浓烟蔽日",
+    "极重": "黑烟遮天",
+}
+_STATE_DEVASTATION_PHRASES = {
+    "轻微": "偶见残垣断壁",
+    "明显": "房舍多毁",
+    "严重": "村镇凋敝",
+    "近乎废墟": "满目疮痍",
+}
+
+
 def _admin_cover(melted, ctx, snap, cid, state_ids):
     """国家行政产出/需求近似比 → 档位 (缓存在 snap["_admin_cover"])。
 
@@ -14034,7 +14164,7 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
         for idx, (pm, _k, _z, _d) in enumerate(_STATE_RAIL_BANDS):
             if pm in pms and (rail is None or idx > rail[0]):
                 rail = (idx, _k, _z, _d)
-    rail_txt = f"；{rail[2]}（{rail[3]}）" if rail else ""
+    rail_txt = f"；{rail[3]}" if rail else ""
     sat_ratio = (usage / infra) if infra > 0 else 99.0
     if sat_ratio > 1.05:
         sat_key, sat_zh, sat_desc = _STATE_ROAD_SAT_JAM
@@ -14044,16 +14174,17 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
             if sat_ratio >= th:
                 sat_key, sat_zh, sat_desc = k, z, d
     incorp = sobj.get("incorporation")
+    # 路网自然语句: 档位名与描述以逗号衔接, 饱和度/铁路只留描述, 不套括号
     if incorp is not None and incorp < 1:
-        lines.append(f"- 州情·路网：{state_zh}尚未完全并入本土，{rb_zh}（{rb_desc}），"
-                     f"{sat_zh}（{sat_desc}）{rail_txt}。")
+        lines.append(f"- 州情·路网：{state_zh}尚未完全并入本土，{rb_zh}，{rb_desc}；"
+                     f"{sat_desc}{rail_txt}。")
     else:
-        lines.append(f"- 州情·路网：{state_zh}{rb_zh}（{rb_desc}），"
-                     f"{sat_zh}（{sat_desc}）{rail_txt}。")
+        lines.append(f"- 州情·路网：{state_zh}{rb_zh}，{rb_desc}；"
+                     f"{sat_desc}{rail_txt}。")
     # ---- 行政 ----
     cover = _admin_cover(melted, ctx, snap, cid, state_ids)
     ab_key, ab_zh, ab_desc = cover["band"]
-    admin_bits = [f"- 州情·行政：{state_zh}属「{ab_zh}」（{ab_desc}）"]
+    admin_bits = [f"- 州情·行政：{state_zh}{ab_zh}，{ab_desc}"]
     if incorp is not None and incorp < 1:
         admin_bits.append(f"该州并入进度约{round(incorp * 100)}%，政令多经殖民衙门中转")
     elif snap.get("capital_id") == sid:
@@ -14108,9 +14239,24 @@ def build_state_flavor(melted, ctx, snap, sid, pops=None, buildings=None,
     try:
         poll = _state_region_pollution_map(melted).get(sobj.get("region"))
         if isinstance(poll, (int, float)):
-            lines.append(f"- 州情·环境：污染影响{_state_pollution_band(poll)}。")
+            band = _state_pollution_band(poll)
+            phrase = _STATE_POLLUTION_PHRASES.get(band, "")
+            lines.append(f"- 州情·环境：{phrase}，污染影响{band}。"
+                         if phrase else f"- 州情·环境：污染影响{band}。")
     except Exception:
         pass
+    # 荒废度: 一句短语 + 档位 (与路网同口径; 仅在有实际荒废时写)
+    dev = sobj.get("devastation")
+    if isinstance(dev, (int, float)) and dev >= 1:
+        try:
+            from journal import _devastation_band
+            dev_band = _devastation_band(dev)
+        except Exception:
+            dev_band = None
+        if dev_band:
+            dphrase = _STATE_DEVASTATION_PHRASES.get(dev_band, "")
+            lines.append(f"- 州情·荒废：{dphrase}，荒废度{dev_band}。"
+                         if dphrase else f"- 州情·荒废：荒废度{dev_band}。")
     urban_lv = sum(int((objs.get(b) or {}).get("levels") or 0)
                    for b in by_state.get(sid, [])
                    if bmap.get(b) == "building_urban_center")
@@ -15641,7 +15787,21 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
                       if style == "west" else None)
     comps = []
     charters = _company_charters_map(melted)
-    for cid2, cobj in _companies_database(melted).items():
+    # 国家级公司 CEO: 公司对象 ceo 字段 (角色id) → 中文名, 批量解析一次。
+    # 供股市动态「总裁为X」与政界动态「统治者兼某公司总裁」联动 (2026-08-25)。
+    _all_comps = _companies_database(melted)
+    ceo_names = {}
+    _ceo_ids = [cobj.get("ceo") for cobj in _all_comps.values()
+                if cobj.get("country") == cid and isinstance(cobj.get("ceo"), int)]
+    if _ceo_ids:
+        _chars = _character_index(melted, _ceo_ids, ctx)
+        for _cid2, _cobj in _all_comps.items():
+            if _cobj.get("country") != cid:
+                continue
+            _ceo = _cobj.get("ceo")
+            if isinstance(_ceo, int) and (_chars.get(_ceo) or {}).get("name"):
+                ceo_names[_cid2] = _chars[_ceo]["name"]
+    for cid2, cobj in _all_comps.items():
         if cobj.get("country") != cid:
             continue
         ctype = cobj.get("company_type")
@@ -15734,6 +15894,7 @@ def _stock_market_data(melted, snap, ctx, country, cid, prev_snap=None,
             "change_pct": (round(change, 1) if change is not None else None),
             "band": _stock_band(change),
             "note": (note + "；" + note2) if (note and note2) else (note or note2 or ""),
+            "ceo_name": ceo_names.get(cid2),
             "open": ohlc["open"] if ohlc else None,
             "high": ohlc["high"] if ohlc else None,
             "low": ohlc["low"] if ohlc else None,

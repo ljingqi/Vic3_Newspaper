@@ -1191,8 +1191,11 @@ def _facts_minister(m):
     ruler = m.get("ruler") or {}
     lines = []
     if ruler and ruler.get("name"):
-        lines.append(f"统治者{ruler['name']}，头衔{ruler.get('title') or '未知'}，"
-                     f"意识形态{ruler.get('ideology') or '意识形态未知'}。")
+        line = (f"统治者{ruler['name']}，头衔{ruler.get('title') or '未知'}，"
+                f"意识形态{ruler.get('ideology') or '意识形态未知'}")
+        if ruler.get("company"):
+            line += f"，兼任{ruler['company']}总裁"
+        lines.append(line + "。")
     lines.append("执政利益集团（内阁大臣来源）：")
     for g in cab[:4]:
         ig_nm = journal.ig_zh(g.get("name"), g.get("definition"))
