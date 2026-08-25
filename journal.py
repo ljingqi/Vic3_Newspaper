@@ -3814,7 +3814,9 @@ def call_deepseek(messages, cfg, retries=3):
 def save_raw_data(data, cfg):
     """把年度数据块落盘为 raw_<year>.json (不生成报纸/杂志)。
     返回 raw 文件路径; 失败返回 None。"""
-    folder = resolve_session_folder(data, cfg)
+    # 调用方已定文件夹(后台并行生成时各线程捕获各自的会话文件夹)时优先采用,
+    # 避免读全局 SESSION 被另一线程换国/新局时改走
+    folder = data.get("output_dir") or resolve_session_folder(data, cfg)
     data["output_dir"] = folder
     base_dir = os.path.join(cfg["journal_dir"], folder)
     raw_dir = os.path.join(base_dir, "data")

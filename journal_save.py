@@ -11057,7 +11057,7 @@ def _magazine_pool_eligibility(melted, snap, ctx, country):
     # 仅地产/财产/资格/普选四法带 inherit_free_elections_effect(幕府/独裁/寡头/
     # 技术官僚/一党制等治理法均无选举)
     laws = query_laws(melted, snap.get("country_id"))
-    voting = bool(laws & _POOL_VOTE_LAWS)
+    voting = bool(set(laws or []) & _POOL_VOTE_LAWS)
     return {
         "railway": railway,
         "turmoil": turmoil,
@@ -15796,13 +15796,16 @@ def ensure_fresh_melt():
         time.sleep(2)
     return None, last_err
 
-def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None):
+def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None,
+                   folder=None):
     """用存档数据生成报纸 (复用 journal.py)。
     melted/snap 由调用方已熔化/解析时可直接传入, 避免同一年份重复熔化解析。
     未传入 snap 时优先读取当年快照缓存 (snapshot_<year>.json); 缓存命中则
     跳过熔化与完整提取, 只读 JSON (~30KB), 大幅加快重复生成。
     ctx 可选: SaveContext, 由 watch/continue 创建一次并传给报纸与杂志,
-    使两个生成函数共享索引/POP/州对象解析 (阶段1)。"""
+    使两个生成函数共享索引/POP/州对象解析 (阶段1)。
+    folder 可选: 调用方(后台生成线程)已捕获本次会话文件夹时传入, 全程使用
+    该文件夹, 不再读全局 SESSION (换国/新局时不被改走); 缺省沿用原逻辑。"""
     import journal
     cfg = journal.load_config()
     snap_from_cache = False
@@ -15839,33 +15842,42 @@ def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None):
         print(bad)
         return 1
     # 首次确定文件夹: 检查根目录同名文件夹, 有则加数字(大南、大南2...); 同局沿用
-    if not journal.SESSION["folder"]:
+    if folder is None:
+        if not journal.SESSION["folder"]:
+            with journal._FOLDER_LOCK:
+                if not journal.SESSION["folder"]:
+                    if snap_from_cache and cache_folder:
+                        journal.SESSION["folder"] = cache_folder
+                    else:
+                        journal.SESSION["folder"] = journal.determine_folder(
+                            snap.get("player") or "未知名国家", cfg["journal_dir"])
+        folder = journal.SESSION["folder"]
+    else:
+        # 调用方(后台生成线程)已捕获本次会话文件夹: 锁定同步, 换国时不被改走
         with journal._FOLDER_LOCK:
-            if not journal.SESSION["folder"]:
-                if snap_from_cache and cache_folder:
-                    journal.SESSION["folder"] = cache_folder
-                else:
-                    journal.SESSION["folder"] = journal.determine_folder(
-                        snap.get("player") or "未知名国家", cfg["journal_dir"])
+            journal.SESSION["folder"] = folder
     # 快照落盘缓存: 只缓存纯提取结果, 跨年战争由 _merge_prev_year_wars 每次重算
     if not snap_from_cache:
-        _save_snapshot_cache(snap, cfg["journal_dir"], journal.SESSION["folder"],
-                             snap.get("year"))
+        _save_snapshot_cache(snap, cfg["journal_dir"], folder, snap.get("year"))
     # 存档层落盘: 补回上一年存档中的「去年战争」(V3 war_manager 只保留进行中战争)
-    _merge_prev_year_wars(snap, cfg["journal_dir"], journal.SESSION["folder"])
+    _merge_prev_year_wars(snap, cfg["journal_dir"], folder)
     jdata = build_journal_data(snap)
+    jdata["output_dir"] = folder
     journal.on_block_complete(jdata, cfg, force=force)
     print("报纸生成完成")
     return 0
 
 
-def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None, ctx=None):
+def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None,
+                  ctx=None, folder=None):
     """用存档数据生成杂志 (magazine.py), 复用 make_newspaper 的熔化/快照/
     会话文件夹逻辑, 避免同一年份重复熔化解析。
     cfg 可传入覆盖(如 test 目录), 缺省重新读取 config.json。
     未传入 snap 时优先读取当年快照缓存; 命中后只需读 melt 缓存即可构建杂志数据
     (跳过约 41s 的完整提取, 保留约 10s 的杂志数据构建)。
-    ctx 可选: SaveContext, 与 make_newspaper 共享索引/POP/州对象解析 (阶段1)。"""
+    ctx 可选: SaveContext, 与 make_newspaper 共享索引/POP/州对象解析 (阶段1)。
+    folder 可选: 调用方(后台生成线程)已捕获本次会话文件夹时传入, 全程使用
+    该文件夹, 不再读全局 SESSION (换国/新局时不被改走); 缺省沿用原逻辑。"""
     import journal
     cfg = cfg or journal.load_config()
     snap_from_cache = False
@@ -15901,17 +15913,22 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None, ctx=N
     if bad:
         print(bad)
         return 1
-    if not journal.SESSION["folder"]:
+    if folder is None:
+        if not journal.SESSION["folder"]:
+            with journal._FOLDER_LOCK:
+                if not journal.SESSION["folder"]:
+                    if snap_from_cache and cache_folder:
+                        journal.SESSION["folder"] = cache_folder
+                    else:
+                        journal.SESSION["folder"] = journal.determine_folder(
+                            snap.get("player") or "未知名国家", cfg["journal_dir"])
+        folder = journal.SESSION["folder"]
+    else:
+        # 调用方(后台生成线程)已捕获本次会话文件夹: 锁定同步, 换国时不被改走
         with journal._FOLDER_LOCK:
-            if not journal.SESSION["folder"]:
-                if snap_from_cache and cache_folder:
-                    journal.SESSION["folder"] = cache_folder
-                else:
-                    journal.SESSION["folder"] = journal.determine_folder(
-                        snap.get("player") or "未知名国家", cfg["journal_dir"])
+            journal.SESSION["folder"] = folder
     if not snap_from_cache:
-        _save_snapshot_cache(snap, cfg["journal_dir"], journal.SESSION["folder"],
-                             snap.get("year"))
+        _save_snapshot_cache(snap, cfg["journal_dir"], folder, snap.get("year"))
     # 杂志数据需要 melted 字节: 缓存命中时读 melt 缓存即可 (约 0.5s), 缺缓存再熔化
     if snap_from_cache and melted is None:
         melted, err = load_melted()
@@ -15922,10 +15939,10 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None, ctx=N
                 return 1
         if ctx is None:
             ctx = SaveContext(melted)
-    _merge_prev_year_wars(snap, cfg["journal_dir"], journal.SESSION["folder"])
+    _merge_prev_year_wars(snap, cfg["journal_dir"], folder)
     jdata = build_journal_data(snap)
-    jdata["output_dir"] = journal.SESSION["folder"]
-    session_dir = os.path.join(cfg["journal_dir"], journal.SESSION["folder"])
+    jdata["output_dir"] = folder
+    session_dir = os.path.join(cfg["journal_dir"], folder)
     jdata["magazine"] = build_magazine_data(
         melted, snap, session_dir, snap.get("year"), ctx=ctx,
         pool_override=cfg.get("magazine_pool_override"),
@@ -15951,14 +15968,17 @@ def _generate_async(year, snap, melted=None):
     cfg = journal.load_config()
     ctx = SaveContext(melted) if melted is not None else None
     # 前置步骤只做一次 (与 make_newspaper/make_magazine 内部的重复步骤幂等)
-    if not journal.SESSION["folder"]:
+    # 捕获本次会话文件夹: 主循环在换国/新局时会改 SESSION 全局, 这里锁定
+    # 本局全部产物(快照缓存/raw/报纸/杂志/阅读页)的去向, 防止串到别的会话
+    folder = journal.SESSION["folder"]
+    if not folder:
         with journal._FOLDER_LOCK:
             if not journal.SESSION["folder"]:
                 journal.SESSION["folder"] = journal.determine_folder(
                     snap.get("player") or "未知名国家", cfg["journal_dir"])
-    _save_snapshot_cache(snap, cfg["journal_dir"],
-                         journal.SESSION["folder"], snap.get("year"))
-    _merge_prev_year_wars(snap, cfg["journal_dir"], journal.SESSION["folder"])
+            folder = journal.SESSION["folder"]
+    _save_snapshot_cache(snap, cfg["journal_dir"], folder, snap.get("year"))
+    _merge_prev_year_wars(snap, cfg["journal_dir"], folder)
 
     def _run(name, enabled_key, fn):
         try:
@@ -15970,9 +15990,11 @@ def _generate_async(year, snap, melted=None):
         except Exception as e:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] {year} 年{name}生成失败: {e}")
 
-    newspaper_job = lambda: make_newspaper(year=year, force=True, snap=snap, ctx=ctx)
+    newspaper_job = lambda: make_newspaper(year=year, force=True, snap=snap,
+                                           ctx=ctx, folder=folder)
     magazine_job = lambda: make_magazine(year=year, force=True,
-                                         melted=melted, snap=snap, ctx=ctx)
+                                         melted=melted, snap=snap, ctx=ctx,
+                                         folder=folder)
     if cfg.get("parallel_generation_enabled", True):
         with ThreadPoolExecutor(max_workers=2) as ex:
             futures = [
@@ -16046,6 +16068,28 @@ def _wait_save_stable(path, seconds=2.0, attempts=4):
     return False
 
 
+def _rebind_session_folder(cfg, player, player_tag, continue_mode):
+    """玩家变化/换国时重定输出文件夹 (SESSION 全局在锁内更新)。
+
+    continue 模式: 沿用该国最新会话文件夹 (_latest_session_folder_by_tag,
+    玩家改名兼容); 没有历史会话时新建编号文件夹。
+    watch 模式: 一律新建 (determine_folder → 墨西哥/墨西哥2...),
+    与新档「每次开局一个文件夹」的语义一致。
+    """
+    import journal
+    with journal._FOLDER_LOCK:
+        if continue_mode:
+            folder = _latest_session_folder_by_tag(cfg["journal_dir"],
+                                                   player_tag, player)
+            if folder:
+                journal.SESSION["folder"] = folder
+                print(f"  输出文件夹: [{folder}] (沿用该国历史会话)")
+                return
+        journal.SESSION["folder"] = journal.determine_folder(
+            player or "未知名国家", cfg["journal_dir"])
+        print(f"  输出文件夹: [{journal.SESSION['folder']}] (新会话)")
+
+
 def cmd_watch(continue_mode=False):
     import journal
     cfg = journal.load_config()
@@ -16103,8 +16147,10 @@ def cmd_watch(continue_mode=False):
             if os.path.exists(md_path) and os.path.exists(mg_path):
                 print(f"续传模式: {year} 年报纸与杂志均存在, 进入监控等待下一年。")
     last_mtime = None
-    last_year = None
-    last_player = None
+    # continue 模式: 以启动快照的玩家/年份为基准, 避免把同局的第一个新存档
+    # 误判为「新局或换国」/「新年份」; 换国时再由 _rebind_session_folder 重定
+    last_year = snap.get("year") if continue_mode else None
+    last_player = snap.get("player") if continue_mode else None
     while True:
         try:
             v3 = find_latest_v3()
@@ -16139,6 +16185,12 @@ def cmd_watch(continue_mode=False):
                         if player and player != last_player:
                             print(f"  玩家: {player} (新局或换国)")
                             last_player = player
+                            # 重定输出文件夹: continue 沿用该国最新会话,
+                            # watch 新建编号文件夹; 新玩家首个存档必定生成
+                            last_year = None
+                            _rebind_session_folder(cfg, player,
+                                                   snap.get("player_tag"),
+                                                   continue_mode)
                         if year is not None and year != last_year:
                             print(f"  新年份 {year}, 后台生成报纸+杂志 (不阻塞监控)")
                             threading.Thread(target=_generate_async,
