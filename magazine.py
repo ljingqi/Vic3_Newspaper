@@ -1195,15 +1195,13 @@ def _facts_minister(m):
                      f"意识形态{ruler.get('ideology') or '意识形态未知'}。")
     lines.append("执政利益集团（内阁大臣来源）：")
     for g in cab[:4]:
-        ig_zh = journal.IG_NAMES.get(g.get("name"),
-                                     journal.IG_NAMES.get(g.get("definition"),
-                                                          g.get("name")))
+        ig_nm = journal.ig_zh(g.get("name"), g.get("definition"))
         bits = []
         if g.get("leader_name"):
             bits.append(f"大臣{g['leader_name']}")
         else:
             bits.append("姓名未知")
-        bits.append(f"来自{ig_zh}")
+        bits.append(f"来自{ig_nm}")
         if g.get("leader_ideology"):
             bits.append(f"意识形态为{g['leader_ideology']}")
         if isinstance(g.get("clout_pct"), (int, float)) and g["clout_pct"] >= 0.05:
@@ -1239,9 +1237,7 @@ def _facts_decrees(m, data):
     if igs:
         ig_bits = []
         for g in igs[:6]:
-            nm = journal.IG_NAMES.get(g.get("name"),
-                                      journal.IG_NAMES.get(g.get("definition"),
-                                                           g.get("name")))
+            nm = journal.ig_zh(g.get("name"), g.get("definition"))
             if isinstance(g.get("clout_pct"), (int, float)):
                 ig_bits.append(f"{nm}占政治力量约{g['clout_pct']:.1f}%")
             else:
@@ -1452,7 +1448,7 @@ def _facts_newhome(m, data):
     lines = []
     pc = data.get("pop_cultures") or []
     if pc:
-        lines.append("人口文化构成（按占比）：" + "、".join(
+        lines.append("人口文化构成：" + "、".join(
             f"{c.get('name')}约{c.get('pct')}%" for c in pc[:5]))
     prof = data.get("professions") or []
     if prof:

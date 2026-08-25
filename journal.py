@@ -1081,7 +1081,35 @@ IG_NAMES = {
     "ig_hawaiian_democrats": "民主派", "ig_christian_missionaries": "基督教传教士",
     "ig_guardia_civil": "国民警卫队", "ig_ilustrados": "启蒙者",
     "ig_shipping_magnates": "航运巨头", "ig_powerbrokers": "政治掮客",
+    # 游戏 set_interest_group_name 重命名目标 / 日本特色集团 (漏键兜底;
+    # 正常路径由 ig_zh() 直接读游戏简体中文本地化)
+    "ig_jisha": "寺社", "ig_rangakusha": "兰学者",
+    "ig_london_missionary_society": "伦敦传道会", "ig_yangban": "两班官员",
+    "ig_zaibatsu": "财阀",
 }
+
+def ig_zh(name, definition=None):
+    """利益集团中文名：优先读游戏简体中文本地化（含已启用 mod，不含未启用的 mod，
+    与国名/法律名的读取口径一致，见 journal_save._loc_dirs），其次静态精修表，
+    最后回退原始键。存档里 interest_group 的 name 可能是重命名后的键
+    （如 ig_jisha/ig_rangakusha），definition 是基础键（ig_devout/ig_intelligentsia）。"""
+    loc = None
+    try:
+        from journal_save import _load_loc_all
+        loc = _load_loc_all()
+    except Exception:
+        loc = None
+    for k in (name, definition):
+        if not k:
+            continue
+        if loc:
+            v = loc.get(k)
+            if v:
+                return v
+        v = IG_NAMES.get(k)
+        if v:
+            return v
+    return name or definition or ""
 
 def job_satisfaction_band(v):
     """职业满意度数值 → 自然语言档位。程序判定，不把正负号语义交给模型。"""
@@ -1430,7 +1458,7 @@ def render_overview(data, history=None):
     L.append(f"- GDP：{gdp_s}；人口：{data.get('pop', '未知')}；生活水平：{data.get('sol', '未知')};识字率：{data.get('literacy', '未知')}")
     if isinstance(gdp_v, (int, float)) and isinstance(data.get('pop'), (int, float)) \
             and data['pop'] > 0:
-        L.append(f"- 人均GDP：约{_fm(data, gdp_v / data['pop'])}/年（=GDP÷人口）")
+        L.append(f"- 人均GDP：约{_fm(data, gdp_v / data['pop'])}/年")
     L.append(f"- 恶名：{_infamy_band(data.get('infamy'))}")
     if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
         L.append(f"- 政治倾向：激进派占人口约{data.get('radicals_pct', '?')}%，"
@@ -1439,9 +1467,9 @@ def render_overview(data, history=None):
     ruling = [g for g in igs if g.get("in_government")]
     if ruling:
         L.append("- 当前执政利益集团：" + "、".join(
-            f"{IG_NAMES.get(g.get('name'), IG_NAMES.get(g.get('definition'), g.get('name')))}"
+            f"{ig_zh(g.get('name'), g.get('definition'))}"
             f"（政治力量约{g['clout_pct']:.1f}%）" if isinstance(g.get('clout_pct'), (int, float))
-            else f"{IG_NAMES.get(g.get('name'), IG_NAMES.get(g.get('definition'), g.get('name')))}"
+            else f"{ig_zh(g.get('name'), g.get('definition'))}"
             for g in ruling))
     L.extend(_render_territory_change(data, history))
     # 列强之间的战事 = 国际背景, 与本国无关: 每场战争单独一行,
@@ -1952,7 +1980,7 @@ def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
                      f"低约{format_money(l, unit, rate)}，"
                      f"收约{format_money(c, unit, rate)}）")
     if yield_pct is not None:
-        parts.append(f"该公司股息率约{yield_pct}%（按年）")
+        parts.append(f"该公司股息率约{yield_pct}%")
     if not parts:
         return []
     return [head + "".join(parts) + "。"]
@@ -1977,7 +2005,7 @@ def render_econ(data, history=None):
     # 人均GDP 显式给出 (GDP÷人口, 年值, 与正文同币种口径): 供模型直接使用,
     # 避免其自行估算后与访谈收入作错误比较
     if isinstance(gdp, (int, float)) and isinstance(pop, (int, float)) and pop > 0:
-        L.append(f"- 人均GDP：约{_fm(data, gdp / pop)}/年（=GDP÷人口）")
+        L.append(f"- 人均GDP：约{_fm(data, gdp / pop)}/年")
     sol = data.get('sol', '未知')
     band = sol_band(sol)
     sol_line = f"- 平均生活水平：{sol}" + (f"（{band}）" if band else "")
@@ -2035,15 +2063,15 @@ def render_politics(data, history=None):
     L.append(f"- 统治者：{ruler}")
     ruler_act = data.get("ruler_activity")
     if ruler_act:
-        L.append(f"- 本期统治者活动（按该行事实如实报道）：{ruler_act}")
+        L.append(f"- 本期统治者活动：{ruler_act}")
     if data.get("radicals_pct") is not None or data.get("loyalists_pct") is not None:
         L.append(f"- 民意倾向：激进派占人口约{data.get('radicals_pct', '?')}%，"
                  f"效忠派占人口约{data.get('loyalists_pct', '?')}%")
     igs = data.get("interest_groups") or []
     if igs:
-        L.append("- 主要利益集团（按政治力量占比降序，执政者标注「执政」）：")
+        L.append("- 主要利益集团：")
         for g in igs[:5]:
-            nm = IG_NAMES.get(g.get('name'), IG_NAMES.get(g.get('definition'), g.get('name')))
+            nm = ig_zh(g.get('name'), g.get('definition'))
             cl = g.get('clout_pct')
             cl_s = f"约{cl:.1f}%" if isinstance(cl, (int, float)) else "占比未知"
             gov = "，执政" if g.get("in_government") else ""
@@ -2061,7 +2089,7 @@ def render_politics(data, history=None):
         ruling = [g for g in igs if g.get("in_government")]
         if ruling:
             L.append("- 当前执政利益集团：" + "、".join(
-                IG_NAMES.get(g.get('name'), IG_NAMES.get(g.get('definition'), g.get('name')))
+                ig_zh(g.get('name'), g.get('definition'))
                 for g in ruling))
     mvs = data.get("political_movements") or []
     if mvs:
@@ -2365,7 +2393,7 @@ def _render_pop_igs(obj):
     if igs:
         segs = []
         for g in igs[:3]:
-            nm = IG_NAMES.get(g.get("name"), g.get("name")) if isinstance(g, dict) else str(g)
+            nm = ig_zh(g.get("name")) if isinstance(g, dict) else str(g)
             pct = g.get("pct_of_workforce") if isinstance(g, dict) else None
             segs.append(f"{nm}（{pct:.0f}%）" if isinstance(pct, (int, float)) else nm)
         line = "- 政治阵营：该人群前三利益集团为" + "、".join(segs)
@@ -2375,8 +2403,8 @@ def _render_pop_igs(obj):
         L.append(line)
     elif obj.get("interest_group"):
         ig = obj.get("interest_group")
-        ig_zh = IG_NAMES.get(ig.get("name"), ig.get("name")) if isinstance(ig, dict) else str(ig)
-        ig_line = f"- 利益集团（政治倾向占比最高）：{ig_zh}"
+        ig_nm = ig_zh(ig.get("name")) if isinstance(ig, dict) else str(ig)
+        ig_line = f"- 利益集团（政治倾向占比最高）：{ig_nm}"
         share_pct = ig.get("share_pct") if isinstance(ig, dict) else None
         if isinstance(share_pct, (int, float)):
             ig_line += f"（占该群体政治倾向约{share_pct:.1f}%）"
@@ -2761,7 +2789,7 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         qbits.append(_fmt_month_qty(_consumption_goods_name(nm), q, unit_, dec,
                                     lumpy=(unit_ == "件")))
     if qbits:
-        out.append("- 主要消费商品月消费（估算）：" + "、".join(qbits) + "。")
+        out.append("- 主要消费商品月消费：" + "、".join(qbits) + "。")
     return out
 
 
@@ -2993,14 +3021,14 @@ def render_family(data, style=None):
             names = [_consumption_goods_name(g.get("name"))
                      for g in cgoods if g.get("name")]
             if names:
-                L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
+                L.append("- 主要消费商品：" + "、".join(names))
         price_bits = []
         for g in cgoods:
             t = _goods_unit_price_text(data, g, unit)
             if t:
                 price_bits.append(t)
         if price_bits:
-            L.append("- 主要消费品市价（本州所在市场）：" + "、".join(price_bits) + "。")
+            L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
     if fi.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = fi.get("engel_coefficient")
@@ -3143,14 +3171,14 @@ def render_peer(data, style=None):
             names = [_consumption_goods_name(g.get("name"))
                      for g in cgoods if g.get("name")]
             if names:
-                L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
+                L.append("- 主要消费商品：" + "、".join(names))
         price_bits = []
         for g in cgoods:
             t = _goods_unit_price_text(data, g, unit)
             if t:
                 price_bits.append(t)
         if price_bits:
-            L.append("- 主要消费品市价（本州所在市场）：" + "、".join(price_bits) + "。")
+            L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
     if peer.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = peer.get("engel_coefficient")
@@ -3270,14 +3298,14 @@ def render_unemployed(data, style=None):
             names = [_consumption_goods_name(g.get("name"))
                      for g in cgoods if g.get("name")]
             if names:
-                L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
+                L.append("- 主要消费商品：" + "、".join(names))
         price_bits = []
         for g in cgoods:
             t = _goods_unit_price_text(data, g, unit)
             if t:
                 price_bits.append(t)
         if price_bits:
-            L.append("- 主要消费品市价（本州所在市场）：" + "、".join(price_bits) + "。")
+            L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
     if uni.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = uni.get("engel_coefficient")
@@ -3459,9 +3487,9 @@ def render_ads(data, history=None):
     source = new_techs or techs
     picked = random.sample(source, min(3, len(source)))
     if new_techs:
-        note = "本年新研发（与上一年记录对比得出）"
+        note = "本年新研发"
     else:
-        note = "取自本国已研发科技（本年无新增或缺少上一年记录）"
+        note = "取自本国已研发科技"
     return (f"- 广告创作素材：{note}。必须围绕其创作，可作“最新发明”“时代进步”等宣传：\n"
             f"  {'、'.join(picked)}\n"
             "- 形式不限：商品/工艺/铺面可作货品告白；制度、思潮类科技"
@@ -3510,7 +3538,7 @@ def render_section_facts(key, data, history=None, style=None):
         return render_unemployed(data, style=style)
     if key == "comment":
         # overview 已含新闻自由风味行，历史表不再重复输出
-        return render_overview(data, history) + "\n\n" + render_history_table(data, history, include_flavor=False)
+        return render_overview(data, history) + "\n" + render_history_table(data, history, include_flavor=False)
     if key == "ads":
         return render_ads(data, history)
     return render_overview(data, history)

@@ -5577,10 +5577,11 @@ _POOL_DOP_LAWS = (
     "law_landed_voting", "law_wealth_voting", "law_census_voting",
     "law_universal_suffrage", "law_anarchy", "law_single_party_state",
 )
-# 不设普选的权力分配/治理法律: 独裁制、寡头制、酋邦(长老会议)
-_POOL_VOTE_EXCLUDED_LAWS = (
-    "law_autocracy", "law_oligarchy", "law_elder_council", "law_chiefdom",
-)
+# 神圣庄严的权利入池资格: 仅当全国实行上述四类选举法律之一
+_POOL_VOTE_LAWS = frozenset((
+    "law_landed_voting", "law_wealth_voting",
+    "law_census_voting", "law_universal_suffrage",
+))
 
 # 罪案与法网: 警察机构(Policing)法律组 / 国内安全(Internal Security)法律组
 _POOL_POLICING_LAWS = (
@@ -6517,8 +6518,7 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     lit_tot = sum((o.get("num_literate") or 0) for _p, o in sps)
     classroom = [f"样本州：{st_zh}。"]
     if wf_tot > 0:
-        classroom.append(f"该州识字率约{min(100, int(round(lit_tot / wf_tot * 100)))}%"
-                         "（按人口统计）。")
+        classroom.append(f"该州识字率约{min(100, int(round(lit_tot / wf_tot * 100)))}%。")
     gov_wf = (ctx.state_object(sid) or {}).get("pop_statistics") or {}
     g = gov_wf.get("population_government_workforce")
     if g is not None:
@@ -6688,17 +6688,19 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
         ballot.extend(_pool_investment_lines(snap, st_zh, pop, "mag_voting"))
         bl_ck = (culture_id_to_key(pop.get("culture"))
                  if pop.get("culture") is not None else None)
+        ok, reason = _pool_vote_verdict(pop, dop, citizenship, church=church,
+                                        state_religion=snap.get("religion"))
+        # 无投票权时角色不用「选民」称谓, 避免「选民被拦在门外」式自相矛盾
+        role = "选民（主角）" if ok else "居民（主角）"
         # 投票文章例外: 未施行妇女选举权时, 合格选民必然为男性
         women_suffrage = snap.get("women_law") == "law_womens_suffrage"
         _blk = person_names_block(f"{snap.get('year')}|{cid}|voting",
-                                  [("选民（主角）", bl_ck)],
+                                  [(role, bl_ck)],
                                   female_pct=women_law_female_pct(snap.get("women_law")),
-                                  genders=({"选民（主角）": "male"}
+                                  genders=({role: "male"}
                                            if not women_suffrage else None))
         if _blk:
             ballot.append(_blk)
-        ok, reason = _pool_vote_verdict(pop, dop, citizenship, church=church,
-                                        state_religion=snap.get("religion"))
         ballot.append(f"判定结果：{reason}。")
         ballot.append("请按判定结果描写投票日场景：拥有则写他履行权利的过程；"
                       "不拥有则写他被拦在门外的情景。")
@@ -6835,7 +6837,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
             try:
                 prof = _consumption_profile(entry, o.get("previous_quality_of_life"))
                 if prof and prof.get("goods"):
-                    household.append("家庭消费画像（按消费轻重排列）：" + "、".join(
+                    household.append("家庭消费画像：" + "、".join(
                         _journal._consumption_goods_name(g.get("name"))
                         for g in prof["goods"][:10]) + "。")
                 if prof and prof.get("engel") is not None:
@@ -11051,9 +11053,11 @@ def _magazine_pool_eligibility(melted, snap, ctx, country):
     # 罪案与法网: 有 POP 在国家建筑中工作即可 (成案细节构建期再判定, 失败走兜底)
     crime = any(obj.get("workplace") in objs
                 for obj in pops.values())
-    # 独裁 / 寡头 / 酋邦(长老会议) 不设普选, 神圣庄严的权利不得入池
+    # 神圣庄严的权利只在全国真正举行选举时入池: 游戏 00_distribution_of_power.txt 中
+    # 仅地产/财产/资格/普选四法带 inherit_free_elections_effect(幕府/独裁/寡头/
+    # 技术官僚/一党制等治理法均无选举)
     laws = query_laws(melted, snap.get("country_id"))
-    voting = not any(l in _POOL_VOTE_EXCLUDED_LAWS for l in laws)
+    voting = bool(laws & _POOL_VOTE_LAWS)
     return {
         "railway": railway,
         "turmoil": turmoil,
