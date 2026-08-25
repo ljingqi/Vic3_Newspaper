@@ -1268,6 +1268,11 @@ SECTION_DEFS = [
      "在其上扩写细节；该行缺失时头衔按政体与国名常识选用，"
      "在给定国名与数字范围内合理演绎统治者行踪。"),
     ("society", "民族宗教与社会", "报道民族构成、宗教构成、移民动向、社会风尚。"),
+    ("epidemic", "疫情专电", "报道我国正在流行的疫病：疾病名与俗称、传播途径、"
+     "首发与蔓延的州、累计染病人数与死亡人数（数字一律照抄资料）、感染率、"
+     "疫情是否越境传入邻国；并报道本国应对疫病的举措（卫生法律、卫生机构、"
+     "相关科技）与民间的防治景象，写人们如何对抗这场看不见的灾难；"
+     "疫情延续多年时交代其来势与较上年的变化（以资料为准）。"),
     ("family", "民生访谈", "记者在样本州的一处建筑内，采访生活水平最低的人群，"
      "以访谈体写衣食住行、收入支出、受抚养人口与生活水平；须体现该人群政治倾向"
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
@@ -1747,6 +1752,14 @@ def render_diplo(data):
                 L.append(f"  - {nm}：交战中（{detail}）" if detail else f"  - {nm}：交战中")
             else:
                 L.append(f"  - {nm}：和平")
+    # 疫情外溢: 疫情专题推演的越境传入邻国信息 (决策2: 外交板块提及)
+    ep_abroad = []
+    for ob in (data.get("epidemic") or {}).get("outbreaks") or []:
+        for x in ob.get("spread_abroad") or []:
+            ep_abroad.append(f"「{x.get('country')}」之「{x.get('region')}」")
+    if ep_abroad:
+        L.append("- 疫情外溢：本年疫病自我国蔓延至邻国" +
+                 "、".join(dict.fromkeys(ep_abroad)))
     return "\n".join(L)
 
 
@@ -2324,6 +2337,68 @@ def render_society(data):
     if sfl:
         L.append("- 【全国社会演进】")
         L.extend(sfl)
+    return "\n".join(L)
+
+
+def _fmt_epidemic_num(v):
+    """疫情数字格式化 (None 安全)。"""
+    try:
+        return format(int(round(v or 0)), ",")
+    except (TypeError, ValueError):
+        return "0"
+
+
+def render_epidemic(data, history=None):
+    """疫情专电板块事实: 程序推演的疫情状态 (journal_save 疫情专题),
+    仅在疫情活跃时发送; 数字一律来自资料, 模型照抄。"""
+    ep = data.get("epidemic") or {}
+    ob_list = ep.get("outbreaks") or []
+    if not ob_list or not ep.get("active"):
+        return "- 本年无疫情记录。"
+    L = []
+    # 上年疫情 (供「较上年」对比)
+    prev_ep = None
+    if history:
+        for h in reversed(history):
+            pe = h.get("epidemic") or {}
+            if pe.get("outbreaks"):
+                prev_ep = pe
+                break
+    prev_by_id = {o.get("id"): o for o in (prev_ep or {}).get("outbreaks") or []}
+    for ob in ob_list:
+        waves_txt = "分多波袭来" if (ob.get("waves") or 1) > 1 else "一波未平"
+        L.append(f"- 疫病：{ob.get('disease')}（俗称{ob.get('alias')}），自{ob.get('since')}年"
+                 f"流行至今，本年已第{ob.get('age')}年（预计持续{ob.get('total_duration')}年，"
+                 f"{waves_txt}）。")
+        L.append(f"- 传播途径：{ob.get('trans')}；本时代应对此病的通行手段：{ob.get('measures')}。")
+        L.append(f"- 蔓延情形（波及 {len(ob.get('states') or [])} 个州）：")
+        for s in ob.get("states") or []:
+            L.append(f"  - 「{s.get('name')}」{s.get('status')}：累计染病 "
+                     f"{_fmt_epidemic_num(s.get('infected'))} 人（约占该州人口"
+                     f"{s.get('infection_rate_pct')}%）、死亡 {_fmt_epidemic_num(s.get('deaths'))} 人")
+        if ob.get("spread_to"):
+            L.append(f"- 本年疫情由疫区新传至：「{'、'.join(ob['spread_to'])}」")
+        for x in ob.get("spread_abroad") or []:
+            L.append(f"- 疫情越境传入邻国「{x.get('country')}」之「{x.get('region')}」")
+        po = prev_by_id.get(ob.get("id"))
+        if po and po.get("totals"):
+            pt, ct = po["totals"], ob.get("totals") or {}
+            if (pt.get("infected") or 0) != (ct.get("infected") or 0):
+                verb = ("增至" if (ct.get("infected") or 0) > (pt.get("infected") or 0)
+                        else "回落至")
+                L.append(f"- 较上年：全国累计染病人数由 {_fmt_epidemic_num(pt.get('infected'))} 人"
+                         f"{verb} {_fmt_epidemic_num(ct.get('infected'))} 人")
+        tots = ob.get("totals") or {}
+        L.append(f"- 本疫累计：染病 {_fmt_epidemic_num(tots.get('infected'))} 人、"
+                 f"死亡 {_fmt_epidemic_num(tots.get('deaths'))} 人")
+    nat = ep.get("national") or {}
+    resp = ep.get("response") or {}
+    L.append(f"- 全国疫情合计：染病 {_fmt_epidemic_num(nat.get('infected'))} 人、"
+             f"死亡 {_fmt_epidemic_num(nat.get('deaths'))} 人")
+    techs = "、".join(resp.get("techs") or []) or "（无）"
+    L.append(f"- 本国应对：卫生法律为{resp.get('health_law')}；"
+             f"卫生机构{resp.get('health_institution')}；相关科技：{techs}"
+             f"（缓解力度约{resp.get('mitigation_pct')}%）")
     return "\n".join(L)
 
 def _pollution_band(p):
@@ -3827,6 +3902,8 @@ def render_section_facts(key, data, history=None, style=None):
         return render_politics(data, history)
     if key == "society":
         return render_society(data)
+    if key == "epidemic":
+        return render_epidemic(data, history)
     if key == "family":
         return render_family(data, style=style)
     if key == "peer":
@@ -4034,10 +4111,12 @@ def generate_newspaper(data, cfg, history=None):
             return f"## {title}\n\n(本板块生成失败)"
 
     parts = [masthead]
-    # 条件板块: 失业民生仅在随机州失业率>5%且有样本数据时发送
+    # 条件板块: 失业民生仅在随机州失业率>5%且有样本数据时发送;
+    # 疫情专电仅在当年有活跃疫情时发送 (journal_save 疫情专题)
     sections = [(k, st["section_titles"].get(k, t)) for k, t, _d in SECTION_DEFS
                 if not (k == "unemployed" and not data.get("unemployed_interview"))
-                and not (k == "stock" and not data.get("stock_market"))]
+                and not (k == "stock" and not data.get("stock_market"))
+                and not (k == "epidemic" and not (data.get("epidemic") or {}).get("active"))]
     # 各板块彼此独立, 并发请求 (DeepSeek 并发充足时大幅提速)
     with ThreadPoolExecutor(max_workers=len(SECTION_DEFS)) as ex:
         futures = [ex.submit(_gen_section, key, title)

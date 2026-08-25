@@ -73,6 +73,7 @@ NEWSPAPER_STYLES = {
             "econ": "经济要闻",
             "politics": "政界动态",
             "society": "民族宗教与社会",
+            "epidemic": "疫情专电",
             "family": "民生访谈",
             "peer": "邻里富户",
             "unemployed": "失业民生",
@@ -120,6 +121,7 @@ NEWSPAPER_STYLES = {
             "econ": "经济建设",
             "politics": "时政要闻",
             "society": "民族与宗教",
+            "epidemic": "疫情报道",
             "family": "人民生活",
             "peer": "先富观察",
             "unemployed": "就业民生",
@@ -166,6 +168,7 @@ NEWSPAPER_STYLES = {
             "econ": "经济新闻",
             "politics": "时政新闻",
             "society": "社会新闻",
+            "epidemic": "疫情新闻",
             "family": "民生一线",
             "peer": "富户见闻",
             "unemployed": "就业观察",
@@ -215,6 +218,7 @@ NEWSPAPER_STYLES = {
             "econ": "财经报道",
             "politics": "政坛纪事",
             "society": "社会万象",
+            "epidemic": "疫情专讯",
             "family": "民间专访",
             "peer": "富室专访",
             "unemployed": "失业调查",
@@ -570,6 +574,7 @@ MODERNITY_TIERS = {
             "econ": "度支要闻",
             "politics": "朝政动态",
             "society": "风俗与教化",
+            "epidemic": "疫情邸报",
             "family": "乡里访谈",
             "peer": "富室纪闻",
             "unemployed": "流民情形",
@@ -614,6 +619,7 @@ MODERNITY_TIERS = {
             "econ": "经济要闻",
             "politics": "政界动态",
             "society": "民族宗教与社会",
+            "epidemic": "疫情专电",
             "family": "民生访谈",
             "peer": "邻里富户",
             "unemployed": "失业民生",
@@ -658,6 +664,7 @@ MODERNITY_TIERS = {
             "econ": "经济建设",
             "politics": "时政要闻",
             "society": "社会新闻",
+            "epidemic": "疫情报道",
             "family": "人民生活",
             "peer": "先富观察",
             "unemployed": "就业民生",
@@ -701,6 +708,7 @@ MODERNITY_TIERS = {
             "econ": "经济新闻",
             "politics": "时政新闻",
             "society": "社会新闻",
+            "epidemic": "疫情新闻",
             "family": "民生一线",
             "peer": "富户见闻",
             "unemployed": "就业观察",
@@ -745,6 +753,7 @@ MODERNITY_TIERS = {
             "econ": "经济纵深",
             "politics": "政论",
             "society": "思潮与社会",
+            "epidemic": "疫情观察",
             "family": "凡人列传",
             "peer": "资本观察",
             "unemployed": "失业问题研究",
@@ -763,10 +772,19 @@ _STOCK_SECTION_TITLES = {
     4: "财经行情",
     5: "市况观察",
 }
+# 「疫情专电」板块标题: 同上, 缺省兜底 (疫情年才出现)
+_EPIDEMIC_SECTION_TITLES = {
+    1: "疫情专电",
+    2: "疫情报道",
+    3: "疫情新闻",
+    4: "疫情专讯",
+    5: "疫情观察",
+}
 for _styles in (NEWSPAPER_STYLES, MODERNITY_TIERS):
     for _k, _s in _styles.items():
         _st = _s.setdefault("section_titles", {})
         _st.setdefault("stock", _STOCK_SECTION_TITLES.get(_k, "股市动态"))
+        _st.setdefault("epidemic", _EPIDEMIC_SECTION_TITLES.get(_k, "疫情专电"))
 
 
 def resolve_newspaper_style(data, cfg=None):

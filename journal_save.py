@@ -11373,6 +11373,7 @@ def _magazine_pool_eligibility(melted, snap, ctx, country):
         "war_family": True,
         "court_household": True,
         "migration_change": True,
+        "disease": bool((snap.get("epidemic") or {}).get("active")),
     }
 
 
@@ -11411,6 +11412,9 @@ def _select_magazine_pool(melted, snap, ctx, country, pool_override=None, size=3
             break
         if k not in picked and k not in fallback:
             fallback.append(k)
+    # 疫情活跃年: 疫情特稿作为第 4 篇文章加入 (需求6), 其余年份仍 3 篇
+    if (snap.get("epidemic") or {}).get("active") and "disease" not in picked:
+        picked.append("disease")
     return {
         "seed": year,
         "size": size,
@@ -11421,6 +11425,93 @@ def _select_magazine_pool(melted, snap, ctx, country, pool_override=None, size=3
         "special": special,
         "normal_picked": normal_picked,
     }
+
+
+def _pool_epidemic_data(melted, snap, ctx, rnd, country, cid, data):
+    """疫情特稿事实: 四板块 (疫起之地/医者与众生/门户与街巷/疫尽或未)。
+    全部数字来自 snap['epidemic'] (程序推演, 提示词以资料为限);
+    人物样本取疫区真实 POP (按生活水平取最高与最低各一, 确定性)。"""
+    ep = snap.get("epidemic") or {}
+    ob = (ep.get("outbreaks") or [None])[0]
+    if not ob or not ob.get("states"):
+        return None
+    resp = ep.get("response") or {}
+    states = ob.get("states") or []
+    top = max(states, key=lambda s: s.get("deaths") or 0)
+    origin = next((s for s in states if s.get("since") == ob.get("since")),
+                  states[0])
+    nat = ep.get("national") or {}
+
+    def _fmt(n):
+        return format(int(round(n or 0)), ",")
+
+    # 疫区真实 POP 采样: 生活水平最高 (医者/富者) 与最低 (贫者) 各一
+    pop_lines = []
+    try:
+        sid_pool = [s.get("sid") for s in states if s.get("sid") is not None]
+        pops = ctx.player_pops(sid_pool)
+        cands = sorted((p for p in pops.values()
+                        if p.get("location") in sid_pool),
+                       key=lambda p: p.get("previous_quality_of_life") or 0)
+        chosen = []
+        if cands:
+            chosen.append(cands[-1])
+        if len(cands) > 1:
+            chosen.append(cands[0])
+        for p in chosen:
+            pop_lines.append(_pool_pop_text(
+                p.get("id"), p, ctx, _load_loc_all(), snap=snap))
+    except Exception as e:
+        print(f"[magazine-pool] disease 人物采样失败: {e}")
+    pop_txt = "\n".join(f"- {t}" for t in pop_lines)
+
+    state_rows = "\n".join(
+        f"- 「{s.get('name')}」{s.get('status')}：累计染病 {_fmt(s.get('infected'))} 人"
+        f"（约占该州人口 {s.get('infection_rate_pct')}%）、死亡 {_fmt(s.get('deaths'))} 人"
+        for s in states[:5])
+    extra_states = (f"\n- 另有 {len(states) - 5} 州情形从略。"
+                    if len(states) > 5 else "")
+    waves_txt = "分多波袭来" if (ob.get("waves") or 1) > 1 else "一波未平"
+    techs_txt = "、".join(resp.get("techs") or []) or "（未掌握相关科技）"
+    abroad_txt = ""
+    if ob.get("spread_abroad"):
+        abroad_txt = "。".join(
+            f"疫情越境传入「{x.get('country')}」之「{x.get('region')}」"
+            for x in ob["spread_abroad"][:2])
+
+    sec = {
+        "outbreak": (
+            f"- 疫情：{ob.get('disease')}（俗称{ob.get('alias')}），自{ob.get('since')}年起"
+            f"在我国流行，本年已是第{ob.get('age')}年，预计持续{ob.get('total_duration')}年"
+            f"（{waves_txt}）。\n"
+            f"- 传播途径：{ob.get('trans')}；本时代应对此病的通行手段：{ob.get('measures')}。\n"
+            f"- 首发与蔓延：疫情首发于「{origin.get('name')}」，本年波及 {len(states)} 个州。\n"
+            f"{state_rows}{extra_states}\n"
+            f"- 全国累计染病 {_fmt(nat.get('infected'))} 人、死亡 {_fmt(nat.get('deaths'))} 人。"),
+        "healers": (
+            f"- 本国应对疫病的部署：卫生法律为{resp.get('health_law')}，"
+            f"卫生机构{resp.get('health_institution')}，相关科技：{techs_txt}。\n"
+            f"- 疫区人物样本（真实居民档案）：\n{pop_txt}"),
+        "households": (
+            f"- 疫区实况：最重疫区「{top.get('name')}」累计染病 {_fmt(top.get('infected'))} 人"
+            f"（约占该州人口 {top.get('infection_rate_pct')}%）、死亡 {_fmt(top.get('deaths'))} 人。\n"
+            f"- 本年疫情新传至：{('、'.join(ob.get('spread_to')) if ob.get('spread_to') else '无新州')}。\n"
+            + (f"- {abroad_txt}。\n" if abroad_txt else "")
+            + (f"- 疫区人物样本：\n{pop_txt}" if pop_txt else "")),
+        "aftermath": (
+            f"- 伤亡结算：全国累计染病 {_fmt(nat.get('infected'))} 人、"
+            f"死亡 {_fmt(nat.get('deaths'))} 人；疫情最重的州为「{top.get('name')}」"
+            f"（死亡 {_fmt(top.get('deaths'))} 人）。\n"
+            + ("- 本年已是疫期最后一年，疫情渐入尾声，善后与反思方兴未艾。"
+               if ob.get("age") >= ob.get("total_duration")
+               else f"- 疫情仍将持续约 {ob.get('total_duration') - ob.get('age')} 年，来年势态未明。")),
+    }
+    data["disease"] = {
+        "sections": sec,
+        "section_titles": {"outbreak": "疫起之地", "healers": "医者与众生",
+                           "households": "门户与街巷", "aftermath": "疫尽或未"},
+    }
+    return data["disease"]
 
 
 _POOL_BUILDERS = {
@@ -11435,6 +11526,7 @@ _POOL_BUILDERS = {
     "crime_big": _pool_crime_big_data,
     "crime_small_a": _pool_crime_small_data,
     "crime_small_b": _pool_crime_small_data,
+    "disease": _pool_epidemic_data,
 }
 
 
@@ -12536,6 +12628,8 @@ def build_journal_data(snap):
     data["interest_groups"] = snap.get("interest_groups") or []
     data["political_movements"] = snap.get("political_movements") or []
     data["states"] = snap.get("states") or []
+    # 疫情专题: 当年疫情状态 (active=false 时各板块不发送)
+    data["epidemic"] = snap.get("epidemic") or {}
     data["events"] = []
     # 存档直读扩展字段
     data["literacy"] = snap.get("literacy")
@@ -16226,6 +16320,572 @@ def ensure_fresh_melt():
         time.sleep(2)
     return None, last_err
 
+
+# ---------------------------------------------------------------------------
+# 疫情专题 (2026): 模拟 + 台账
+# 触发: 游戏收成条件 disease_outbreak / 城市化 / 污染 / 时代窗口, 被卫生
+#       机构·卫生法·科技·识字率缓解 (需求2/5);
+# 扩散: 确定性掷骰向相邻州 (data/state_adjacency.json, 需求4);
+# 台账: 每会话 data/epidemics.json (跨年) + data/epidemic_<年>.json (当年,
+#       供 regen 与手动命令), 全部数字由程序算出, 提示词以资料为限 (需求4);
+# 时长: 普通疫情 1~3 年封顶, 特别严重 (severity>=4) 可至 5 年;
+# 1918-1919 西班牙流感为强制高概率高烈度事件 (三波)。
+# ---------------------------------------------------------------------------
+
+EPIDEMIC_BASE_PROB = 0.015            # 每州每年基础触发概率
+EPIDEMIC_HARVEST_MULT = 4.0           # 州正处于游戏 disease_outbreak 收成条件
+EPIDEMIC_SPREAD_BASE = 0.25           # 向相邻州扩散基础概率
+EPIDEMIC_SPREAD_ABROAD_BASE = 0.18    # 越境传入邻国基础概率 (外交板块风味)
+EPIDEMIC_URBAN_MULT = {0: 0.6, 1: 1.0, 2: 1.5, 3: 2.2}
+EPIDEMIC_MITIG_CAP = 0.5              # 缓解系数上限
+EPIDEMIC_MAX_DURATION = 3             # 普通疫情时长封顶 (年)
+EPIDEMIC_MAX_DURATION_SEVERE = 5      # 特别严重疫情时长封顶 (年)
+EPIDEMIC_SEVERITY_THRESHOLD = 4       # severity >= 4 视为特别严重
+EPIDEMIC_INST_PER_LEVEL = 0.02        # 卫生机构每级缓解
+EPIDEMIC_MITIG_TECHS = ("modern_sewerage", "modern_nursing", "quinine")
+_EPIDEMIC_TECH_MITIG = {"modern_sewerage": 0.08, "modern_nursing": 0.04,
+                        "quinine": 0.03}
+_EPIDEMIC_LAW_MITIG = {
+    "law_no_health_system": 0.0,
+    "law_charitable_health_system": 0.05,
+    "law_private_health_insurance": 0.08,
+    "law_public_health_insurance": 0.12,
+}
+FLU_FORCE_YEARS = (1918, 1919)
+EPIDEMIC_FLU_FORCE_PROB = 0.55        # 1918/1919 每州触发概率下限
+_POP_STRATA_KEYS = ("population_lower_strata", "population_middle_strata",
+                    "population_upper_strata")
+_POP_WORKFORCE_KEYS = ("population_salaried_workforce",
+                       "population_subsisting_workforce",
+                       "population_government_workforce",
+                       "population_military_workforce",
+                       "population_laborer_workforce")
+_EPIDEMIC_STATUS_BY_AGE = {1: "新发", 2: "蔓延", 3: "趋缓", 4: "反复", 5: "反复"}
+
+# 疾病表: 19 世纪至 20 世纪初, R0/CFR/攻击率为现代回顾性估计 (见
+# 疫情专题_流行病学数据_1836-1936.md, 全部带来源); 仅用于程序内推演,
+# 不给模型灌输 R0 术语。
+DISEASES = {
+    "cholera": {"zh": "霍乱", "alias": "虎烈拉", "r0": (2.0, 6.0),
+                "cfr": (0.30, 0.50), "attack": (0.10, 0.35), "duration": (1, 2),
+                "era": (1836, 1936), "trans": "粪口（污染水源）",
+                "measures": "检疫隔离、清洁供水与排污"},
+    "smallpox": {"zh": "天花", "alias": "痘疮", "r0": (3.5, 6.0),
+                 "cfr": (0.20, 0.30), "attack": (0.30, 0.60), "duration": (1, 2),
+                 "era": (1836, 1936), "trans": "空气飞沫与接触",
+                 "measures": "牛痘接种、隔离检疫"},
+    "plague": {"zh": "鼠疫", "alias": "黑死病", "r0": (1.5, 3.0),
+               "cfr": (0.40, 0.60), "attack": (0.05, 0.20), "duration": (1, 3),
+               "era": (1894, 1936), "trans": "鼠蚤叮咬、肺鼠疫经飞沫",
+               "measures": "检疫、灭鼠、口罩、火化"},
+    "typhoid": {"zh": "伤寒", "alias": "肠热症", "r0": (1.5, 3.5),
+                "cfr": (0.10, 0.20), "attack": (0.10, 0.30), "duration": (1, 2),
+                "era": (1836, 1936), "trans": "粪口（污水与食物）",
+                "measures": "供水过滤、防疫接种"},
+    "typhus": {"zh": "斑疹伤寒", "alias": "营房热", "r0": (2.0, 4.0),
+               "cfr": (0.10, 0.60), "attack": (0.15, 0.40), "duration": (1, 2),
+               "era": (1836, 1936), "trans": "体虱传播",
+               "measures": "灭虱、隔离"},
+    "tuberculosis": {"zh": "肺结核", "alias": "肺痨", "r0": (1.0, 4.0),
+                     "cfr": (0.10, 0.20), "attack": (0.05, 0.20),
+                     "duration": (2, 3), "era": (1836, 1936),
+                     "trans": "空气飞沫核", "measures": "疗养院、通风与宣教"},
+    "measles": {"zh": "麻疹", "alias": "痧子", "r0": (12.0, 18.0),
+                "cfr": (0.03, 0.10), "attack": (0.40, 0.80), "duration": (1, 2),
+                "era": (1836, 1936), "trans": "空气飞沫",
+                "measures": "隔离、对症护理"},
+    "flu1918": {"zh": "西班牙流感", "alias": "三日热", "r0": (1.4, 2.8),
+                "cfr": (0.025, 0.05), "attack": (0.25, 0.50), "duration": (2, 3),
+                "era": (1918, 1920), "trans": "空气飞沫",
+                "measures": "隔离、停市、佩戴口罩"},
+    "yellow_fever": {"zh": "黄热病", "alias": "黄杰克", "r0": (1.5, 6.0),
+                     "cfr": (0.20, 0.50), "attack": (0.10, 0.30),
+                     "duration": (1, 2), "era": (1836, 1936),
+                     "trans": "埃及伊蚊叮咬", "measures": "灭蚊、隔离检疫"},
+    "malaria": {"zh": "疟疾", "alias": "瘴气热", "r0": (2.0, 10.0),
+                "cfr": (0.10, 0.30), "attack": (0.20, 0.50), "duration": (1, 3),
+                "era": (1836, 1936), "trans": "按蚊叮咬",
+                "measures": "奎宁、灭蚊"},
+    "dysentery": {"zh": "痢疾", "alias": "赤痢", "r0": (1.5, 3.5),
+                  "cfr": (0.10, 0.30), "attack": (0.15, 0.40), "duration": (1, 2),
+                  "era": (1836, 1936), "trans": "粪口（污水与食物）",
+                  "measures": "清洁供水、营地卫生"},
+    "diphtheria": {"zh": "白喉", "alias": "喉锁", "r0": (6.0, 7.0),
+                   "cfr": (0.10, 0.40), "attack": (0.20, 0.40),
+                   "duration": (1, 2), "era": (1836, 1936),
+                   "trans": "空气飞沫与接触", "measures": "抗毒素救治、隔离"},
+    "whooping_cough": {"zh": "百日咳", "alias": "顿咳", "r0": (12.0, 17.0),
+                       "cfr": (0.01, 0.05), "attack": (0.30, 0.60),
+                       "duration": (1, 2), "era": (1836, 1936),
+                       "trans": "空气飞沫", "measures": "隔离护理"},
+    "scarlet_fever": {"zh": "猩红热", "alias": "烂喉痧", "r0": (2.0, 5.0),
+                      "cfr": (0.05, 0.15), "attack": (0.10, 0.30),
+                      "duration": (1, 2), "era": (1836, 1920),
+                      "trans": "空气飞沫与接触", "measures": "隔离消毒"},
+    "polio": {"zh": "脊髓灰质炎", "alias": "小儿麻痹", "r0": (5.0, 7.0),
+              "cfr": (0.02, 0.10), "attack": (0.05, 0.15), "duration": (1, 2),
+              "era": (1880, 1936), "trans": "粪口", "measures": "隔离、清洁饮水"},
+}
+
+_ADJ_CACHE = None
+
+
+def _state_adjacency():
+    """州域相邻表 (data/state_adjacency.json, 由 tools/build_state_adjacency.py
+    从地图一次性生成); 文件缺失时返回空表并提示。"""
+    global _ADJ_CACHE
+    if _ADJ_CACHE is not None:
+        return _ADJ_CACHE
+    path = os.path.join(SCRIPT_DIR, "state_adjacency.json")
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                _ADJ_CACHE = json.load(f)
+                return _ADJ_CACHE
+        except Exception:
+            pass
+    print("[警告] state_adjacency.json 缺失: 疫情扩散将不跨州传播。"
+          "运行 python tools/build_state_adjacency.py 生成该缓存。")
+    _ADJ_CACHE = {}
+    return _ADJ_CACHE
+
+
+_REGION_OWNER_CACHE = {}
+
+
+def _region_owner_map(data):
+    """全库「州域键 → 属主国 id」表 (一次扫描 states.database, 含外国州)。
+    供疫情越境外传判定邻国。按 bytes 对象同一性缓存。"""
+    key = id(data)
+    m = _REGION_OWNER_CACHE.get(key)
+    if m is not None and m[0] is data:
+        return m[1]
+    out = {}
+    sob, so_end = _states_db_bounds(data)
+    pat = re.compile(rb'"(\d+)":\{')
+    j = sob
+    while j < so_end:
+        m2 = pat.search(data, j, so_end - 1)
+        if not m2:
+            break
+        ob3 = m2.start() + len(m2.group(0)) - 1
+        raw2, nxt = extract_json_object(data, ob3)
+        if raw2:
+            try:
+                o = json.loads(raw2)
+            except Exception:
+                o = None
+            if isinstance(o, dict) and o.get("region") and o.get("country"):
+                out[o["region"]] = o["country"]
+        j = nxt
+    _REGION_OWNER_CACHE[key] = (data, out)
+    return out
+
+
+_MALARIA_REGIONS = None
+
+
+def _malaria_regions():
+    """州域 key 集合: 历史州文件标注 state_trait_malaria 的州域 (疟疾高发)。
+    游戏文件缺失/解析失败时返回空集, 仅影响疾病选取权重, 无害。"""
+    global _MALARIA_REGIONS
+    if _MALARIA_REGIONS is not None:
+        return _MALARIA_REGIONS
+    out = set()
+    base = os.path.join(GAME_DIR, "game", "common", "history", "states")
+    try:
+        for fn in sorted(os.listdir(base)):
+            if not fn.endswith(".txt"):
+                continue
+            txt = open(os.path.join(base, fn), encoding="utf-8",
+                       errors="replace").read()
+            for m in re.finditer(r"(STATE_[A-Z0-9_]+)\s*=\s*\{", txt):
+                start = m.end() - 1
+                depth = 1
+                i = start + 1
+                while depth and i < len(txt):
+                    if txt[i] == "{":
+                        depth += 1
+                    elif txt[i] == "}":
+                        depth -= 1
+                    i += 1
+                if "state_trait_malaria" in txt[start:i]:
+                    out.add(m.group(1))
+    except Exception:
+        pass
+    _MALARIA_REGIONS = out
+    return out
+
+
+def _epidemic_urban_band(by_state, btype_map, objs, sid, workforce):
+    """城市化档位 0~3: 城邑建筑就业 ÷ 州劳动力。无劳动力时按 0 档。"""
+    if not workforce:
+        return 0
+    urban = sum(int((objs.get(b) or {}).get("staffing") or 0)
+                for b in (by_state.get(sid) or [])
+                if btype_map.get(b) == "building_urban_center")
+    ratio = urban / workforce
+    if ratio < 0.03:
+        return 0
+    if ratio < 0.10:
+        return 1
+    if ratio < 0.25:
+        return 2
+    return 3
+
+
+def _epidemic_mitigation_bits(health_law, health_inv, techs, literacy):
+    """(m_base, m_inst, mitig_techs, mitigation_pct)。
+    m_base: 法律+科技+识字率的全国性缓解; m_inst: 卫生机构的全国性缓解
+    (殖民地州不享受机构缓解, 由调用方按并入状态扣减)。"""
+    m = _EPIDEMIC_LAW_MITIG.get(health_law, 0.0)
+    mitig_techs = [t for t in EPIDEMIC_MITIG_TECHS if t in set(techs or [])]
+    for t in mitig_techs:
+        m += _EPIDEMIC_TECH_MITIG.get(t, 0.0)
+    if isinstance(literacy, (int, float)) and literacy >= 40:
+        m += 0.03
+    m_inst = min(int(health_inv or 0), 5) * EPIDEMIC_INST_PER_LEVEL
+    return min(m, EPIDEMIC_MITIG_CAP), m_inst, mitig_techs
+
+
+def _pick_epidemic_disease(rnd, year, malaria, techs):
+    """按时代窗口 + 州特点选疾病; 1918/1919 流感权重压倒性。"""
+    tech_set = set(techs or [])
+    weights = {}
+    for k, d in DISEASES.items():
+        if not (d["era"][0] <= year <= d["era"][1]):
+            continue
+        w = 1.0
+        if k == "flu1918":
+            if year in FLU_FORCE_YEARS:
+                w = 1000.0
+            else:
+                w = 1.0
+        if k == "plague" and year < 1894:
+            w = 0.05
+        if k in ("malaria", "yellow_fever"):
+            w *= 3.0 if malaria else 0.4
+        if k == "malaria" and "quinine" in tech_set:
+            w *= 0.15
+        if k == "smallpox" and year >= 1880:
+            w *= 0.6
+        if k == "smallpox" and year >= 1900:
+            w *= 0.3
+        if k == "scarlet_fever" and year >= 1900:
+            w *= 0.5
+        if k in ("cholera", "typhoid", "dysentery") and "modern_sewerage" in tech_set:
+            w *= 0.5
+        weights[k] = w
+    if not weights:
+        return None
+    return rnd.choices(list(weights), weights=list(weights.values()))[0]
+
+
+def _new_epidemic_outbreak(rnd, year, sid, dk, severity=None):
+    """新建一次疫情: 掷 R0/CFR/攻击率/烈度/时长 (时长普通 1~3 年,
+    特别严重可至 5 年)。"""
+    d = DISEASES[dk]
+    # 1918-1919 西班牙流感为强制高烈度事件 (用户决策1)
+    if dk == "flu1918" and year in FLU_FORCE_YEARS:
+        severity = rnd.randint(4, 5)
+    else:
+        severity = severity if severity is not None else rnd.randint(1, 5)
+    total = rnd.randint(d["duration"][0], d["duration"][1])
+    if severity >= EPIDEMIC_SEVERITY_THRESHOLD:
+        total = rnd.randint(total, EPIDEMIC_MAX_DURATION_SEVERE)
+    total = min(total, EPIDEMIC_MAX_DURATION_SEVERE)
+    r0 = rnd.uniform(d["r0"][0], d["r0"][1])
+    cfr = rnd.uniform(d["cfr"][0], d["cfr"][1])
+    attack = rnd.uniform(d["attack"][0], d["attack"][1])
+    sev_mult = 0.7 + severity * 0.15
+    return {
+        "id": f"epi-{year}-{sid}",
+        "disease": d["zh"], "alias": d["alias"], "disease_key": dk,
+        "since": year, "age": 1, "total_duration": total,
+        "severity": severity, "waves": 3 if dk == "flu1918" else 1,
+        "trans": d["trans"], "measures": d["measures"],
+        "r0": round(r0, 2), "cfr": round(cfr, 4), "attack": round(attack, 4),
+        "sev_mult": round(sev_mult, 3),
+        "origin_sid": sid, "states": {}, "spread_abroad": [],
+    }
+
+
+def _simulate_epidemic_year(melted, snap, ctx, year, ledger):
+    """由台账 + 当前存档确定性推演当年疫情 (种子=年份, 顺序固定)。
+    返回 (report, carry):
+      report — epidemic 状态 dict (报纸/杂志消费, 落盘 epidemic_<year>.json);
+      carry  — 内部延续状态 (疫情 id/烈度/R0/各州累计, 落盘 epidemics.json)。
+    无熔化数据时返回 (inactive, []) (只读既有台账)。"""
+    empty = {"active": False, "year": year, "outbreaks": [], "response": {}}
+    if melted is None:
+        return empty, []
+    state_ids = sorted(s.get("id") for s in (snap.get("states") or [])
+                       if s.get("id") is not None)
+    if not state_ids:
+        return empty, []
+    cid = snap.get("player_country_id")
+    adj = _state_adjacency()
+    owners = _region_owner_map(melted)
+    loc = _load_loc_all()
+    pollution_map = _state_region_pollution_map(melted)
+    laws = query_laws(melted, cid) or []
+    insts = _country_institution_levels(melted, cid) or {}
+    techs = _country_technologies(melted, cid) or []
+    health_law = next((l for l in laws if l in _POOL_HEALTH_LAWS), None)
+    health_inv = insts.get("institution_health_system", 0)
+    m_base, m_inst, mitig_techs = _epidemic_mitigation_bits(
+        health_law, health_inv, techs, snap.get("literacy"))
+    by_state, btype_map, objs = ctx.buildings_index(state_ids)
+    malaria_regions = _malaria_regions()
+    tech_keys = list(snap.get("tech_keys") or [])
+    tech_zh = list(snap.get("techs") or [])
+    tech_zh_map = {k: (tech_zh[i] if i < len(tech_zh) else k)
+                   for i, k in enumerate(tech_keys)}
+
+    # 州风险上下文
+    state_ctx = {}
+    region_of = {}
+    name_of = {}
+    harvest_cache = {}
+    for sid in state_ids:
+        rk = ctx.state_region_key(sid)
+        region_of[sid] = rk
+        sobj = ctx.state_object(sid)
+        ps = (sobj or {}).get("pop_statistics") or {}
+        pop = sum(ps.get(k) or 0 for k in _POP_STRATA_KEYS)
+        workforce = sum(ps.get(k) or 0 for k in _POP_WORKFORCE_KEYS)
+        pollution = pollution_map.get(rk) or 0.0
+        if rk not in harvest_cache:
+            harvest_cache[rk] = _harvest_conditions_for(melted, rk)
+        incorporation = (sobj or {}).get("incorporation")
+        incorporated = incorporation is None or incorporation >= 1.0
+        m_state = m_base + (m_inst if incorporated else 0.0)
+        name_of[sid] = loc.get(rk) or f"州{sid}"
+        state_ctx[sid] = {
+            "pop": pop, "pollution": pollution,
+            "band": _epidemic_urban_band(by_state, btype_map, objs, sid, workforce),
+            "harvest_disease": "disease_outbreak" in harvest_cache.get(rk, []),
+            "malaria": rk in malaria_regions,
+            "mitigation": min(m_state, EPIDEMIC_MITIG_CAP),
+            "region": rk,
+        }
+
+    # 上一年疫情延续 (台账按年份键存)
+    prev = None
+    if ledger:
+        py = str(year - 1)
+        prev = ledger.get(py)
+        if prev is None:
+            keys = sorted((int(k) for k in ledger if str(k).isdigit()
+                           and int(k) < year))
+            if keys:
+                prev = ledger[str(keys[-1])]
+    outbreaks = []
+    for ob in (prev or {}).get("outbreaks") or []:
+        if ob.get("age", 0) >= ob.get("total_duration", 1):
+            continue
+        ob = dict(ob)
+        ob["states"] = {str(s): dict(st) for s, st in ob["states"].items()
+                        if int(s) in state_ctx}
+        if not ob["states"]:
+            continue
+        ob["age"] = ob.get("age", 0) + 1
+        outbreaks.append(ob)
+
+    rnd = random.Random(f"epi|{year}")
+    # 新增触发
+    for sid in state_ids:
+        if any(str(sid) in ob["states"] for ob in outbreaks):
+            continue
+        sc = state_ctx[sid]
+        if sc["pop"] <= 0:
+            continue
+        p = EPIDEMIC_BASE_PROB
+        if sc["harvest_disease"]:
+            p *= EPIDEMIC_HARVEST_MULT
+        p *= EPIDEMIC_URBAN_MULT[sc["band"]]
+        p *= (1.0 + sc["pollution"] * 0.005)
+        p *= (1.0 - sc["mitigation"])
+        if year in FLU_FORCE_YEARS:
+            p = max(p, EPIDEMIC_FLU_FORCE_PROB)
+        p = min(p, 0.8)
+        if rnd.random() < p:
+            dk = _pick_epidemic_disease(rnd, year, sc["malaria"], techs)
+            if dk:
+                ob = _new_epidemic_outbreak(rnd, year, sid, dk)
+                ob["states"][str(sid)] = {"since": year, "infected": 0,
+                                          "deaths": 0}
+                outbreaks.append(ob)
+    # 1918 保底: 仍无流感疫情时在人口最多州强制触发
+    if year == 1918 and not any(o["disease_key"] == "flu1918"
+                                for o in outbreaks):
+        sid = max(state_ids, key=lambda s: state_ctx[s]["pop"])
+        ob = _new_epidemic_outbreak(rnd, year, sid, "flu1918", severity=5)
+        ob["states"][str(sid)] = {"since": year, "infected": 0, "deaths": 0}
+        outbreaks.append(ob)
+
+    # 本年推进: 先扩散, 后伤亡 (新传入州当年计半个年度的感染)
+    for ob in outbreaks:
+        d = DISEASES[ob["disease_key"]]
+        r0f = min(1.0 + (ob["r0"] - 2.0) * 0.2, 1.8)
+        affected = sorted(ob["states"].keys(), key=int)
+        # 扩散: 向玩家相邻州
+        for sid_str in affected:
+            sid = int(sid_str)
+            rk = region_of[sid]
+            for nb in adj.get(rk, []):
+                tgt = next((t for t in state_ids if region_of.get(t) == nb),
+                           None)
+                if tgt is None or str(tgt) in ob["states"]:
+                    continue
+                tsc = state_ctx[tgt]
+                if tsc["pop"] <= 0:
+                    continue
+                spread_p = (EPIDEMIC_SPREAD_BASE * r0f
+                            * EPIDEMIC_URBAN_MULT[tsc["band"]]
+                            * (1.0 + tsc["pollution"] * 0.005)
+                            * (1.0 - tsc["mitigation"]))
+                if rnd.random() < min(spread_p, 0.9):
+                    ob["states"][str(tgt)] = {"since": year, "infected": 0,
+                                              "deaths": 0}
+        # 越境外传 (外交板块风味)
+        foreign = {}
+        for sid_str in affected:
+            rk = region_of[int(sid_str)]
+            for nb in adj.get(rk, []):
+                owner = owners.get(nb)
+                if not owner or owner == cid or nb in region_of.values():
+                    continue
+                if rnd.random() < EPIDEMIC_SPREAD_ABROAD_BASE:
+                    foreign[(owner, nb)] = True
+        ob["spread_abroad"] = [
+            {"country": (snap.get("country_names") or {}).get(cid2, str(cid2)),
+             "region": loc.get(nb) or nb}
+            for (cid2, nb) in sorted(foreign)[:3]]
+        # 伤亡 (对本年所有受袭州)
+        for sid_str in sorted(ob["states"].keys(), key=int):
+            sid = int(sid_str)
+            sc = state_ctx[sid]
+            st = ob["states"][sid_str]
+            years_active = year - st["since"] + 1
+            if years_active == 1:
+                mult = 1.0
+            elif years_active == 2:
+                mult = 0.6
+            elif years_active == 3:
+                mult = 0.35
+            else:
+                mult = 0.25
+            atk = ob["attack"] * ob["sev_mult"] * mult
+            atk = min(atk, 0.9)
+            new_inf = int(sc["pop"] * atk * (1.0 - sc["mitigation"]))
+            st["infected"] += new_inf
+            st["deaths"] += int(new_inf * ob["cfr"]
+                                * (1.0 - sc["mitigation"] * 0.5))
+            cap = int(sc["pop"] * 0.9)
+            if st["infected"] > cap:
+                st["infected"] = cap
+
+    # 汇总输出
+    active = False
+    out_outbreaks = []
+    for ob in sorted(outbreaks, key=lambda o: (o["since"], o["id"])):
+        d = DISEASES[ob["disease_key"]]
+        state_rows = []
+        spread_to = []
+        for sid_str in sorted(ob["states"].keys(), key=int):
+            sid = int(sid_str)
+            sc = state_ctx[sid]
+            st = ob["states"][sid_str]
+            years_active = year - st["since"] + 1
+            status = _EPIDEMIC_STATUS_BY_AGE.get(years_active, "反复")
+            if years_active >= ob["total_duration"]:
+                status = "渐息"
+            state_rows.append({
+                "sid": sid, "name": name_of[sid], "status": status,
+                "since": st["since"],
+                "infected": st["infected"], "deaths": st["deaths"],
+                "infection_rate_pct": round(
+                    st["infected"] / sc["pop"] * 100, 2) if sc["pop"] else 0.0,
+                "death_rate_pct": round(
+                    st["deaths"] / sc["pop"] * 100, 2) if sc["pop"] else 0.0,
+            })
+            if st["since"] == year:
+                spread_to.append(name_of[sid])
+        tot_inf = sum(r["infected"] for r in state_rows)
+        tot_death = sum(r["deaths"] for r in state_rows)
+        active = active or bool(state_rows)
+        out_outbreaks.append({
+            "id": ob["id"], "disease": ob["disease"], "alias": ob["alias"],
+            "disease_key": ob["disease_key"], "since": ob["since"],
+            "age": ob["age"], "total_duration": ob["total_duration"],
+            "severity": ob["severity"], "waves": ob["waves"],
+            "trans": ob["trans"], "measures": ob["measures"],
+            "states": state_rows,
+            "totals": {"infected": tot_inf, "deaths": tot_death},
+            "spread_to": spread_to, "spread_abroad": ob["spread_abroad"],
+        })
+    nat_inf = sum(o["totals"]["infected"] for o in out_outbreaks)
+    nat_death = sum(o["totals"]["deaths"] for o in out_outbreaks)
+    response = {
+        "health_law": (_journal.law_zh(health_law) if health_law
+                       else "未建立卫生法律"),
+        "health_institution": _journal._institution_level_zh(health_inv),
+        "techs": [tech_zh_map.get(t, t) for t in mitig_techs],
+        "mitigation_pct": round(min(m_base + m_inst, EPIDEMIC_MITIG_CAP)
+                                * 100),
+    }
+    return {
+        "active": active, "year": year, "outbreaks": out_outbreaks,
+        "national": {"infected": nat_inf, "deaths": nat_death},
+        "response": response,
+    }, outbreaks
+
+
+def simulate_epidemic(melted, snap, ctx, session_dir, year):
+    """当年疫情状态: 幂等——epidemic_<year>.json 已存在则直接读取;
+    否则由台账 + 存档确定性推演并落盘 (epidemics.json 跨年台账 +
+    epidemic_<year>.json 当年快照)。"""
+    if not year or not session_dir:
+        return {"active": False, "year": year, "outbreaks": [],
+                "response": {}}
+    ep_path = os.path.join(session_dir, "data", f"epidemic_{year}.json")
+    if os.path.exists(ep_path):
+        try:
+            with open(ep_path, encoding="utf-8") as f:
+                ep = json.load(f)
+            if ep.get("year") == year:
+                return ep
+        except Exception:
+            pass
+    ledger_path = os.path.join(session_dir, "data", "epidemics.json")
+    ledger = {}
+    if os.path.exists(ledger_path):
+        try:
+            with open(ledger_path, encoding="utf-8") as f:
+                ledger = json.load(f)
+        except Exception:
+            ledger = {}
+    report, carry = _simulate_epidemic_year(melted, snap, ctx, year, ledger)
+    os.makedirs(os.path.dirname(ep_path), exist_ok=True)
+    with open(ep_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=1)
+    ledger[str(year)] = {"outbreaks": carry}
+    with open(ledger_path, "w", encoding="utf-8") as f:
+        json.dump(ledger, f, ensure_ascii=False, indent=1)
+    return report
+
+
+def _attach_epidemic(snap, melted, ctx, session_dir):
+    """把当年疫情状态挂到快照上 (供 build_journal_data / build_magazine_data
+    消费); 快照已有则原样返回, 否则按幂等 simulate_epidemic 计算。"""
+    ep = snap.get("epidemic")
+    if ep is not None:
+        return ep
+    ep = simulate_epidemic(melted, snap, ctx, session_dir, snap.get("year"))
+    snap["epidemic"] = ep
+    return ep
+
 def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None,
                    folder=None):
     """用存档数据生成报纸 (复用 journal.py)。
@@ -16286,6 +16946,10 @@ def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None,
         # 调用方(后台生成线程)已捕获本次会话文件夹: 锁定同步, 换国时不被改走
         with journal._FOLDER_LOCK:
             journal.SESSION["folder"] = folder
+    # 疫情台账: 手动命令时快照可能没有 epidemic, 幂等补算/读取
+    session_dir = os.path.join(cfg["journal_dir"], folder)
+    if cfg.get("epidemic_enabled", True):
+        _attach_epidemic(snap, melted, ctx, session_dir)
     # 快照落盘缓存: 只缓存纯提取结果, 跨年战争由 _merge_prev_year_wars 每次重算
     if not snap_from_cache:
         _save_snapshot_cache(snap, cfg["journal_dir"], folder, snap.get("year"))
@@ -16370,9 +17034,12 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None,
         if ctx is None:
             ctx = SaveContext(melted)
     _merge_prev_year_wars(snap, cfg["journal_dir"], folder)
+    # 疫情台账: 手动命令时快照可能没有 epidemic, 幂等补算/读取
+    session_dir = os.path.join(cfg["journal_dir"], folder)
+    if cfg.get("epidemic_enabled", True):
+        _attach_epidemic(snap, melted, ctx, session_dir)
     jdata = build_journal_data(snap)
     jdata["output_dir"] = folder
-    session_dir = os.path.join(cfg["journal_dir"], folder)
     jdata["magazine"] = build_magazine_data(
         melted, snap, session_dir, snap.get("year"), ctx=ctx,
         pool_override=cfg.get("magazine_pool_override"),
@@ -16407,6 +17074,11 @@ def _generate_async(year, snap, melted=None):
                 journal.SESSION["folder"] = journal.determine_folder(
                     snap.get("player") or "未知名国家", cfg["journal_dir"])
             folder = journal.SESSION["folder"]
+    # 疫情台账只在此处算一次: 幂等 + 确定性 (种子=年份), 报纸与杂志两线程
+    # 共用同一 snap["epidemic"], 不重复推演、不互相覆盖
+    session_dir = os.path.join(cfg["journal_dir"], folder)
+    if cfg.get("epidemic_enabled", True):
+        _attach_epidemic(snap, melted, ctx, session_dir)
     _save_snapshot_cache(snap, cfg["journal_dir"], folder, snap.get("year"))
     _merge_prev_year_wars(snap, cfg["journal_dir"], folder)
 

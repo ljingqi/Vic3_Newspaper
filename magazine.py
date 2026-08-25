@@ -406,6 +406,38 @@ POOL = {
     },
 }
 
+# 疫情特稿 (疫情活跃年作为第 4 篇文章加入; 素材 key 与
+# journal_save._pool_epidemic_data 对应, 主题: 人们如何对抗看不见的敌人)
+POOL["disease"] = {
+    "default_title": "疫海浮生",
+    "theme": "一场瘟疫如何改变人与城",
+    "sections": [
+        {"key": "outbreak", "title": "疫起之地", "req": (
+            "报道疫情的来势：疾病名与俗称、首发州、持续年数与疫期进程（分波袭来/"
+            "一波未平），传播途径与该时代应对此病的通行手段——以上一律以资料为准照写；"
+            "蔓延情形以资料给出的各州染病人数、死亡人数与感染率为限，"
+            "写疫病如何被察觉、官府与医者如何开始应对。"
+        )},
+        {"key": "healers", "title": "医者与众生", "req": (
+            "报道人们如何对抗看不见的敌人：以资料给出的本国卫生法律、卫生机构投入、"
+            "相关科技与疫区人物样本（职业/文化/宗教/生活水平/收支）为限，"
+            "写医者与护理者的诊治、民间偏方与传闻的流行、"
+            "部分民众配合隔离防疫、部分民众照常营生的众生相；"
+            "人物姓名未给出时用身份与职业代称。"
+        )},
+        {"key": "households", "title": "门户与街巷", "req": (
+            "写疫区门户与街巷的面貌：以资料给出的最重疫区染病人数、死亡人数、"
+            "感染率与本年度新传至的州为限，写隔离、封市、施粥、丧葬与邻里互助；"
+            "人物样本（职业/文化/宗教/生活水平）以资料为准，写家庭如何过疫期。"
+        )},
+        {"key": "aftermath", "title": "疫尽或未", "req": (
+            "以资料给出的全国累计染病与死亡人数、最重疫区、疫情进程写代价与反思："
+            "死者数字照资料写，遗属处境、官府善后与防疫得失以资料为限展开；"
+            "疫情仍在流行时写其未息之势与来年展望，疫情入尾时写善后与教训。"
+        )},
+    ],
+}
+
 
 # ---------------------------------------------------------------------------
 # 社会与法专版 (crime 抽中后 15% 触发): 1 大案 + 2 小案 整期替换
@@ -1779,12 +1811,18 @@ def build_intro_messages(data):
     govt_zh = data.get("govt_zh") or data.get("govt") or "未知"
     year = data.get("year", "?")
     preview = _intro_article_preview(data)
+    n_arts = len(_build_article_list(data))
+    count_txt = ("四篇特稿" if n_arts == 4
+                 else ("三篇特稿" if n_arts == 3 else f"{n_arts}篇特稿"))
     pool = (data.get("magazine") or {}).get("pool") or {}
     special_note = ""
     if pool.get("special"):
+        extra = ""
+        if "disease" in (pool.get("picked") or []):
+            extra = "另有《疫海浮生》疫情特稿一篇，与罪案报道并行。"
         special_note = ("\n\n本期为《社会与法》专版：头版大案 + 两则案情简报。"
-                        "导言须点明专版定位，预告大案与两则简报，并说明本期"
-                        "三篇特稿同为罪案报道。")
+                        "导言须点明专版定位，预告大案与两则简报，"
+                        "并说明本版三篇文章同为罪案报道。" + extra)
     # 正式国名: 国名+政体 合并 (大清+专制帝国→大清帝国; 军政府→墨西哥共和国);
     # 政体字段随之从抬头移除
     full = journal.full_country_name(country, govt_zh, data.get("govt_law"))
@@ -1795,10 +1833,10 @@ def build_intro_messages(data):
         f"【国名】{country}（合并政体后的正式国名：{full}）\n"
         f"【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
         f"本刊基调:\n{_voice(data)}\n\n"
-        f"三篇特稿: {preview}。{special_note}\n\n"
+        f"{count_txt}: {preview}。{special_note}\n\n"
         f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}\n"
         "请先拟定刊名(据都城/国名+政体惯例, 如《巴黎纪事月刊》), 撰写杂志导言: "
-        "概括本年度大势, 预告三篇特稿, 并点明本刊的政体立场。"
+        f"概括本年度大势, 预告{count_txt}, 并点明本刊的政体立场。"
         "导言正文控制在约400–600字。"
         "输出格式:\n"
         "# 《刊名》\n"
@@ -2001,8 +2039,11 @@ def _build_article_list(data):
     m = data.get("magazine") or {}
     pool = m.get("pool") or {}
     keys = list(pool.get("picked") or []) + list(pool.get("fallback") or [])
+    # 疫情活跃年: 疫情特稿作为第 4 篇文章 (journal_save 按 epidemic 状态加入
+    # picked), 其余年份仍 3 篇
+    limit = 4 if "disease" in keys else 3
     articles = []
-    for k in keys[:3]:
+    for k in keys[:limit]:
         a = POOL.get(k)
         if a:
             a2 = copy.deepcopy(a)

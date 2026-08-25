@@ -17,6 +17,7 @@
   "style_system": "legacy",
   "newspaper_enabled": true,
   "magazine_enabled": true,
+  "epidemic_enabled": true,
   "magazine_pool_size": 3,
   "magazine_pool_override": null,
   "crime_outcome_engine": true,
