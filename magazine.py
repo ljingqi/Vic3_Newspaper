@@ -316,8 +316,9 @@ POOL = {
         "theme": "物价与家庭账本",
         "sections": [
             {"key": "lead", "title": "货架上的价签", "req": (
-                "报道本年度物价涨落（以基准价为参照），写涨价与跌价最明显的商品；"
-                "价格一律以数据为准。"
+                "报道本年度物价涨落：写涨价与跌价最明显的商品及其市价"
+                "（或市价最高/最低者，按资料给出为准）；"
+                "价格一律以数据为准，涨落用「较上年」表述，不另设价位参照。"
             )},
             {"key": "household", "title": "餐桌上的账本", "req": (
                 "以样本州一户下层家庭的收支、消费画像与恩格尔系数，写物价如何落在餐桌上，"
@@ -326,7 +327,7 @@ POOL = {
                 "对应写作其投资得失，行情数字以资料为限，不得另造。"
             )},
             {"key": "market", "title": "市场的涨落", "req": (
-                "罗列几件商品的市价与基准价，写市场涨落背后的贸易与生产。"
+                "罗列几件商品的市价（及资料给出的较上年涨落），写市场涨落背后的贸易与生产。"
             )},
             {"key": "street", "title": "街市与生计", "req": (
                 "以平均月薪与阶层结构收束，写百姓在物价中的生计，行文平实。"
@@ -1143,7 +1144,7 @@ def _facts_aftermath(m, data):
                 bits.append(f"主要文化为{s['top_culture']}")
             lines.append("- " + "，".join(bits) + "。")
     else:
-        lines.append("（无荒废度>0的本国州份）")
+        lines.append("（本年度无已记录战事的州份）")
     wars = m.get("_player_wars") or []
     if wars:
         for w in wars[:2]:
@@ -1168,9 +1169,9 @@ def _facts_aftermath(m, data):
             if mc or md:
                 bits = []
                 if mc:
-                    bits.append("攻方" + mc)
+                    bits.append(f"攻方（{atk.get('country') or '未知'}）" + mc)
                 if md:
-                    bits.append("守方" + md)
+                    bits.append(f"守方（{dfd.get('country') or '未知'}）" + md)
                 lines.append(f"- {b.get('place') or '地点未知'}一役，" + "，".join(bits) + "。")
     civ = m.get("civilians") or []
     ck = next((c.get("culture_key") for c in civ if c.get("culture_key")), None)
@@ -1846,7 +1847,6 @@ def _article_display_title(article, generated=None):
 
 def build_lead_messages(article, data, intro):
     sec = article["sections"][0]
-    country = data.get("player", "未知")
     facts = render_facts(article["key"], sec["key"], data)
     title_guide = ""
     try:
@@ -1869,7 +1869,7 @@ def build_lead_messages(article, data, intro):
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
         f"请先为全篇文章拟一个与本刊文风相称的标题，再写开篇板块《{sec['title']}》正文。"
-        f"相关数据如下(涉及国名请用【国名】={country}):\n"
+        f"相关数据如下:\n"
         f"{facts}\n\n输出格式：第一行直接输出文章标题（无井号、无『标题：』前缀，"
         f"不超过24字），空一行后输出开篇板块正文，正文使用 Markdown 格式。"
         "开篇正文分为 2~4 个自然段（每段聚焦一个场景或时序），"
@@ -1881,7 +1881,6 @@ def build_lead_messages(article, data, intro):
 
 def build_section_messages(article, section, data, intro, lead_text,
                            article_title=None, crime_card=None):
-    country = data.get("player", "未知")
     facts = render_facts(article["key"], section["key"], data)
     title = _article_display_title(article, article_title)
     sys_msg = (
@@ -1904,8 +1903,7 @@ def build_section_messages(article, section, data, intro, lead_text,
             f"{lead_head}{digest}\n\n"
             f"【案件事实卡】（案件事实档案，后续板块必须以此为准，"
             f"与板块数据冲突时以案件事实卡与资料数据为准）：\n{crime_card}\n\n"
-            f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据"
-            f"(国名请用【国名】={country}):\n"
+            f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据:\n"
             f"{facts}\n\n请直接输出板块正文，正文使用 Markdown 格式。"
         )
         return [{"role": "system", "content": sys_msg},
@@ -1914,7 +1912,7 @@ def build_section_messages(article, section, data, intro, lead_text,
         f"本期杂志导言:\n{intro}\n\n"
         f"{lead_head}"
         f"{_lead_digest(lead_text)}\n\n"
-        f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据(国名请用【国名】={country}):\n"
+        f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据:\n"
         f"{facts}\n\n请直接输出板块正文，正文使用 Markdown 格式。"
     )
     return [{"role": "system", "content": sys_msg},

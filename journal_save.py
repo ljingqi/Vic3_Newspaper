@@ -406,6 +406,7 @@ def load_melted(auto_melt=True):
     v3 = find_latest_v3()
     with _MeltLock():
         _STATES_DB_BOUNDS.clear()
+        _REGION_STATE_IDS_CACHE.clear()
         if v3 and os.path.exists(MELT_CACHE):
             try:
                 with open(MELT_CACHE, "rb") as fp:
@@ -431,6 +432,7 @@ def load_melted(auto_melt=True):
             return data, None
         # 缓存损坏: 有存档则重熔一次, 仍失败才报错
         _STATES_DB_BOUNDS.clear()
+        _REGION_STATE_IDS_CACHE.clear()
         if auto_melt and v3:
             print("[警告] 熔化缓存不完整 (缺少 states.database 或 JSON 截断), 重新熔化...")
             path, err = melt_with_rakaly(v3, force=True)
@@ -1299,13 +1301,29 @@ def _hub_for_building(btype):
         return "farm"
     return "city"
 
-def _consumption_profile(pop_needs_entry, sol):
+def _consumption_profile(pop_needs_entry, sol, top=None):
     """从州 pop_needs[文化id] 聚合该家庭消费画像。
     返回 {"goods": [{"id","key","name","weight"}], "engel": 0~100}
     方法: 每条需求内部按最大权重归一化使各需求等权, 只统计该 SoL 档位已消费的需求;
-    恩格尔系数按 基础食品+加热供暖+简朴衣物 的权重占比估算。"""
+    恩格尔系数按 基础食品+加热供暖+简朴衣物 的权重占比估算。
+    top 覆盖 config 的 interview_consumption_goods_max (默认 10);
+    权重低于 interview_consumption_goods_min_weight (默认 0.05) 的零星商品
+    (如低 SoL 人群的电力/服务) 直接剔除, 不展示。"""
     gm = build_goods_map()
     order, zh = gm["order"], gm["zh"]
+    try:
+        _cfg = _journal.load_config()
+        if top is None:
+            top = _cfg.get("interview_consumption_goods_max")
+            if top is None or top == "":
+                top = 10
+            else:
+                top = int(top)
+        min_weight = float(_cfg.get("interview_consumption_goods_min_weight")
+                           or 0.05)
+    except Exception:
+        top = 10
+        min_weight = 0.05
     entries = (pop_needs_entry or {}).get("pop_need_entry_data") or []
     n_consume = len(entries)
     for sol_th, n in _NEEDS_BY_SOL:
@@ -1330,7 +1348,11 @@ def _consumption_profile(pop_needs_entry, sol):
             engel_den += v
     engel = round(engel_num / engel_den * 100) if engel_den else None
     goods = []
-    for gid, w in sorted(agg.items(), key=lambda kv: -kv[1])[:5]:
+    for gid, w in sorted(agg.items(), key=lambda kv: -kv[1]):
+        if w < min_weight:
+            break
+        if top and len(goods) >= top:
+            break
         key = order[gid] if gid < len(order) else None
         goods.append({"id": gid, "key": key,
                       "name": zh.get(key, key or str(gid)) if key else str(gid),
@@ -2026,6 +2048,41 @@ def _melt_ok(data):
         return False
     sob, so_end = _states_db_bounds(data)
     return so_end > sob
+
+
+_REGION_STATE_IDS_CACHE = {}  # id(data) -> (data, {region_key: [state_id, ...]})
+
+def _state_ids_by_region(data):
+    """全库「州域键 → 州 id 列表」表 (一次扫描 states.database, 含外国州)。
+
+    供战役发生地 (STATE_REGION_NAME) 解析外国战场州: 玩家只在本国州里挑
+    战场州, 登陆战/远征发生在外国领土时 (如墨西哥登陆贝宁) 该州不在玩家
+    州表, 需按州域反查州 id。按 bytes 对象同一性缓存 (同 _states_db_bounds)。"""
+    key = id(data)
+    m = _REGION_STATE_IDS_CACHE.get(key)
+    if m is not None and m[0] is data:
+        return m[1]
+    out = {}
+    sob, so_end = _states_db_bounds(data)
+    if so_end > sob:
+        pat = re.compile(rb'"(\d+)":\{')
+        j = sob
+        while j < so_end:
+            m2 = pat.search(data, j, so_end - 1)
+            if not m2:
+                break
+            ob3 = m2.start() + len(m2.group(0)) - 1
+            raw2, nxt = extract_json_object(data, ob3)
+            if raw2:
+                try:
+                    o = json.loads(raw2)
+                except Exception:
+                    o = None
+                if isinstance(o, dict) and o.get("region"):
+                    out.setdefault(o["region"], []).append(int(m2.group(1)))
+            j = nxt
+    _REGION_STATE_IDS_CACHE[key] = (data, out)
+    return out
 
 
 def _state_incorporation(data, state_id):
@@ -2872,6 +2929,26 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "poll_tax": _exp_rate(12, pop_f),
     }
     budget_rates = {k: round(v, 4) for k, v in budget_rates.items()}
+    # 社会阶层与合成分红 (2026-08-24, 测试集六): 中上阶级人群无论是否有真实
+    # 分红都给一个股票标的; 真实分红为 0 时按月收入比例合成一份「分红/投资
+    # 收入」 (股息率按阶级取 中产6%/上等9%, 19 世纪地方企业合理区间), 供
+    # 报纸访谈账本行与投资行情联动 (journal.investment_outcome_lines) 使用。
+    social_class = _pool_pop_class(pop)
+    synthetic_dividend_yield = None
+    if social_class in ("middle_class", "upper_class") and budget_rates["dividends"] <= 0:
+        inc_rate = sum(v for k, v in budget_rates.items()
+                       if k in ("wage", "subsistence", "dependent",
+                                "welfare", "other", "transfers"))
+        if inc_rate <= 0:
+            # 无工资等收入的中上阶级 (如零收入的贵族): 按家底估算月收入率
+            # (财富 × 年息率 ÷ 12 ÷ 劳动力), 使合成股息仍为正数。
+            wealth = pop.get("wealth")
+            if isinstance(wealth, (int, float)) and wealth > 0 and wf_f > 0:
+                inc_rate = wealth * (52.0 / 12.0) / 100.0 / wf_f
+        if inc_rate > 0:
+            share = 0.08 if social_class == "middle_class" else 0.15
+            budget_rates["dividends"] = round(inc_rate * share, 4)
+            synthetic_dividend_yield = 6 if social_class == "middle_class" else 9
     culture = culture_id_to_name(pop.get("culture")) if pop.get("culture") is not None else None
     # 本土判定: 该 pop 所在州域是否是其 culture 的 add_homeland
     culture_key = culture_id_to_key(pop.get("culture"))
@@ -2997,6 +3074,8 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "radicals_pct": _grp_pct(rad_n),
         "political_movements": mov_list,
         "food_security": food.get("state"),
+        "social_class": social_class,
+        "synthetic_dividend_yield": synthetic_dividend_yield,
     }
 
 def _pops_in_state(data, state_id):
@@ -4611,7 +4690,7 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None, ctx=Non
         for d in (atk, dfd):
             if d.get("commander") is not None:
                 commander_ids.append(d.get("commander"))
-        pending.append((bid, obj, atk, dfd, occ, place, war,
+        pending.append((bid, obj, atk, dfd, occ, place, place_key, war,
                         player_involved, has_gp, pids))
         j = nxt
 
@@ -4655,13 +4734,14 @@ def parse_battles(data, player_id=None, wars=None, zh=None, gp_ids=None, ctx=Non
             "morale_end": obj.get(prefix + "_ending_morale"),
         }
 
-    for bid, obj, atk, dfd, occ, place, war, pi, hgp, _pids in pending:
+    for bid, obj, atk, dfd, occ, place, place_key, war, pi, hgp, _pids in pending:
         entry = {
             "id": bid,
             "type": obj.get("type"),
             "war": obj.get("war"),
             "front": obj.get("front"),
             "place": place,
+            "place_key": place_key,
             "start_date": obj.get("start_date"),
             "end_date": obj.get("end_date"),
             "status": obj.get("status"),
@@ -4748,7 +4828,7 @@ def parse_naval_battles(data, player_id=None, wars=None, zh=None, gp_ids=None, c
             if d.get("commander") is not None:
                 commander_ids.append(d.get("commander"))
         rec = obj.get("battle_record") or {}
-        pending.append((bid, obj, atk, dfd, place, war, rec,
+        pending.append((bid, obj, atk, dfd, place, place_key, war, rec,
                         player_involved, has_gp, pids))
         j = nxt
 
@@ -4792,7 +4872,7 @@ def parse_naval_battles(data, player_id=None, wars=None, zh=None, gp_ids=None, c
             "ships_end": _ship_count(rec_side, "end_priority_stats"),
         }
 
-    for bid, obj, atk, dfd, place, war, rec, pi, hgp, _pids in pending:
+    for bid, obj, atk, dfd, place, place_key, war, rec, pi, hgp, _pids in pending:
         ra = (rec.get("attacker") or {}) if isinstance(rec, dict) else {}
         rd = (rec.get("defender") or {}) if isinstance(rec, dict) else {}
         entry = {
@@ -4801,6 +4881,7 @@ def parse_naval_battles(data, player_id=None, wars=None, zh=None, gp_ids=None, c
             "war": obj.get("war"),
             "front": obj.get("front"),
             "place": place,
+            "place_key": place_key,
             "start_date": rec.get("start_date") if isinstance(rec, dict) else None,
             "end_date": rec.get("end_date") if isinstance(rec, dict) else None,
             "status": obj.get("status"),
@@ -5673,16 +5754,34 @@ def _pop_dividend_rate(obj):
 
 
 def _pool_investment_lines(snap, st_zh, pop_obj, seed_key):
-    """杂志文章池共用 (2026-08-23): 该人群有分红/投资收入 且 国家已研发
-    mutual_funds 时, 附一家地方企业本年行情作为其投资结果 (优先同州)。
-    条件不满足返回空列表。"""
+    """杂志文章池共用 (2026-08-23): 中上阶级人群无论是否有真实分红都附一家
+    地方企业本年行情作为其投资结果 (优先同州); 真实分红为 0 时按月收入比例
+    合成一份分红/投资收入 (与家庭采访 _family_from_pop 同口径: 中产8%/上等
+    15%, 股息率 中产6%/上等9%)。条件不满足返回空列表。"""
     unit = snap.get("currency") or currency_unit(
         tag=snap.get("player_tag"), player_name=snap.get("player"))
+    dividends = _pop_dividend_rate(pop_obj)
+    yield_pct = None
+    cls = _pool_pop_class(pop_obj)
+    if dividends <= 0 and cls in ("middle_class", "upper_class"):
+        wb = (pop_obj or {}).get("weekly_budget") or []
+        wf = (pop_obj or {}).get("workforce")
+        if isinstance(wf, (int, float)) and wf > 0:
+            inc_rate = sum(v for v in wb[:7]
+                           if isinstance(v, (int, float)) and v > 0) / wf * (52.0 / 12.0)
+            if inc_rate <= 0:
+                # 零收入中上阶级: 按家底估算月收入率 (与 _family_from_pop 同口径)
+                wealth = (pop_obj or {}).get("wealth")
+                if isinstance(wealth, (int, float)) and wealth > 0:
+                    inc_rate = wealth * (52.0 / 12.0) / 100.0 / wf
+            if inc_rate > 0:
+                share = 0.08 if cls == "middle_class" else 0.15
+                dividends = inc_rate * share
+                yield_pct = 6 if cls == "middle_class" else 9
     return _journal.investment_outcome_lines(
-        snap.get("tech_keys"), snap.get("stock_market"), st_zh,
-        _pop_dividend_rate(pop_obj),
+        snap.get("tech_keys"), snap.get("stock_market"), st_zh, dividends,
         "%s|investment|%s|%s" % (snap.get("year"), seed_key, st_zh),
-        unit=unit, rate=_fx_rate(snap, unit))
+        unit=unit, rate=_fx_rate(snap, unit), yield_pct=yield_pct)
 
 
 def _pool_pop_class(obj):
@@ -6653,13 +6752,47 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
     rows_dev = [r for r in rows if abs(r["ratio"] - 1) > 1e-6]
     if rows_dev:
         rows = rows_dev
-    up = sorted(rows, key=lambda r: -(r["ratio"]))[:3]
-    down = sorted(rows, key=lambda r: r["ratio"])[:3]
-    lead = ["本年度市场物价（以基准价为参照）："]
-    lead.append("上涨最明显：" + "、".join(
-        f"{r['zh']}（约为基准价的{round(r['ratio'], 2)}倍）" for r in up) + "。")
-    lead.append("下跌最明显：" + "、".join(
-        f"{r['zh']}（约为基准价的{round(r['ratio'], 2)}倍）" for r in down) + "。")
+    # 较上年市价: 供「上涨/下跌最明显」排行与市场段同比 (快照附加层缓存)。
+    # 无上年数据 (首年) 时改报「市价最高/最低」, 不写涨跌幅度, 避免凭空断言。
+    prev_gp = snap.get("_prev_goods_prices") or {}
+    have_prev = any(isinstance(prev_gp.get(str(r["gid"])), (int, float))
+                    for r in rows)
+
+    def _yoy_pct(r):
+        pv = prev_gp.get(str(r["gid"]))
+        if isinstance(pv, (int, float)) and pv > 0 \
+                and isinstance(r["price"], (int, float)):
+            return (r["price"] - pv) / pv
+        return None
+
+    def _yoy_txt(r):
+        """商品较上年涨落文本; 无上年数据返回空串。"""
+        y = _yoy_pct(r)
+        if y is None:
+            return ""
+        if abs(y) < 1e-9:
+            return "，与上年基本持平"
+        return f"，较上年{'上涨' if y > 0 else '下跌'}约{abs(y) * 100:.0f}%"
+
+    lead = []
+    if have_prev:
+        up = sorted(rows, key=lambda r: -(_yoy_pct(r) if _yoy_pct(r) is not None else -1e9))[:3]
+        down = sorted(rows, key=lambda r: (_yoy_pct(r) if _yoy_pct(r) is not None else 1e9))[:3]
+        lead.append("本年度市场物价涨落：")
+        lead.append("上涨最明显：" + "、".join(
+            f"{r['zh']}（市价约{_fm_pounds(snap, r['price'])}{_yoy_txt(r)}）"
+            for r in up) + "。")
+        lead.append("下跌最明显：" + "、".join(
+            f"{r['zh']}（市价约{_fm_pounds(snap, r['price'])}{_yoy_txt(r)}）"
+            for r in down) + "。")
+    else:
+        hi = sorted(rows, key=lambda r: -(r["price"] if isinstance(r["price"], (int, float)) else 0))[:3]
+        lo = sorted(rows, key=lambda r: r["price"] if isinstance(r["price"], (int, float)) else float("inf"))[:3]
+        lead.append("本年度市场物价：")
+        lead.append("市价最高：" + "、".join(
+            f"{r['zh']}（市价约{_fm_pounds(snap, r['price'])}）" for r in hi) + "。")
+        lead.append("市价最低：" + "、".join(
+            f"{r['zh']}（市价约{_fm_pounds(snap, r['price'])}）" for r in lo) + "。")
     state_ids = _pool_state_ids(snap)
     pops = ctx.player_pops(state_ids)
     states = snap.get("states") or []
@@ -6703,7 +6836,8 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
                 prof = _consumption_profile(entry, o.get("previous_quality_of_life"))
                 if prof and prof.get("goods"):
                     household.append("家庭消费画像（按消费轻重排列）：" + "、".join(
-                        g.get("name") for g in prof["goods"][:4]) + "。")
+                        _journal._consumption_goods_name(g.get("name"))
+                        for g in prof["goods"][:10]) + "。")
                 if prof and prof.get("engel") is not None:
                     household.append(f"恩格尔系数约{prof['engel']}%。")
             except Exception:
@@ -6712,7 +6846,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
     market = ["本刊关注的几件商品与市价："]
     for r in rows[:5]:
         market.append(f"- {r['zh']}：市价约{_fm_pounds(snap, r['price'])}"
-                      f"（基准价{_fm_pounds(snap, r['cost'])}）")
+                      f"{_yoy_txt(r)}")
     street = ["街市与生计收束素材："]
     if wage is not None:
         street.append(f"{st_zh}劳动力人均月薪约{_fm_pounds(snap, wage)}，"
@@ -11046,6 +11180,12 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
             battle_state_ids.add(o.get("state"))
         if b.get("place"):
             battle_place_names.add(b.get("place"))
+        # 战役发生地州域键 (STATE_REGION_NAME): 反查全库州 id,
+        # 覆盖登陆战/远征发生在外国领土的情形 (如墨西哥登陆贝宁)。
+        pk = b.get("place_key")
+        if pk:
+            for sid in _state_ids_by_region(melted).get(pk, ()):
+                battle_state_ids.add(sid)
     # 战役发生地(州名)同样计入战场州, 供士兵/平民样本排序与 in_battle_state 标记
     state_name_to_id = {str(s.get("name")): s.get("id")
                         for s in (snap.get("states") or [])
@@ -11289,12 +11429,33 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
     data["promotions"] = _pick(promotions, 6)
     data["pop_migrations"] = _pick(pop_migrations, 6)
 
-    # 战乱州民生: 仅报告年度内有战役的玩家州 (战役发生地或占领州)。
+    # 战乱州民生: 仅报告年度内有战役的州 (战役发生地或占领州)。
     # 荒废度为历史战争遗留, 不作为入选条件, 避免停战多年后仍被误报。
+    # 战役发生在玩家领土之外的 (如登陆战发生在贝宁), 该外国战场州一并列出,
+    # 供「战火余烬」板块报道战区民生 (熔化数据中各州对象均含荒废度/污染)。
     war_states = []
+    player_sids = set()
     for s in (snap.get("states") or []):
+        if s.get("id") is not None:
+            player_sids.add(s["id"])
         if s.get("id") in battle_state_ids or s.get("name") in battle_place_names:
             war_states.append(s)
+    if battle_state_ids:
+        have = {s.get("id") for s in war_states}
+        for sid in sorted(battle_state_ids):
+            if sid is None or sid in have or sid in player_sids:
+                continue
+            sobj = ctx.state_object(sid)
+            if not sobj:
+                continue
+            entry = {"id": sid, "name": ctx.state_zh(sid) or f"州{sid}"}
+            dev = sobj.get("devastation")
+            if isinstance(dev, (int, float)):
+                entry["devastation"] = round(float(dev), 3)
+            pol = sobj.get("pollution")
+            if isinstance(pol, (int, float)):
+                entry["pollution"] = round(float(pol), 3)
+            war_states.append(entry)
     data["war_states"] = war_states
 
     # 大臣 (执政利益集团) 与统治者
@@ -11337,7 +11498,8 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
         if isinstance(r, dict) and r.get("target_state") is not None:
             flavor_sids.add(r["target_state"])
     for st2 in data.get("war_states") or []:
-        if st2.get("id") is not None:
+        # 只对玩家州建州情档案: 外国战场州无玩家 POP/建筑上下文, 风味层跳过
+        if st2.get("id") is not None and st2["id"] in player_sids:
             flavor_sids.add(st2["id"])
     data["state_flavors"] = {}
     for sid in flavor_sids:
@@ -15401,6 +15563,11 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
                     buildings=buildings, country=country, price_map=price_map,
                     prev_snap=prev_snap)
         snap["society_flavor_lines"] = _society_flavor_lines(snap, prev_snap)
+    # 上年商品市价 {str(gid): 价格}: 杂志 price 主题「较上年涨落」与访谈
+    # 「主要消费品市价」同比共用 (来自上年快照 stock_market.goods_prices)。
+    if prev_snap is not None:
+        snap["_prev_goods_prices"] = (
+            (prev_snap.get("stock_market") or {}).get("goods_prices") or {})
     if _cfg.get("stock_market_enabled", True):
         sm = _stock_market_data(melted, snap, ctx, country, cid,
                                 prev_snap=prev_snap, journal_dir=journal_dir)
@@ -15451,7 +15618,12 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
 # 版本 14: 上年快照定位改按玩家国家 TAG 绑定 (玩家改名不断链, 修复政体变更后
 # 股市/州情/访谈同比全部断链问题) + 公司建筑 workplace 本地化补 company_ 回退
 # (修复 building_company_john_cockerill 键值泄漏), 旧缓存需重新熔化提取。
-SNAPSHOT_CACHE_VERSION = 14
+# 版本 15: 快照附加层缓存上年商品市价 (_prev_goods_prices, 取自上年
+# stock_market.goods_prices), 供杂志 price 主题「较上年涨落」与访谈
+# 「主要消费品市价」同比使用, 旧缓存需重新熔化提取。
+# 版本 16: 家庭采访块新增 social_class / synthetic_dividend_yield 字段
+# (中上阶级合成分红, 测试集六), 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 16
 # raw/snapshot 携带国家名解析表版本: 跨年合并时若上一年 raw 无此表,
 # 只能沿用烘焙名, 提示用 tools/regen_data.py 重新生成。
 NAME_TABLE_VERSION = 1
@@ -15602,6 +15774,7 @@ def ensure_fresh_melt():
     for attempt in (1, 2):
         with _MeltLock():
             _STATES_DB_BOUNDS.clear()
+            _REGION_STATE_IDS_CACHE.clear()
             path, err = melt_with_rakaly(v3, force=True)
             if err:
                 last_err = err
@@ -15830,6 +16003,7 @@ def cmd_melt():
     if not v3: print("未找到存档。"); return 1
     with _MeltLock():
         _STATES_DB_BOUNDS.clear()
+        _REGION_STATE_IDS_CACHE.clear()
         path, err = melt_with_rakaly(v3, force=True)
         if err:
             print(f"熔化失败: {err}")

@@ -188,6 +188,12 @@ DEFAULT_CONFIG = {
     # 访谈板块食品类 (基本食物/奢侈食物/刺激品/嗜好品) 每月数量下限 (千克/升),
     # 防止「约每N个月1千克」式离谱小读数; 0 = 不设下限。
     "interview_food_qty_min": 0.5,
+    # 访谈板块消费画像最多保留的商品数 (按消费权重降序; 0 = 全量)。
+    # 数量行只展示可读读数 (约每<10年1单位), 其余商品的金额在金额行给出。
+    "interview_consumption_goods_max": 10,
+    # 消费画像商品权重下限: 低于该值的零星商品 (如低 SoL 人群的电力/服务)
+    # 直接剔除不展示, 避免「约每数十年1单位」式不可读读数。
+    "interview_consumption_goods_min_weight": 0.05,
     # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
     "parallel_generation_enabled": True,
     # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
@@ -700,6 +706,11 @@ _LEGACY_GOVT_ZH = {
     "junta": "军政府",
     "gov_military_dictatorship": "军事独裁政府",
     "military_dictatorship": "军事独裁政府",
+    # 寡头共和国: 总统制/议会制寡头国家均要求对应共和法
+    # (02_presidential_republics.txt / 03_parliamentary_republics.txt),
+    # 法律上仍是共和国 → 拼「共和国」 (墨西哥+总统制寡头国家→墨西哥共和国)。
+    "gov_presidential_oligarchy": "共和国",
+    "gov_parliamentary_oligarchy": "共和国",
 }
 
 # journal.py 旧口径的政体中文名 (带「制」等) → 规范政体名, 便于取后缀
@@ -1235,41 +1246,10 @@ FACT_GUIDE = (
     "度量衡一律使用公制单位（吨、千克、千米、米、升、度、平方米），数值以资料为准。"
 )
 
-# 消费结构参考 (v3, 与 tools/goods_measure.json 及 Needs wiki 需求体系同源):
-# 只注入经济/社论等全国口径板块, 作为「不同生活水平家庭开销结构」的统计参考;
-# 访谈板块 (family/peer/unemployed) 的家庭级金额与数量已由程序折算为具体数字
-# (见 _consumption_breakdown_lines), 不再注入, 避免模型另行换算或读出游戏单位。
-_GOODS_GUIDE_SECTIONS = {"econ", "comment"}
-_GOODS_GUIDE_CACHE = None
-
 # 货币规则只注入有金额数据的板块 (广告/政界/社会板块无金额数据, 不注入,
 # 避免模型自拟金额并主动换算主辅币, 如「学费比索60元（即600分）」)。
 _MONEY_SECTIONS = {"headline", "war", "diplo", "econ", "stock",
                    "family", "peer", "unemployed", "comment"}
-
-
-def _goods_scale_guide():
-    """消费结构参考块: 不同生活水平家庭的开销占比 (按统计资料, 可直接引用)。
-    访谈板块不再注入: 其家庭级金额/数量已由程序折算成具体数字
-    (见 _consumption_breakdown_lines), 此处只服务全国口径板块。"""
-    global _GOODS_GUIDE_CACHE
-    if _GOODS_GUIDE_CACHE is not None:
-        return _GOODS_GUIDE_CACHE
-    lines = ["不同生活水平家庭的开销结构（占比%，按统计资料，可直接引用）："]
-    try:
-        with open(os.path.join(SCRIPT_DIR, "tools", "goods_measure.json"),
-                  encoding="utf-8") as fp:
-            d = json.load(fp)
-        ng = d.get("_need_guide") or {}
-        for k, v in ng.items():
-            if k == "note":
-                continue
-            share = "、".join(f"{kk}约{int(vv)}%" for kk, vv in v.items() if vv)
-            lines.append(f"  · {k}：{share}。")
-    except Exception:
-        pass
-    _GOODS_GUIDE_CACHE = "\n".join(lines)
-    return _GOODS_GUIDE_CACHE
 
 
 _TERRITORY_CAP = 8
@@ -1550,11 +1530,28 @@ def render_war(data, history=None):
                 if p.get("id") == dp_id:
                     return p.get("definition")
             return None
+
+        # 某一方的国名清单 (side=initiator/target), 供伤亡/耗资行代入国名,
+        # 避免模型面对「发起方死伤约X人」却不知道发起方是谁。
+        def _side_names(side_key):
+            out = []
+            for p in (w.get("participants") or []):
+                if not isinstance(p, dict) or p.get("side") != side_key:
+                    continue
+                nm = strip_loc_formatting(p.get("name", "")).strip()
+                if nm:
+                    out.append(nm)
+            return out
+
         for side_key, side_label in (("initiator", "发起方"), ("target", "应战方")):
             cas = (w.get("casualties_by_side") or {}).get(side_key)
             cost = (w.get("costs_by_side") or {}).get(side_key)
             if cas is None and cost is None:
                 continue
+            label = side_label
+            sns = _side_names(side_key)
+            if sns:
+                label = f"{side_label}（{'、'.join(sns)}）"
             bits = []
             if cas is not None:
                 # 存档伤亡为小数，按十万人口口径还原为实际人数
@@ -1569,7 +1566,7 @@ def render_war(data, history=None):
                 else:
                     bits.append(f"耗资约{_fm(data, cost)}")
             if bits:
-                side_parts.append(side_label + "，".join(bits))
+                side_parts.append(label + "，".join(bits))
         if side_parts:
             tail.append("；".join(side_parts))
         else:
@@ -1902,12 +1899,16 @@ def render_stock(data, cfg=None):
 
 
 def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
-                             seed, cfg=None, unit=None, rate=None):
+                             seed, cfg=None, unit=None, rate=None,
+                             yield_pct=None):
     """分红人群投资行情联动 (2026-08-23): 报纸访谈/杂志文章池共用。
 
     触发条件 (全部满足才附加): 该人群有分红/投资收入 (dividends > 0) 且
     国家已研发 mutual_funds 科技 且 本期有地方企业行情; 任一不满足返回空列表
     (不编造投资)。
+    中上阶级人群的真实分红为 0 时, 调用方 (家庭采访/杂志文章池) 会按阶级
+    合成一份分红/投资收入并传入 yield_pct (股息率%, 如 6/9), 此处把股息率
+    一并写入行情行, 供模型直接引用。
     企业选取: 优先取与该人群所在州 (region_name) 同名的地方企业; 无同州企业时
     在全部地方企业中确定性种子随机取一家 (种子 = seed, 同年同人群可复现)。
     unit/rate 提供时股价与分红按汇率换算为主辅币格式 (format_money)。
@@ -1950,6 +1951,8 @@ def investment_outcome_lines(tech_keys, stock_market, region_name, dividends,
                      f"高约{format_money(h, unit, rate)}，"
                      f"低约{format_money(l, unit, rate)}，"
                      f"收约{format_money(c, unit, rate)}）")
+    if yield_pct is not None:
+        parts.append(f"该公司股息率约{yield_pct}%（按年）")
     if not parts:
         return []
     return [head + "".join(parts) + "。"]
@@ -2633,15 +2636,31 @@ def _goods_need(key):
     return (m or {}).get("need")
 
 
-def _fmt_month_qty(name, q, unit, dec):
+# 消费语境商品名: 家庭消费中的「油」是照明/取暖用煤油, 程序端直接改写为
+# 「煤油」, 使模型按燃料而非「食用油」理解 (仅限家庭消费类板块; 市场行情
+# 等其他板块的「油」维持原样)。正则要求「油」前不是中文字符 (煤油/石油/
+# 食用油等合成词不触发), 防重复替换。
+_KEROSENE_NAME_RE = re.compile(r"(?<![\u4e00-\u9fff])油")
+
+
+def _consumption_goods_name(nm):
+    """消费板块商品名: 独立「油」→「煤油」(正则, 防重复替换)。"""
+    if not nm:
+        return nm
+    return _KEROSENE_NAME_RE.sub("煤油", nm)
+
+
+def _fmt_month_qty(name, q, unit, dec, lumpy=False):
     """月度数量自然语言: ≥1 取整/按 dec 保小数; 0.1~1 保 1 位;
-    <0.1 聚合为「约每N个月1/约每N年1单位」。"""
+    <0.1 聚合为「约每N个月1/约每N年1单位」;
+    耐用品 (lumpy=True, 按件购置的衣物/家具等) 在每月不足 1 件时同样聚合为
+    「约每N个月1件」, 避免「每月约0.3件」式别扭读数。"""
     if q >= 100:
         return f"{name}每月约{int(q + 0.5)}{unit}"
     if q >= 1:
         s = f"{q:.{dec}f}" if dec else f"{int(q + 0.5)}"
         return f"{name}每月约{s}{unit}"
-    if q >= 0.1:
+    if q >= 0.1 and not lumpy:
         return f"{name}每月约{q:.1f}{unit}"
     if q > 0:
         n = max(1, round(1 / q))
@@ -2649,6 +2668,24 @@ def _fmt_month_qty(name, q, unit, dec):
             return f"{name}约每{max(1, round(n / 12))}年1{unit}"
         return f"{name}约每{n}个月1{unit}"
     return f"{name}极少购置"
+
+
+def _goods_unit_price_text(data, g, unit=None):
+    """主要消费商品每单位市价文本: 基准价×(1+dev/100)÷per → 主辅币。
+    dev_pct 为市价相对正常价 (基准价) 的偏离率, per 为每游戏单位的显示
+    单位数 (千克/件/升…); 数据不足或抽象单位 (如「单位」) 返回 None。"""
+    key = g.get("key")
+    d = g.get("dev_pct")
+    if not key or not isinstance(d, (int, float)):
+        return None
+    unit_, per, _dec, base = _goods_unit_per(key)
+    if unit_ is None or unit_ == "单位" or not isinstance(base, (int, float)) \
+            or base <= 0 or per <= 0:
+        return None
+    price = base * (1 + d / 100.0) / per
+    unit = unit or data.get("currency") or DEFAULT_CURRENCY
+    return (f"{_consumption_goods_name(g.get('name'))}每{unit_}约"
+            f"{format_money(price, unit, _fx_rate(data, unit))}")
 
 
 def _consumption_breakdown_lines(profile, unit, rate=None):
@@ -2668,27 +2705,22 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
     if wsum <= 0:
         return []
     out = []
-    # 金额行: 恩格尔口径的食物金额 + 各主要商品金额 (带数字, 自然表述)
+    # 金额行: 恩格尔口径的食物金额; 各主要商品的金额不再逐项列出
+    # (数量行已给出每项消费量, 逐项金额与数量行重复且无实义)。
     food_m = goods_m * (engel / 100.0) if isinstance(engel, (int, float)) else None
-    money_bits = []
-    for _k, nm, w, _d in items:
-        if not nm:
-            continue
-        mi = goods_m * (w or 0) / wsum
-        money_bits.append(f"{nm}约{format_money(mi, unit, rate)}")
-    if money_bits:
-        head = (f"- 消费结构：该家庭每月商品消费约"
-                f"{format_money(goods_m, unit, rate)}")
-        if food_m is not None:
-            head += (f"，其中基本食物约{format_money(food_m, unit, rate)}"
-                     f"（恩格尔系数约{engel}%）")
-        head += "；主要商品金额：" + "、".join(money_bits) + "。"
-        out.append(head)
+    head = (f"- 消费结构：该家庭每月商品消费约"
+            f"{format_money(goods_m, unit, rate)}")
+    if food_m is not None:
+        head += (f"，其中基本食物约{format_money(food_m, unit, rate)}"
+                 f"（恩格尔系数约{engel}%）")
+    head += "。"
+    out.append(head)
     # 数量行: 金额 ÷ 市价 → 每月游戏单位 × per 乘数 → 公制读数;
     # 数量可经 config 系数放大 (interview_consumption_qty_scale), 并给食品类
     # 设每月下限 (interview_food_qty_min), 避免「约每十几月1千克」式离谱小读数。
-    # 只取权重最高的前 3 种商品, 避免稀疏小额商品 (如服务) 出现「约每数十年1单位」
-    # 式不可读读数; 其余商品的金额已在金额行给出。
+    # 遍历画像全部商品 (≤ interview_consumption_goods_max); 消费量极小的商品
+    # (读数聚合为「约每≥10年1单位」, 如低 SoL 人群的电力/服务) 直接跳过,
+    # 其金额已在金额行给出, 避免「约每数十年1单位」式不可读读数。
     cfg = {}
     try:
         cfg = load_config()
@@ -2704,7 +2736,7 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         food_min = 0.0
     ordered = sorted(items, key=lambda it: -(it[2] or 0))
     qbits = []
-    for key, nm, w, dv in ordered[:3]:
+    for key, nm, w, dv in ordered:
         if not nm:
             continue
         mi = goods_m * (w or 0) / wsum
@@ -2721,7 +2753,13 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
             need = _goods_need(key)
             if need and any(k in need for k in ("食物", "刺激", "嗜好")):
                 q = max(q, food_min)
-        qbits.append(_fmt_month_qty(nm, q, unit_, dec))
+        # 可读性守卫: 每月不足 1/120 单位 (约每10年1单位) 的稀疏商品跳过,
+        # 其金额已在金额行给出; 避免「约每数十年1单位」式不可读读数。
+        if q <= 0 or 1.0 / q >= 120:
+            continue
+        # 耐用品 (件) 每月不足 1 件时聚合为「约每N个月1件」; 油→煤油
+        qbits.append(_fmt_month_qty(_consumption_goods_name(nm), q, unit_, dec,
+                                    lumpy=(unit_ == "件")))
     if qbits:
         out.append("- 主要消费商品月消费（估算）：" + "、".join(qbits) + "。")
     return out
@@ -2952,23 +2990,17 @@ def render_family(data, style=None):
         if bl:
             L.extend(bl)
         else:
-            names = [g.get("name") for g in cgoods if g.get("name")]
+            names = [_consumption_goods_name(g.get("name"))
+                     for g in cgoods if g.get("name")]
             if names:
                 L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
-        trends = []
+        price_bits = []
         for g in cgoods:
-            d = g.get("dev_pct")
-            nm = g.get("name")
-            if d is None or not nm:
-                continue
-            if d >= 5:
-                trends.append(f"{nm}高于正常价约{d:.0f}%")
-            elif d <= -5:
-                trends.append(f"{nm}低于正常价约{-d:.0f}%")
-            else:
-                trends.append(f"{nm}与正常价基本持平")
-        if trends:
-            L.append("- 主要消费品市价（本州所在市场，对比正常价）：" + "、".join(trends))
+            t = _goods_unit_price_text(data, g, unit)
+            if t:
+                price_bits.append(t)
+        if price_bits:
+            L.append("- 主要消费品市价（本州所在市场）：" + "、".join(price_bits) + "。")
     if fi.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = fi.get("engel_coefficient")
@@ -3006,7 +3038,7 @@ def render_family(data, style=None):
         data.get("tech_keys"), data.get("stock_market"), region,
         (fi.get("budget_rates") or {}).get("dividends", 0.0),
         f"{data.get('year')}|investment|family|{region}",
-        unit=unit, rate=rate))
+        unit=unit, rate=rate, yield_pct=fi.get("synthetic_dividend_yield")))
     L.extend(_render_pop_politics(fi, data))
     fs = fi.get("food_security")
     if fs:
@@ -3108,23 +3140,17 @@ def render_peer(data, style=None):
         if bl:
             L.extend(bl)
         else:
-            names = [g.get("name") for g in cgoods if g.get("name")]
+            names = [_consumption_goods_name(g.get("name"))
+                     for g in cgoods if g.get("name")]
             if names:
                 L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
-        trends = []
+        price_bits = []
         for g in cgoods:
-            d = g.get("dev_pct")
-            nm = g.get("name")
-            if d is None or not nm:
-                continue
-            if d >= 5:
-                trends.append(f"{nm}高于正常价约{d:.0f}%")
-            elif d <= -5:
-                trends.append(f"{nm}低于正常价约{-d:.0f}%")
-            else:
-                trends.append(f"{nm}与正常价基本持平")
-        if trends:
-            L.append("- 主要消费品市价（本州所在市场，对比正常价）：" + "、".join(trends))
+            t = _goods_unit_price_text(data, g, unit)
+            if t:
+                price_bits.append(t)
+        if price_bits:
+            L.append("- 主要消费品市价（本州所在市场）：" + "、".join(price_bits) + "。")
     if peer.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = peer.get("engel_coefficient")
@@ -3162,7 +3188,7 @@ def render_peer(data, style=None):
         data.get("tech_keys"), data.get("stock_market"), region,
         (peer.get("budget_rates") or {}).get("dividends", 0.0),
         f"{data.get('year')}|investment|peer|{region}",
-        unit=unit, rate=rate))
+        unit=unit, rate=rate, yield_pct=peer.get("synthetic_dividend_yield")))
     L.extend(_render_pop_politics(peer, data))
     fs = peer.get("food_security")
     if fs:
@@ -3241,23 +3267,17 @@ def render_unemployed(data, style=None):
         if bl:
             L.extend(bl)
         else:
-            names = [g.get("name") for g in cgoods if g.get("name")]
+            names = [_consumption_goods_name(g.get("name"))
+                     for g in cgoods if g.get("name")]
             if names:
                 L.append("- 主要消费商品（按消费占比降序）：" + "、".join(names))
-        trends = []
+        price_bits = []
         for g in cgoods:
-            d = g.get("dev_pct")
-            nm = g.get("name")
-            if d is None or not nm:
-                continue
-            if d >= 5:
-                trends.append(f"{nm}高于正常价约{d:.0f}%")
-            elif d <= -5:
-                trends.append(f"{nm}低于正常价约{-d:.0f}%")
-            else:
-                trends.append(f"{nm}与正常价基本持平")
-        if trends:
-            L.append("- 主要消费品市价（本州所在市场，对比正常价）：" + "、".join(trends))
+            t = _goods_unit_price_text(data, g, unit)
+            if t:
+                price_bits.append(t)
+        if price_bits:
+            L.append("- 主要消费品市价（本州所在市场）：" + "、".join(price_bits) + "。")
     if uni.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = uni.get("engel_coefficient")
@@ -3295,7 +3315,7 @@ def render_unemployed(data, style=None):
         data.get("tech_keys"), data.get("stock_market"), region,
         (uni.get("budget_rates") or {}).get("dividends", 0.0),
         f"{data.get('year')}|investment|unemployed|{region}",
-        unit=unit, rate=rate))
+        unit=unit, rate=rate, yield_pct=uni.get("synthetic_dividend_yield")))
     L.extend(_render_pop_politics(uni, data))
     fs = uni.get("food_security")
     if fs:
@@ -3570,12 +3590,6 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
         if ads_guide:
             req = f"{req}\n{ads_guide}"
     parts = [st["voice"], FACT_GUIDE]
-    if key in _GOODS_GUIDE_SECTIONS:
-        # 仅经济/社论等全国口径板块注入消费结构参考; 访谈板块的家庭级金额/数量
-        # 已由程序折算成具体数字注入事实层, 不再给比例 (防模型另行换算)。
-        _gg = _goods_scale_guide()
-        if _gg:
-            parts.append(_gg)
     num_guide = st.get("number_guide")
     if num_guide:
         parts.append(f"数字格式要求：{num_guide.replace('{CURRENCY}', unit)}")
