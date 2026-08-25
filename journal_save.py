@@ -4936,16 +4936,22 @@ def _mix_land_naval_battles(land, naval, year):
 # ===========================================================================
 
 def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
-                    dp_index=None):
+                    dp_index=None, tag_names=None):
     """解析 war_goal_manager.database 的战争目的。
     返回 [{war, diplomatic_play, holder, holder_zh, target, target_zh, type,
            type_zh, state, state_zh, region, region_zh, demand_type,
-           demand_type_zh, status, nl, article_zh}]。
-    nl 为完整自然语言句 (如「巴西要求大不列颠转让属国大南」)。"""
+           demand_type_zh, status, nl, article_zh, country_definition,
+           liberated_zh}]。
+    nl 为完整自然语言句 (如「巴西要求大不列颠转让属国大南」)。
+    liberate_country 的 target.country 是「被要求放手的国家」, 真正被解放的
+    国家记在 target.country_definition (国家 TAG), 经 tag_names 解析为中文名,
+    nl 形如「大不列颠要求从美利坚合众国解放霍迪诺肖尼」。"""
     if zh is None or gp_ids is None:
         zh, gp_ids = _country_zh_map(data)
     if dp_index is None:
         _i, _g, dp_index = _build_indexes(data)
+    if tag_names is None:
+        tag_names = load_current_country_names(data)
     dp_to_war = {}
     for dpid, dp in dp_index.items():
         w = dp.get("war") if isinstance(dp, dict) else None
@@ -4983,6 +4989,10 @@ def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
         target_zh = zh.get(tcid) if tcid is not None else None
         other_zh = zh.get(other_id) if other_id is not None else None
         holder_zh = zh.get(v.get("holder")) if v.get("holder") is not None else None
+        # liberate_country: target.country 是被要求放手的国家, 被解放的国家
+        # 由 target.country_definition (TAG) 指定, 用 tag_names 解析中文名。
+        cd = target.get("country_definition")
+        cd_zh = tag_names.get(cd) if cd else None
         type_zh = loc.get(f"war_goal_{typ}_type_name") or str(typ)
         demand = v.get("demand_type") or ""
         demand_zh = ("主战目的" if demand == "primary_demand"
@@ -5007,9 +5017,20 @@ def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
             demand_nl = (f"{other_zh}转让属国{target_zh}"
                          if other_zh and target_zh else f"转让属国{target_zh or '该国'}")
         elif typ == "liberate_subject":
-            demand_nl = f"解放附属国{target_zh or '该国'}"
+            # target 是被解放的附属国, other 是其宗主国 (被强迫方),
+            # 与 liberate_country 同口径点名「从谁手里解放」。
+            demand_nl = (f"从{other_zh}解放附属国{target_zh}"
+                         if other_zh and target_zh and other_zh != target_zh
+                         else f"解放附属国{target_zh or '该国'}")
         elif typ == "liberate_country":
-            demand_nl = f"解放{target_zh or '该国'}"
+            if cd_zh and target_zh:
+                demand_nl = f"从{target_zh}解放{cd_zh}"
+            elif cd_zh:
+                demand_nl = f"解放{cd_zh}"
+            elif target_zh:
+                demand_nl = f"从{target_zh}解放其故土"
+            else:
+                demand_nl = "解放该国"
         elif typ == "make_protectorate":
             demand_nl = f"将{target_zh or '该国'}建立为受保护国"
         elif typ == "colonization_rights":
@@ -5028,6 +5049,7 @@ def parse_war_goals(data, wars=None, player_id=None, zh=None, gp_ids=None,
             "state": state_id, "state_zh": state_zh, "region": region,
             "region_zh": region_zh, "type": typ, "type_zh": type_zh,
             "demand_type": demand, "demand_type_zh": demand_zh,
+            "country_definition": cd, "liberated_zh": cd_zh,
             "status": v.get("status"), "nl": nl, "article_zh": article_zh,
         })
     return out
@@ -11228,7 +11250,8 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
     else:
         data["war_goals"] = parse_war_goals(
             melted, wars=snap.get("wars"), player_id=snap.get("country_id"),
-            zh=zh, gp_ids=gp_ids0, dp_index=dp_index0)
+            zh=zh, gp_ids=gp_ids0, dp_index=dp_index0,
+            tag_names=load_current_country_names(melted, index0))
 
     # 军团 / 营 / 舰船
     cid = snap.get("country_id")
@@ -12366,7 +12389,7 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
     snap["war_goals"] = parse_war_goals(
         melted, wars=snap.get("wars"), player_id=cid,
         zh=build_country_id_names(melted, index), gp_ids=gp_ids,
-        dp_index=dp_index)
+        dp_index=dp_index, tag_names=names)
     # 单文件扫描一次建索引: 角色 / 建筑 / POP, 供首领、统治者与家庭采访复用
     chars = _player_characters(melted, cid)
     buildings_index, building_map, building_objs = ctx.buildings_index(state_ids)
@@ -15627,7 +15650,13 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
 # 「主要消费品市价」同比使用, 旧缓存需重新熔化提取。
 # 版本 16: 家庭采访块新增 social_class / synthetic_dividend_yield 字段
 # (中上阶级合成分红, 测试集六), 旧缓存需重新熔化提取。
-SNAPSHOT_CACHE_VERSION = 16
+# 版本 17: 战争目的 liberate_country / liberate_subject 修复——target.country
+# 是「被要求放手的国家」: liberate_country 真正被解放的国家在
+# target.country_definition (TAG), 经 tag_names 解析入 nl (如「大不列颠要求
+# 从美利坚合众国解放霍迪诺肖尼」); liberate_subject 点名宗主国 (如「阿根廷
+# 邦联要求从玻利维亚解放附属国伊基查」), 并新增 country_definition /
+# liberated_zh 字段, 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 17
 # raw/snapshot 携带国家名解析表版本: 跨年合并时若上一年 raw 无此表,
 # 只能沿用烘焙名, 提示用 tools/regen_data.py 重新生成。
 NAME_TABLE_VERSION = 1

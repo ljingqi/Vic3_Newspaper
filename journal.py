@@ -181,13 +181,27 @@ DEFAULT_CONFIG = {
     "fx_total_clamp": 0.60,
     # 经济要闻是否附「本年度 1 英镑兑 X 法郎」汇率行
     "fx_show_in_econ": True,
-    # 访谈板块 (民生访谈/先富观察/失业民生) 商品数量读数放大系数:
+    # 访谈板块 (民生访谈/先富观察/失业民生) 非主食商品数量读数放大系数:
     # 游戏货币为抽象价值量, 直接换算的月度数量过小 (如「每14个月1千克」),
-    # 该系数把数量读数放大到可读区间 (按墨西哥样本, 12 时食品中位数约每月1千克)。
+    # 该系数把非主食商品读数放大到可读区间 (按墨西哥样本, 12 时咖啡约
+    # 每月1千克、煤油约2升、衣物约每8个月1件, 已属合理)。
     "interview_consumption_qty_scale": 12.0,
-    # 访谈板块食品类 (基本食物/奢侈食物/刺激品/嗜好品) 每月数量下限 (千克/升),
+    # 访谈板块食品类 (奢侈食物/刺激品/嗜好品) 每月数量下限 (千克/升),
     # 防止「约每N个月1千克」式离谱小读数; 0 = 不设下限。
+    # (「基本食物」不再用该下限兜底, 改由热量锚定计算, 见下。)
     "interview_food_qty_min": 0.5,
+    # 访谈板块「基本食物」热量锚定 (2026, WHO/FAO 能量需求基准):
+    # 主食类商品数量改按家庭每日热量需求推算, 不再由游戏金额÷基准价换算
+    # (后者使六口之家谷物仅约0.5千克/月, 与 WHO/FAO 成人每日约
+    # 2000~2800 kcal (人均参考约2100 kcal) 对应的每月数十千克量级严重不符)。
+    # 家庭月热量 = (成人2人×成人kcal + 子女数×子女kcal) × 30.4天/月,
+    # 按各主食商品的目标热量占比分摊后除以商品每千克热量
+    # (tools/goods_measure.json 的 kcal 字段)。
+    "interview_kcal_adult_day": 2300,
+    "interview_kcal_child_day": 1700,
+    # 热量锚定启用阈值: 恩格尔系数 ≥ 该值 (食物支出占比高的贫困家庭) 才
+    # 启用; 富户 (恩格尔低, 画像中本就少见主食商品) 维持金额公式。
+    "interview_staple_engel_min": 45,
     # 访谈板块消费画像最多保留的商品数 (按消费权重降序; 0 = 全量)。
     # 数量行只展示可读读数 (约每<10年1单位), 其余商品的金额在金额行给出。
     "interview_consumption_goods_max": 10,
@@ -414,6 +428,16 @@ def date_tuple(date_str):
         return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
     m = re.match(r"(\d{4})", str(date_str))
     return (int(m.group(1)), 0, 0) if m else None
+
+def fmt_cn_date(date_str):
+    """'1865.1.1' → '1865年1月1日'; 仅年份 → '1865年'; 缺失 → '未知'。"""
+    m = re.match(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", str(date_str or ""))
+    if m:
+        return f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日"
+    m = re.match(r"(\d{4})", str(date_str or ""))
+    if m:
+        return f"{m.group(1)}年"
+    return "未知"
 
 def parse_journal_line(line):
     """解析一行含 |JOURNAL| 的日志, 返回 (kind, raw_parts, fields, before_text)。"""
@@ -1252,8 +1276,8 @@ SECTION_DEFS = [
      "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
      "其投资得失，行情数字以资料为限，不得另造。"),
     ("comment", "本报评论", "编辑部评论，结合历年发展对照，评述国运与民生之变迁。"),
-    ("ads", "广告与启示", "围绕本期提供的已研发科技创作一两条趣味广告：可为商品、工艺、铺面告白，"
-     "也可为文学沙龙、社科研讨会、新政晓谕、学堂启事等非商品形式；至少一条须直接体现科技，富有时代气息。"),
+    ("ads", "广告与启示", "围绕本期提供的已研发科技创作一两条趣味广告："
+     "至少一条须直接体现所选科技，富有时代气息。"),
 ]
 
 # 报纸板块 → HTML 图表占位标记 (htmlview.py 重建时替换为内嵌 SVG 图表:
@@ -1451,7 +1475,7 @@ def render_overview(data, history=None):
     govt_zh = GOVT_NAMES.get(data.get("govt", ""), data.get("govt", "未知"))
     full = full_country_name(data.get('player', '未知'), govt_zh,
                              data.get("govt_law"))
-    L.append(f"【国家】{full}  【都城】{capital}  【政体】{govt_zh}  【年份】{data.get('year', '?')}（{data.get('date', '')}）")
+    L.append(f"【国家】{full}  【都城】{capital}  【政体】{govt_zh}  【日期】{fmt_cn_date(data.get('date'))}")
     unit = data.get("currency") or "英镑"
     gdp_v = data.get('gdp', '未知')
     gdp_s = _fm(data, gdp_v) if isinstance(gdp_v, (int, float)) else str(gdp_v)
@@ -2664,6 +2688,38 @@ def _goods_need(key):
     return (m or {}).get("need")
 
 
+# 主食热量锚定 (2026, WHO/FAO 能量需求基准): 访谈板块中「基本食物」类商品
+# 的数量不再由游戏金额÷基准价换算 (结果过小, 六口之家谷物仅0.5千克/月),
+# 改按家庭每日热量需求推算。_STAPLE_KCAL_SHARE 为各主食商品在家庭热量中的
+# 目标占比 (只对画像中实际出现的千克计量主食商品归一化); 每千克热量取
+# goods_measure.json 的 kcal 字段, 缺失时用 _STAPLE_KCAL_FALLBACK 兜底。
+_STAPLE_KCAL_SHARE = {
+    "grain": 0.60, "food": 0.60, "groceries": 0.20,
+    "meat": 0.05, "fish": 0.05, "fruit": 0.05, "livestock": 0.05,
+}
+_STAPLE_KCAL_FALLBACK = {
+    "grain": 3500, "food": 3000, "groceries": 2500,
+    "meat": 2500, "fish": 1200, "fruit": 500, "livestock": 2500,
+}
+
+
+def _staple_kcal_per_kg(key):
+    """主食商品每显示单位 (千克) 热量; 无数据返回 None。"""
+    m = _goods_measure_local().get(key)
+    if m and isinstance(m.get("kcal"), (int, float)) and m["kcal"] > 0:
+        return float(m["kcal"])
+    return _STAPLE_KCAL_FALLBACK.get(key)
+
+
+def _is_staple_kcal_good(key):
+    """是否可按热量锚定的主食商品: 需求类含「基本食物」且以千克计量。"""
+    need = _goods_need(key)
+    if not need or "基本食物" not in need:
+        return False
+    unit_, _per, _dec, _base = _goods_unit_per(key)
+    return unit_ == "千克" and _staple_kcal_per_kg(key) is not None
+
+
 # 消费语境商品名: 家庭消费中的「油」是照明/取暖用煤油, 程序端直接改写为
 # 「煤油」, 使模型按燃料而非「食用油」理解 (仅限家庭消费类板块; 市场行情
 # 等其他板块的「油」维持原样)。正则要求「油」前不是中文字符 (煤油/石油/
@@ -2681,13 +2737,17 @@ def _consumption_goods_name(nm):
 def _fmt_month_qty(name, q, unit, dec, lumpy=False):
     """月度数量自然语言: ≥1 取整/按 dec 保小数; 0.1~1 保 1 位;
     <0.1 聚合为「约每N个月1/约每N年1单位」;
-    耐用品 (lumpy=True, 按件购置的衣物/家具等) 在每月不足 1 件时同样聚合为
-    「约每N个月1件」, 避免「每月约0.3件」式别扭读数。"""
+    耐用品 (lumpy=True, 按件/辆购置的衣物、家具、汽车等) 在每月不足 1 件时
+    同样聚合为「约每N个月1件/1辆」, 避免「每月约0.3件」式别扭读数
+    (每月 0.5~1 件保留小数, 避免「约每1个月1件」式更别扭读数)。"""
     if q >= 100:
         return f"{name}每月约{int(q + 0.5)}{unit}"
     if q >= 1:
         s = f"{q:.{dec}f}" if dec else f"{int(q + 0.5)}"
         return f"{name}每月约{s}{unit}"
+    if q >= 0.5 and lumpy:
+        # 每月半件/半辆以上: 保留小数读数比「约每1个月1件」自然
+        return f"{name}每月约{q:.1f}{unit}"
     if q >= 0.1 and not lumpy:
         return f"{name}每月约{q:.1f}{unit}"
     if q > 0:
@@ -2744,8 +2804,15 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
     head += "。"
     out.append(head)
     # 数量行: 金额 ÷ 市价 → 每月游戏单位 × per 乘数 → 公制读数;
-    # 数量可经 config 系数放大 (interview_consumption_qty_scale), 并给食品类
-    # 设每月下限 (interview_food_qty_min), 避免「约每十几月1千克」式离谱小读数。
+    # 数量可经 config 系数放大 (interview_consumption_qty_scale), 并给非主食
+    # 食品类设每月下限 (interview_food_qty_min), 避免「约每十几月1千克」式
+    # 离谱小读数。
+    # 主食热量锚定 (2026): 恩格尔系数高的贫困家庭, 「基本食物」数量改按
+    # WHO/FAO 每日能量需求推算 (家庭月热量 × 目标占比 ÷ 每千克热量),
+    # 不再走金额÷基准价 (后者对主食偏小, 六口之家谷物仅0.5千克/月)。
+    # 各商品按 _STAPLE_KCAL_SHARE 的固定占比直接取热量, 不做归一化:
+    # 归一化会在画像主食构成极端 (如仅出现水果) 时把单商品量放大到离谱
+    # 量级 (水果每月数百千克); 固定占比天然有界且合计约等于家庭热量。
     # 遍历画像全部商品 (≤ interview_consumption_goods_max); 消费量极小的商品
     # (读数聚合为「约每≥10年1单位」, 如低 SoL 人群的电力/服务) 直接跳过,
     # 其金额已在金额行给出, 避免「约每数十年1单位」式不可读读数。
@@ -2762,6 +2829,25 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         food_min = float(cfg.get("interview_food_qty_min", 0.0) or 0.0)
     except (TypeError, ValueError):
         food_min = 0.0
+    try:
+        kcal_adult = float(cfg.get("interview_kcal_adult_day", 2300) or 2300)
+        kcal_child = float(cfg.get("interview_kcal_child_day", 1700) or 1700)
+        engel_min = float(cfg.get("interview_staple_engel_min", 45) or 45)
+    except (TypeError, ValueError):
+        kcal_adult, kcal_child, engel_min = 2300.0, 1700.0, 45.0
+    staple_qty = {}
+    if isinstance(engel, (int, float)) and engel >= engel_min:
+        n_child = profile.get("children_count")
+        n_child = int(n_child) if isinstance(n_child, (int, float)) and n_child >= 0 else 2
+        hh_kcal_month = (2 * kcal_adult + n_child * kcal_child) * 30.4
+        staple_items = [k for k, _n, _w, _d in items if _is_staple_kcal_good(k)]
+        if hh_kcal_month > 0 and any(_STAPLE_KCAL_SHARE.get(k, 0.0) > 0
+                                     for k in staple_items):
+            for k in staple_items:
+                kcal_kg = _staple_kcal_per_kg(k)
+                share = _STAPLE_KCAL_SHARE.get(k, 0.0)
+                if share > 0 and kcal_kg and kcal_kg > 0:
+                    staple_qty[k] = hh_kcal_month * share / kcal_kg
     ordered = sorted(items, key=lambda it: -(it[2] or 0))
     qbits = []
     for key, nm, w, dv in ordered:
@@ -2776,18 +2862,22 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
             price = base * (1 + dv / 100.0)
         if not isinstance(price, (int, float)) or price <= 0:
             continue
-        q = mi / price * per * qty_scale
-        if food_min > 0 and unit_ in ("千克", "升"):
-            need = _goods_need(key)
-            if need and any(k in need for k in ("食物", "刺激", "嗜好")):
-                q = max(q, food_min)
+        if key in staple_qty:
+            q = staple_qty[key]
+        else:
+            q = mi / price * per * qty_scale
+            if food_min > 0 and unit_ in ("千克", "升"):
+                need = _goods_need(key)
+                if need and any(k in need for k in ("食物", "刺激", "嗜好")):
+                    q = max(q, food_min)
         # 可读性守卫: 每月不足 1/120 单位 (约每10年1单位) 的稀疏商品跳过,
         # 其金额已在金额行给出; 避免「约每数十年1单位」式不可读读数。
         if q <= 0 or 1.0 / q >= 120:
             continue
-        # 耐用品 (件) 每月不足 1 件时聚合为「约每N个月1件」; 油→煤油
+        # 耐用品 (件/辆) 每月不足 1 件时聚合为「约每N个月1件/1辆」;
+        # 油→煤油
         qbits.append(_fmt_month_qty(_consumption_goods_name(nm), q, unit_, dec,
-                                    lumpy=(unit_ == "件")))
+                                    lumpy=(unit_ in ("件", "辆"))))
     if qbits:
         out.append("- 主要消费商品月消费：" + "、".join(qbits) + "。")
     return out
@@ -3468,33 +3558,126 @@ def render_history_table(data, history=None, include_flavor=True):
         L.append("| " + " | ".join(cells) + " |")
     return "\n".join(L)
 
+# 科技分类 (广告板块): 按 Victoria 3 科技 key 归入 生产/军事/社会 三类,
+# 使广告提示只传与所选科技类别匹配的简短形式句, 不把全部形式说明灌给模型。
+# key 取自 data["tech_keys"] (与 data["techs"] 中文名平行); 未知 key 缺省归生产。
+_TECH_CATEGORY = {
+    # 生产 (工农业/经济/交通/通讯/市政)
+    "enclosure": "production", "manufacturies": "production",
+    "shaft_mining": "production", "distillation": "production",
+    "steelworking": "production", "prospecting": "production",
+    "cotton_gin": "production", "urban_planning": "production",
+    "international_trade": "production", "currency_standards": "production",
+    "colonization": "production", "stock_exchange": "production",
+    "bessemer_process": "production", "lathe": "production",
+    "mechanical_tools": "production", "paddle_steamer": "production",
+    "atmospheric_engine": "production", "mass_communication": "production",
+    "crystal_glass": "production", "intensive_agriculture": "production",
+    "fractional_distillation": "production", "canneries": "production",
+    "watertube_boiler": "production", "railways": "production",
+    "chemical_bleaching": "production", "nitroglycerin": "production",
+    "baking_powder": "production", "mechanized_workshops": "production",
+    "improved_fertilizer": "production", "steam_donkey": "production",
+    "dynamite": "production", "rubber_mastication": "production",
+    "rotary_valve_engine": "production", "reinforced_concrete": "production",
+    "threshing_machine": "production", "pumpjacks": "production",
+    "aniline": "production", "open_hearth_process": "production",
+    "vulcanization": "production", "vacuum_canning": "production",
+    "shift_work": "production", "steel_railway_cars": "production",
+    "electrical_generation": "production", "hydraulic_cranes": "production",
+    "modern_sewerage": "production", "combustion_engine": "production",
+    "central_banking": "production", "postal_savings": "production",
+    "pharmaceuticals": "production", "joint_stock_companies": "production",
+    "quinine": "production", "mutual_funds": "production",
+    "identification_documents": "production", "steel_frame_buildings": "production",
+    "banking": "production", "corporate_charters": "production",
+    "electric_telegraph": "production", "telephones": "production",
+    "steam_turbine": "production", "oil_processing": "production",
+    "radio": "production", "aeroplanes": "production",
+    # 军事 (陆军/海军/军械/兵制)
+    "military_drill": "military", "standing_army": "military",
+    "navigation": "military", "gunsmithing": "military",
+    "admiralty": "military", "artillery": "military",
+    "drydocks": "military", "mandatory_service": "military",
+    "army_reserves": "military", "line_infantry": "military",
+    "napoleonic_warfare": "military", "field_works": "military",
+    "logistics": "military", "triage": "military",
+    "shell_gun": "military", "percussion_cap": "military",
+    "rifling": "military", "general_staff": "military",
+    "screw_frigate": "military", "enlistment_offices": "military",
+    "military_statistics": "military", "repeaters": "military",
+    "breech_loading_artillery": "military", "handcranked_machine_gun": "military",
+    "self_propelled_torpedoes": "military", "monitor_tech": "military",
+    "ironclad_tech": "military", "jeune_ecole": "military",
+    "floating_harbor": "military", "gantry_cranes": "military",
+    "gas_warfare": "military", "dreadnoughts": "military",
+    "tanks": "military", "aircraft": "military",
+    # 社会 (政治/思潮/文化/制度/医学)
+    "rationalism": "society", "tech_bureaucracy": "society",
+    "democracy": "society", "romanticism": "society",
+    "academia": "society", "international_relations": "society",
+    "centralization": "society", "law_enforcement": "society",
+    "medical_degrees": "society", "empiricism": "society",
+    "nationalism": "society", "egalitarianism": "society",
+    "realism": "society", "dialectics": "society",
+    "central_archives": "society", "psychiatry": "society",
+    "labor_movement": "society", "organized_sports": "society",
+    "civilizing_mission": "society", "modern_nursing": "society",
+    "power_of_the_purse": "society", "human_rights": "society",
+    "feminism": "society", "anarchism": "society",
+    "socialism": "society", "corporatism": "society",
+    "political_agitation": "society", "mass_propaganda": "society",
+    "pan-nationalism": "society",
+}
+
+_TECH_CATEGORY_ZH = {
+    "production": "生产", "military": "军事", "society": "社会",
+}
+
+_TECH_CATEGORY_FORM = {
+    "production": "广告可作货品告白、工艺铺面招贴，直接宣传该科技及其制品",
+    "military": "广告可作军需告示、武备招贴、军营晓谕，宣传该科技带来的新式军械军制",
+    "society": "广告可作文学沙龙、社科研讨会、新政晓谕、学堂启事等非商品形式，宣传该制度或思潮",
+}
+
+
+def _tech_category(key):
+    """科技 key → 类别 (生产/军事/社会); 未知 key 缺省归生产。"""
+    return _TECH_CATEGORY.get(key, "production")
+
+
 def render_ads(data, history=None):
     """广告板块：优先用“本年新研发科技”（与上一年存档对比得出）；无新增则随机抽取已研发科技。
-
-    广告不限于商品：工艺、铺面可作货品告白，制度/思潮类科技可作文学沙龙、
-    社科研讨会、新政晓谕、学堂启事等非商品形式。
+    按所选科技的类别 (生产/军事/社会) 只传与该类匹配的简短形式提示。
     """
     techs = data.get("techs") or []
+    tech_keys = data.get("tech_keys") or []
     if not techs:
         return "(无需数据，纯趣味创作)"
-    new_techs = []
+    if tech_keys:
+        pairs_all = list(zip(tech_keys, techs))
+    else:
+        # 旧数据无 tech_keys: 按中文名成对, 类别缺省归生产
+        pairs_all = [(None, nm) for nm in techs]
+    new_pairs = []
     if history:
         prev = max(history, key=lambda h: h.get("year") or 0)
-        prev_techs = prev.get("techs")
-        if prev_techs:
-            prev_set = set(prev_techs)
-            new_techs = [t for t in techs if t not in prev_set]
-    source = new_techs or techs
-    picked = random.sample(source, min(3, len(source)))
-    if new_techs:
-        note = "本年新研发"
-    else:
-        note = "取自本国已研发科技"
-    return (f"- 广告创作素材：{note}。必须围绕其创作，可作“最新发明”“时代进步”等宣传：\n"
-            f"  {'、'.join(picked)}\n"
-            "- 形式不限：商品/工艺/铺面可作货品告白；制度、思潮类科技"
-            "（如民主、中央集权、理性主义、学术界）可作文学沙龙、社科研讨会、"
-            "新政晓谕、学堂启事等非商品形式；至少一条广告须直接体现所选科技。")
+        prev_keys = prev.get("tech_keys") or []
+        if prev_keys:
+            prev_set = set(prev_keys)
+            new_pairs = [(k, nm) for k, nm in pairs_all if k not in prev_set]
+        else:
+            prev_names = set(prev.get("techs") or [])
+            new_pairs = [(k, nm) for k, nm in pairs_all if nm not in prev_names]
+    pairs = new_pairs or pairs_all
+    note = "本年新研发" if new_pairs else "取自本国已研发科技"
+    picked = random.sample(pairs, min(3, len(pairs)))
+    cats = sorted({_tech_category(k) for k, _ in picked})
+    names = "、".join(nm for _, nm in picked)
+    form = "；".join(_TECH_CATEGORY_FORM[c] for c in cats)
+    return (f"- 广告创作素材：{note}（{'、'.join(_TECH_CATEGORY_ZH[c] for c in cats)}科技）：\n"
+            f"  {names}\n"
+            f"- 形式：{form}。至少一条广告须直接体现所选科技。")
 
 
 def resolve_style(cfg, data=None):
