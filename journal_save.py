@@ -6625,9 +6625,12 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                               female_pct=women_law_female_pct(snap.get("women_law")))
     if _blk:
         workshop_lines.append(_blk)
-    mine_lines = ["原材料链条："]
+    _fl = _pool_flavor_lines(melted, ctx, snap, country, prices, pops,
+                             (by_state, btype_map, objs), [tsid])
+    # 原材料链条: 每个上游生产建筑单独一个板块 (mine0/mine1/...), 避免整条
+    # 产业链的建筑+工人+消费篮子+州情挤在一个板块里, 模型注意力跟不上。
+    # 每个板块只带该建筑所在州的州情速写, 不再铺开全部生产商所在州。
     up_chain = []
-    mn_ck = None
     for b, o in producers[:2]:
         ig = (o.get("input_goods") or {}).get("goods") or {}
         for kg, _kv in ig.items():
@@ -6642,10 +6645,18 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                    if str(kid) in ((o2.get("output_goods") or {}).get("goods") or {})]
             for b2, o2 in upb[:1]:
                 up_chain.append((zh.get(kkey, kkey), b2, o2))
+    mine_sections = {}
+    mine_flavor = {}
+    mine_titles = {}
     if up_chain:
-        for name, b2, o2 in up_chain[:2]:
-            mine_lines.append(f"- 上游{name}：" + _pool_building_text(
-                melted, ctx, cid, b2, o2, loc, gm, pops=pops))
+        for mi, (name, b2, o2) in enumerate(up_chain[:2]):
+            mkey = f"mine{mi}"
+            price_txt = (f"（市价约{_fm_goods_price(snap, good['price'])}）"
+                         if isinstance(good.get("price"), (int, float)) else "")
+            lines = [f"主线商品：{good['zh']}{price_txt}，"
+                     f"其原料「{name}」产自该建筑。",
+                     f"- 上游{name}：" + _pool_building_text(
+                         melted, ctx, cid, b2, o2, loc, gm, pops=pops)]
             up_kind = _pool_btype_kind([o2.get("building")])
             up_label = {"mine": "矿工样本", "field": "农工样本",
                         "forest": "林工样本", "fishing": "渔工样本"}.get(
@@ -6653,27 +6664,45 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             picked = _pool_pick_pops(pops, bid=b2, classes=("lower_class",),
                                      n=1, rnd=rnd)
             for pid, po in picked:
-                mine_lines.append(f"  {up_label}：" + _pool_pop_text(
+                lines.append(f"  {up_label}：" + _pool_pop_text(
                     pid, po, ctx, loc, unit=unit, snap=snap))
-                mine_lines.extend(_pool_consumption_basket_lines(
-                    snap, ctx, po, unit, f"{snap.get('year')}|{cid}|shelf|mine"))
-                if mn_ck is None and po.get("culture") is not None:
-                    mn_ck = culture_id_to_key(po.get("culture"))
-        _lab = _labor_union_line(melted, cid, loc)
-        if _lab:
-            mine_lines.append("- " + _lab)
+                lines.extend(_pool_consumption_basket_lines(
+                    snap, ctx, po, unit, f"{snap.get('year')}|{cid}|shelf|{mkey}"))
+            if mi == 0:
+                _lab = _labor_union_line(melted, cid, loc)
+                if _lab:
+                    lines.append("- " + _lab)
+            _blk = person_names_block(
+                f"{snap.get('year')}|{cid}|shelf|{mkey}",
+                [("上游工人代表", (culture_id_to_key(picked[0][1].get("culture"))
+                                   if picked and picked[0][1].get("culture") is not None
+                                   else None))],
+                female_pct=women_law_female_pct(snap.get("women_law")))
+            if _blk:
+                lines.append(_blk)
+            mine_sections[mkey] = "\n".join(lines)
+            mine_titles[mkey] = {
+                "mine": "矿脉的尽头", "field": "田垄的尽头",
+                "forest": "林场的尽头", "fishing": "渔场的尽头"}.get(
+                up_kind, "原料的来处")
+            mine_flavor[mkey] = _pool_flavor_lines(
+                melted, ctx, snap, country, prices, pops,
+                (by_state, btype_map, objs), [o2.get("state")]) or _fl
     else:
-        mine_lines.append(
+        price_txt = (f"（市价约{_fm_goods_price(snap, good['price'])}）"
+                     if isinstance(good.get("price"), (int, float)) else "")
+        mine_sections["mine"] = "\n".join([
+            f"主线商品：{good['zh']}{price_txt}。",
             ("（本地无上游生产建筑样本；该商品的主要原料为"
              + "、".join(inputs_zh[:4])
              + "，多依赖外地输入，行文须含蓄。）" if inputs_zh
-             else "（本地无上游生产建筑样本，原料多依赖外地输入，行文须含蓄。）"))
-    _blk = person_names_block(f"{snap.get('year')}|{cid}|shelf",
-                              [("上游工人代表", mn_ck)],
-                              female_pct=women_law_female_pct(snap.get("women_law")))
-    if _blk:
-        mine_lines.append(_blk)
-    cust_lines = ["目的地顾客样本："]
+             else "（本地无上游生产建筑样本，原料多依赖外地输入，行文须含蓄。）")])
+        mine_titles["mine"] = "原料的来处"
+        mine_flavor["mine"] = _fl
+    price_txt = (f"（市价约{_fm_goods_price(snap, good['price'])}）"
+                 if isinstance(good.get("price"), (int, float)) else "")
+    cust_lines = [f"主线商品：{good['zh']}{price_txt}，"
+                  "以下为顾客买到它后的场景。"]
     cu_ck = None
     if importer:
         cu_ck = importer.get("pop_culture")
@@ -6766,45 +6795,27 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     if not prod_bts:
         prod_bts = list(chain_info.get("producers") or [])
     wk = _pool_btype_kind(prod_bts)
-    up_bts = [o2.get("building") for _n, _b2, o2 in up_chain]
-    mk = _pool_btype_kind(up_bts)
-    if mk is None:
-        raw_keys = set(chain_info.get("inputs") or [])
-        if raw_keys & {"iron", "coal", "sulfur", "lead", "gold", "oil",
-                       "stone", "clay", "graphite", "salt", "copper", "zinc"}:
-            mk = "mine"
-        elif raw_keys & {"grain", "fish", "meat", "sugar", "fruit", "milk",
-                         "rice", "cotton", "dye", "silk", "tobacco"}:
-            mk = "field"
-        elif raw_keys & {"wood", "hardwood", "rubber"}:
-            mk = "forest"
     section_titles = {
         "workshop": {"mine": "矿场里的手", "field": "田垄上的手",
                      "forest": "林场里的手", "fishing": "渔场里的手"}.get(
             wk, "工场里的手"),
-        "mine": {"mine": "矿脉的尽头", "field": "田垄的尽头",
-                 "forest": "林场的尽头", "fishing": "渔场的尽头"}.get(
-            mk, "原料的来处"),
     }
-    _fl = _pool_flavor_lines(melted, ctx, snap, country, prices, pops,
-                             (by_state, btype_map, objs), [tsid])
-    _fl_mine = _pool_flavor_lines(melted, ctx, snap, country, prices, pops,
-                                  (by_state, btype_map, objs),
-                                  [o.get("state") for _b, o in producers])
+    section_titles.update(mine_titles)
     # 本文涉及的币种列表 (我国币种 + 出口目的地币种, 供杂志货币规则提示词用)
     _units = [unit]
     if importer:
         imp_cur = importer.get("currency")
         if imp_cur and imp_cur != unit and imp_cur not in _units:
             _units.append(imp_cur)
-    return {"sections": {
-        "lead": "\n".join(lead),
-        "workshop": "\n".join(workshop_lines),
-        "mine": "\n".join(mine_lines),
-        "customer": "\n".join(cust_lines),
-    }, "section_titles": section_titles, "state_flavor": {
-        "lead": _fl, "workshop": _fl, "mine": _fl_mine or _fl, "customer": _fl,
-    }, "units": _units}
+    sections = {"lead": "\n".join(lead),
+                "workshop": "\n".join(workshop_lines)}
+    sections.update(mine_sections)
+    sections["customer"] = "\n".join(cust_lines)
+    flavor = {"lead": _fl, "workshop": _fl, "customer": _fl}
+    flavor.update(mine_flavor)
+    return {"sections": sections, "section_titles": section_titles,
+            "state_flavor": flavor, "units": _units,
+            "focus_good": good.get("zh")}
 
 
 def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
@@ -11712,9 +11723,23 @@ def _pool_epidemic_data(melted, snap, ctx, rnd, country, cid, data):
             pop_lines.extend(_pool_consumption_basket_lines(
                 snap, ctx, p, unit,
                 f"{snap.get('year')}|{cid}|disease|{p.get('location')}"))
+        # 疫区人物姓名 (与其余文章池同口径): 姓名已由数据给定, 全文直接使用。
+        roles = []
+        for idx, p in enumerate(chosen):
+            ck = (culture_id_to_key(p.get("culture"))
+                  if p.get("culture") is not None else None)
+            roles.append((("疫区富户代表" if idx == 0 else "疫区贫户代表"), ck))
+        _blk = person_names_block(f"{snap.get('year')}|{cid}|disease", roles,
+                                  female_pct=women_law_female_pct(
+                                      snap.get("women_law")))
+        if _blk:
+            pop_lines.append(_blk)
     except Exception as e:
         print(f"[magazine-pool] disease 人物采样失败: {e}")
-    pop_txt = "\n".join(f"- {t}" for t in pop_lines)
+    # 拼接: pop 文本与人物名单行自带前缀, 篮子行自带「- 」前缀,
+    # 统一不再重复加前缀, 避免「- - 消费结构：」式双短横。
+    pop_txt = "\n".join(
+        t if t.lstrip().startswith("- ") else f"- {t}" for t in pop_lines)
 
     state_rows = "\n".join(
         f"- 「{s.get('name')}」{s.get('status')}：累计染病{_fmt(s.get('infected'))}人"

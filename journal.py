@@ -219,6 +219,16 @@ DEFAULT_CONFIG = {
     # 消费画像商品权重下限: 低于该值的零星商品 (如低 SoL 人群的电力/服务)
     # 直接剔除不展示, 避免「约每数十年1单位」式不可读读数。
     "interview_consumption_goods_min_weight": 0.05,
+    # 富户重排 (2026): 人均月商品支出 (游戏镑) 超过 interview_rich_worker_goods_th
+    # 视为高收入家庭。其消费篮子按「基础商品压回普通家庭量级 + 超额流向奢侈
+    # 商品与服务」重排, 避免资本家画像出现「衣物每月约898件」式离谱读数。
+    # rich_basic_cap: 富户家庭基础商品月金额上限 (游戏镑); rich_luxury_cap:
+    # 富户家庭月商品金额总上限 (游戏镑, 含奢侈商品与服务, 超出部分不再换算
+    # 实物量, 避免奢侈读数也失真)。普通家庭人均月商品支出约 0.1~0.8 游戏镑,
+    # 邻里富户约 0.8~1.6, 资本家可达数十上百, 阈值取 2.0 只对真·超富触发。
+    "interview_rich_worker_goods_th": 2.0,
+    "interview_rich_basic_cap": 0.8,
+    "interview_rich_luxury_cap": 2.5,
     # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
     "parallel_generation_enabled": True,
     # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
@@ -2795,17 +2805,22 @@ def _family_budget_lines(fi, unit, rate=None):
     else:
         L.append(f"- 家庭月支出：约{_m(total_exp)}")
     bal = total_inc - total_exp
-    L.append(f"- 月度结余：约{_m(bal)}")
     if bal < 0:
-        # 游戏内高生活水平人群的消费由积蓄支撑 (财富机制): 收支缺口
-        # 实为动用历年积蓄, 账本补一行说明, 避免「富户月月亏空」式误读。
+        # 游戏内高生活水平人群的消费由积蓄支撑 (财富机制): 结余为负时
+        # 只写一行「月度结余 + 缺口成因」, 数字只出现一次, 避免
+        # 「月度结余约-1比索45分」与「收支缺口约1比索45分」两行重复。
         wealth = fi.get("wealth")
         if isinstance(wealth, (int, float)) and wealth >= 15:
-            L.append(f"- 收支缺口约{_m(-bal)}，靠历年积蓄填补（家底尚属殷实）")
+            L.append(f"- 月度结余：约{_m(bal)}（收支缺口，"
+                     "靠历年积蓄填补，家底尚属殷实）")
         elif isinstance(wealth, (int, float)):
-            L.append(f"- 收支缺口约{_m(-bal)}，靠历年积蓄填补（家底有限）")
+            L.append(f"- 月度结余：约{_m(bal)}（收支缺口，"
+                     "靠历年积蓄填补，家底有限）")
         else:
-            L.append(f"- 收支缺口约{_m(-bal)}，靠历年积蓄填补")
+            L.append(f"- 月度结余：约{_m(bal)}（收支缺口，"
+                     "靠历年积蓄填补）")
+    else:
+        L.append(f"- 月度结余：约{_m(bal)}")
     if pop > 0:
         L.append(f"- 家庭人均月收入：约{_m(total_inc / pop)}"
                  f"（全家{pop}口均摊）；人均月支出约{_m(total_exp / pop)}")
@@ -2900,6 +2915,19 @@ def _goods_need(key):
     return (m or {}).get("need")
 
 
+# 富户重排 (2026): 基础商品按需求类判定 (食物/衣物/家具/燃料等生活必需),
+# 其余 (嗜好品/奢侈饮品/刺激品/奢侈品/服务/休闲/出行/通讯等) 视为奢侈商品。
+# 富户画像中超额金额只流向奢侈商品与服务, 基础商品数量压回普通家庭量级。
+_RICH_BASIC_NEED_MARKERS = ("基本食物", "简朴衣物", "粗木器具",
+                            "家庭用品", "供暖", "成衣")
+
+
+def _is_rich_basic_good(key):
+    """富户重排中的「基础商品」: 需求类含基本生活必需标记。"""
+    need = _goods_need(key) or ""
+    return any(m in need for m in _RICH_BASIC_NEED_MARKERS)
+
+
 # 主食热量锚定 (2026, WHO/FAO 能量需求基准): 访谈板块中「基本食物」类商品
 # 的数量不再由游戏金额÷基准价换算 (结果过小, 六口之家谷物仅0.5千克/月),
 # 改按家庭每日热量需求推算。_STAPLE_KCAL_SHARE 为各主食商品在家庭热量中的
@@ -2991,7 +3019,12 @@ def _goods_unit_price_text(data, g, unit=None):
 
 def _consumption_breakdown_lines(profile, unit, rate=None):
     """访谈板块消费结构: 返回 [金额行, 数量行]; 数据不足返回 []。
-    profile 为 family_interview/top_sol_peer/unemployed_interview 快照。"""
+    profile 为 family_interview/top_sol_peer/unemployed_interview 快照。
+    富户重排 (2026): 人均月商品支出超阈值时 (游戏镑, 资本家等超富人群的周预算
+    远高于普通家庭), 家庭篮子按「基础商品压回普通家庭量级 + 超额流向奢侈商品与
+    服务」重排: 基础商品 (食物/衣物/家具/燃料) 按普通家庭上限列示, 其余金额按
+    画像权重分给奢侈商品与服务 (烈酒/葡萄酒/咖啡/鸦片等, 有什么买什么),
+    避免「衣物每月约898件、加工食品每月约24241千克」式离谱读数。"""
     br = (profile or {}).get("budget_rates") or {}
     wife_works = bool(profile.get("wife_works"))
     workers = 1 + (1 if wife_works else 0)
@@ -3005,12 +3038,36 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
     wsum = sum((w or 0) for _k, _n, w, _d in items)
     if wsum <= 0:
         return []
+    # 富户判定与重排参数 (游戏镑/月): 人均月商品支出超阈值视为富户;
+    # 富户家庭月商品金额封顶 (含奢侈), 基础商品另有普通家庭上限。
+    try:
+        _cfg = load_config()
+    except Exception:
+        _cfg = {}
+    try:
+        rich_th = float(_cfg.get("interview_rich_worker_goods_th", 2.0) or 2.0)
+        basic_cap = float(_cfg.get("interview_rich_basic_cap", 0.8) or 0.8)
+        lux_cap = float(_cfg.get("interview_rich_luxury_cap", 2.5) or 2.5)
+    except (TypeError, ValueError):
+        rich_th, basic_cap, lux_cap = 2.0, 0.8, 2.5
+    per_worker_goods = br.get("goods")
+    rich = isinstance(per_worker_goods, (int, float)) and per_worker_goods > rich_th
+    basic_items = [it for it in items if _is_rich_basic_good(it[0])]
+    lux_items = [it for it in items if not _is_rich_basic_good(it[0])]
+    basic_wsum = sum((w or 0) for _k, _n, w, _d in basic_items)
+    lux_wsum = sum((w or 0) for _k, _n, w, _d in lux_items)
+    eff_goods = goods_m
+    basic_pool = lux_pool = None
+    if rich and lux_wsum > 0:
+        eff_goods = min(goods_m, lux_cap)
+        basic_pool = min(eff_goods * (basic_wsum / wsum), basic_cap)
+        lux_pool = eff_goods - basic_pool
     out = []
     # 金额行: 恩格尔口径的食物金额; 各主要商品的金额不再逐项列出
     # (数量行已给出每项消费量, 逐项金额与数量行重复且无实义)。
-    food_m = goods_m * (engel / 100.0) if isinstance(engel, (int, float)) else None
+    food_m = eff_goods * (engel / 100.0) if isinstance(engel, (int, float)) else None
     head = (f"- 消费结构：该家庭每月商品消费约"
-            f"{format_money(goods_m, unit, rate)}")
+            f"{format_money(eff_goods, unit, rate)}")
     if food_m is not None:
         head += (f"，其中基本食物约{format_money(food_m, unit, rate)}"
                  f"（恩格尔系数约{engel}%）")
@@ -3066,7 +3123,15 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
     for key, nm, w, dv in ordered:
         if not nm:
             continue
-        mi = goods_m * (w or 0) / wsum
+        # 富户重排: 基础商品按基础池金额分摊, 奢侈商品按奢侈池金额分摊;
+        # 普通家庭仍按 goods_m×权重占比 (basic_pool 为 None 时走原逻辑)。
+        if basic_pool is not None and lux_pool is not None:
+            if _is_rich_basic_good(key):
+                mi = basic_pool * (w or 0) / basic_wsum if basic_wsum else 0.0
+            else:
+                mi = lux_pool * (w or 0) / lux_wsum if lux_wsum else 0.0
+        else:
+            mi = eff_goods * (w or 0) / wsum
         unit_, per, dec, base, ppu, _prod = _goods_unit_per(key)
         if unit_ is None:
             continue

@@ -1701,13 +1701,21 @@ def _intro_article_preview(data):
 
 def _generate_article_titles(data, cfg):
     """一期文章标题预生成 (一次 LLM 调用, 按文章顺序每行一个):
-    供导言预告与各板块统一使用, 保证同一篇文章全刊同名。"""
+    供导言预告与各板块统一使用, 保证同一篇文章全刊同名。
+    池文章 (如 shelf 货架文) 把主角商品名并入主题, 使拟题与正文数据一致,
+    避免标题凭空造物 (如数据是汽车却拟「一粒盐的万里行」)。"""
     articles = _build_article_list(data)
+    m = data.get("magazine") or {}
     guide = style.resolve_magazine_title_guide(data)
     voice = _voice(data)
-    themes = "\n".join(
-        f"{i + 1}. " + (a.get("theme") or a.get("default_title") or a["key"])
-        for i, a in enumerate(articles))
+    theme_lines = []
+    for i, a in enumerate(articles):
+        theme = a.get("theme") or a.get("default_title") or a["key"]
+        fg = (m.get(a["key"]) or {}).get("focus_good")
+        if fg:
+            theme = f"{theme}（主角商品：{fg}）"
+        theme_lines.append(f"{i + 1}. {theme}")
+    themes = "\n".join(theme_lines)
     sys_msg = (
         f"你是《{style.derive_magazine_name(data)}》杂志的特稿编辑。本刊基调:\n{voice}\n\n"
         f"{guide}\n"
@@ -1732,7 +1740,11 @@ def _generate_article_titles(data, cfg):
 def _lead_digest(text, limit=260, tail=180):
     """首板块全文太长时, 后续板块只回贴程序截取的前缀+结尾摘要, 避免提示词膨胀,
     也防止模型照抄首板块篇幅把后续板块写得过长; 结尾段保留案件收束等关键信息。
-    A1: 由"纯前缀截断"改为"前缀+结尾", 避免首板块的案件结局被整个截掉。"""
+    A1: 由"纯前缀截断"改为"前缀+结尾", 避免首板块的案件结局被整个截掉。
+    A3 (2026): 摘要截断会把开篇主线事实 (商品名/出口去向/价格) 从中间切掉,
+    导致后续板块 (田垄的尽头/回家的路) 只能从标题与结尾意象猜主线, 出现
+    「日志是汽车、文章写盐」式漂移; 本函数仍保留作超长开篇的兜底, 常规
+    开篇由 build_section_messages 直接回贴全文。"""
     t = re.sub(r"[#*_>`~\-]", " ", text or "")
     t = re.sub(r"\s+", " ", t).strip()
     if len(t) <= limit + tail:
@@ -1970,9 +1982,11 @@ def build_section_messages(article, section, data, intro, lead_text,
     if article["key"] in _CRIME_KEYS:
         sys_msg += f"\n{CRIME_TERM_RULE}"
     sys_msg += f"\n{_currency_rule(data, article['key'])}"
-    lead_head = (f"本文开篇板块《{article['sections'][0]['title']}》内容摘要"
-                 f"（以下为摘要，全文较长）:\n")
+    lead_head = (f"本文开篇板块《{article['sections'][0]['title']}》内容"
+                 f"（以下为开篇全文）:\n")
     if article["key"] in ("crime", "crime_big") and crime_card:
+        # 罪案文章仍用摘要回贴 (案件事实卡已确定性兜底主线, 摘要截断无害),
+        # 且罪案开篇普遍较长, 回贴全文会显著膨胀提示词。
         digest = _lead_digest(lead_text, limit=600)
         user_msg = (
             f"本期杂志导言:\n{intro}\n\n"
@@ -1984,10 +1998,12 @@ def build_section_messages(article, section, data, intro, lead_text,
         )
         return [{"role": "system", "content": sys_msg},
                 {"role": "user", "content": user_msg}]
+    # 非罪案文章 (含货架/铁路/疫情等池文章): 直接回贴开篇全文, 避免摘要截断
+    # 切掉主线事实 (商品名/出口去向/价格), 使后续板块与开篇数据一致;
+    # 篇幅要求已在 sys_msg 给出, 模型不会照抄开篇长度。
     user_msg = (
         f"本期杂志导言:\n{intro}\n\n"
-        f"{lead_head}"
-        f"{_lead_digest(lead_text)}\n\n"
+        f"{lead_head}{lead_text}\n\n"
         f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据:\n"
         f"{facts}\n\n请直接输出板块正文，正文使用 Markdown 格式。"
     )
@@ -2089,9 +2105,37 @@ def _build_article_list(data):
             a2 = copy.deepcopy(a)
             a2["key"] = k
             titles_map = (m.get(k) or {}).get("section_titles") or {}
-            for s in a2["sections"]:
-                if s["key"] in titles_map and titles_map[s["key"]]:
-                    s["title"] = titles_map[s["key"]]
+            secs_map = (m.get(k) or {}).get("sections") or {}
+            # 文章板块列表以池数据实际板块为准: 池数据含动态板块时
+            # (如 shelf 的上游建筑按 mine0/mine1 拆分, 每建筑一板块),
+            # 用池数据的板块顺序与标题扩列, 模板 req 按 key 匹配或回落首个
+            # 上游板块的 req (mine0/mine1 与 mine 同为「原料产地工人」类)。
+            if secs_map:
+                tpl = {s["key"]: s for s in a2["sections"]}
+                fallback_req = next(
+                    (s["req"] for s in a2["sections"]
+                     if s["key"] == "mine"), None)
+                if fallback_req is None:
+                    fallback_req = next(
+                        (s["req"] for s in a2["sections"]
+                         if s["key"] == "workshop"), "")
+                built = []
+                for sk in secs_map:
+                    base = tpl.get(sk)
+                    if base:
+                        built.append({"key": sk,
+                                      "title": titles_map.get(sk) or base["title"],
+                                      "req": base["req"]})
+                    else:
+                        built.append({"key": sk,
+                                      "title": titles_map.get(sk) or sk,
+                                      "req": fallback_req})
+                if built:
+                    a2["sections"] = built
+            else:
+                for s in a2["sections"]:
+                    if s["key"] in titles_map and titles_map[s["key"]]:
+                        s["title"] = titles_map[s["key"]]
             articles.append(a2)
             continue
         for fa in ARTICLES:
