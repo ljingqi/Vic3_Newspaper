@@ -46,10 +46,9 @@ ARTICLES = [
                 "title": "战地报道",
                 "req": (
                     "报道真实战役: 发生地(州)、起止日期、攻守双方国家与将领、双方营数与兵力、"
-                    "胜负——以上一律以数据为准, 攻守双方按数据所述。只有数据给出战役细节时"
-                    "才写战斗过程; 数据缺失时, 若存在进行中的战争, 依据战争记录写态势; "
-                    "否则本板块改写真切简短的旧战事回顾或和平景象。军队名未给出时, "
-                    "可据将领姓名与家乡州合情拟名, 国家名与给定数字以数据为准。"
+                    "胜负——以上一律以数据为准, 攻守双方按数据所述。"
+                    "战役细节以资料给出者为限；资料未给出战斗过程时写旧战事回顾或和平景象。"
+                    "军队名未给出时, 可据将领姓名与家乡州合情拟名, 国家名与给定数字以数据为准。"
                 ),
                 "facts": "front",
             },
@@ -93,7 +92,7 @@ ARTICLES = [
                 "title": "大臣访谈",
                 "req": (
                     "采访一位真实执政利益集团领袖(数据给出姓名/意识形态/集团/政治力量占比), "
-                    "围绕其政见与施政方向展开。姓名缺失时用职务与集团代称。"
+                    "围绕其政见与施政方向展开。姓名以资料给出者为限；未给出姓名时以职务与集团代称。"
                 ),
                 "facts": "minister",
             },
@@ -738,7 +737,13 @@ BATTLE_STATUS_ZH = {
 # ---------------------------------------------------------------------------
 
 def _fmt_date(d):
-    return str(d) if d else "未知"
+    """V3 日期 (1861.4.11 / 1861.7.15.6) → 「1861年4月11日」; 空/未知(1.1.1) → 「未知」。"""
+    if not d:
+        return "未知"
+    s = str(d).strip()
+    if not re.match(r"\d{4}\.", s):
+        return "未知"
+    return journal.fmt_cn_date(s)
 
 
 def _fmt_int(v):
@@ -975,8 +980,9 @@ def _facts_front(m, data):
             ps = [p.get("name") for p in (w.get("participants") or []) if p.get("name")]
             status = "已结束" if w.get("ended") else "仍在进行"
             line = f"- 我国参与的战争：{'、'.join(str(x) for x in ps[:8])}，{status}"
-            if w.get("start_date"):
-                line += f"，自{w['start_date']}起"
+            _sd = _fmt_date(w.get("start_date"))
+            if _sd and _sd != "未知":
+                line += f"，自{_sd}起"
             lines.append(line + "。")
             try:
                 wid = int(w.get("id"))
@@ -1604,7 +1610,8 @@ def _voice(data):
     else:
         cat = style.govt_category(data)
         if style.dop_law(data) in style.TOTALITARIAN_DOPS:
-            prompt = style._TOTALITARIAN_MAG_VOICE
+            prompt = style.TOTALITARIAN_STYLES[
+                style.totalitarian_flavor(data)]["mag_voice"]
         else:
             prompt = style._strip_name_guide(
                 style.GOVT_PROMPTS.get(cat, style.GOVT_PROMPTS["other"]))
@@ -1702,7 +1709,7 @@ def _generate_article_titles(data, cfg):
         f"{i + 1}. " + (a.get("theme") or a.get("default_title") or a["key"])
         for i, a in enumerate(articles))
     sys_msg = (
-        f"你是《{data.get('player', '未知')}》杂志的特稿编辑。本刊基调:\n{voice}\n\n"
+        f"你是《{style.derive_magazine_name(data)}》杂志的特稿编辑。本刊基调:\n{voice}\n\n"
         f"{guide}\n"
         "为本期特稿各拟一个正式标题：每个标题不超过24字，与主题一一对应；"
         "输出时每行一个，标题文字紧贴行首。"
@@ -1711,7 +1718,8 @@ def _generate_article_titles(data, cfg):
     msgs = [{"role": "system", "content": sys_msg},
             {"role": "user", "content": user_msg}]
     text = journal.call_deepseek(msgs, cfg).strip()
-    cands = [re.sub(r"^[①②③④⑤\d]+[.、)]?\s*", "", ln).strip("《》 \t")
+    cands = [journal.clean_number_spaces(
+                 re.sub(r"^[①②③④⑤\d]+[.、)]?\s*", "", ln).strip("《》 \t"))
              for ln in text.splitlines() if ln.strip()]
     out = {}
     for i, a in enumerate(articles):
@@ -1866,7 +1874,7 @@ def build_intro_messages(data):
     full = journal.full_country_name(country, govt_zh, data.get("govt_law"))
     mag_name = style.derive_magazine_name(data)
     sys_msg = (
-        f"你是《{country}》杂志的总编辑。本刊定位为19世纪的非虚构文学月刊, "
+        f"你是《{mag_name}》杂志的总编辑。本刊定位为19世纪的非虚构文学月刊, "
         "聚焦具体人物的命运, 以小人物与大人物映照时代大局。\n\n"
         f"本期关键变量(抬头中的国名必须原样保留正式国名):\n"
         f"【刊名】《{mag_name}》(经编辑部审定, 导言抬头一律使用该刊名)\n"
@@ -1880,7 +1888,7 @@ def build_intro_messages(data):
         "导言正文控制在约400–600字。"
         "输出格式:\n"
         f"# 《{mag_name}》\n"
-        f"国名：{full}｜都城：Y｜年份：W\n\n"
+        f"国名：{full}｜都城：{capital}｜年份：{year}\n\n"
         "导言正文..."
     )
     at_war = data.get("player_at_war")
@@ -1891,10 +1899,6 @@ def build_intro_messages(data):
             "\n本期我国无战事记录，各板块均按和平年代写作。"
         )
     user_msg = (
-        f"本期杂志: 【刊名】《{mag_name}》, 【国名】{country}（正式国名 {full}）, "
-        f"【都城】{capital}, 【政体】{govt_zh}, 【年份】{year}。"
-        f"\n抬头中的国名按正式国名「{full}」一字不改写入, "
-        f"刊名按「{mag_name}」原样写入。"
         "\n\n本期数据框架（以下资料为唯一事实依据）：\n"
         f"{_intro_framework(data)}\n\n"
         "请据此撰写导言。"
@@ -2057,6 +2061,7 @@ def _normalize_section(text, title):
                 continue
         out.append(s)
     body = _strip_markdown_tables("\n".join(out)).strip()
+    body = journal.clean_number_spaces(body)
     # 模型偶尔重复写板块标题并以 --- 分隔 (如 ### 案件卷宗\n\n---\n### 案件卷宗),
     # 折叠为单个标题, 避免正文出现空板块头。
     body = re.sub(
@@ -2196,6 +2201,7 @@ def generate_magazine(data, cfg, force=True):
     intro_cfg = dict(cfg)
     intro_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 1500)
     intro = journal.call_deepseek(build_intro_messages(data), intro_cfg).strip()
+    intro = journal.clean_number_spaces(intro)
     sec_cfg = dict(cfg)
     sec_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 4000)
 

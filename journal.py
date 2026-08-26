@@ -959,6 +959,36 @@ LAW_NAMES = {
 def law_zh(law):
     return LAW_NAMES.get(law, law.replace("law_", ""))
 
+# 工会法短句 (下层人群采访板块): 法律名 + 一句白话解释, 让模型直接了解现行工会法。
+# 顺序即优先级: 工会法组各法律互斥, 命中即用。
+LABOR_LAW_ORDER = (
+    "law_combination_acts", "law_right_to_associate",
+    "law_corporatized_unions", "law_anti_strike_laws",
+    "law_no_workers_rights", "law_worker_protections",
+    "law_rights_of_workers", "law_factory_councils",
+)
+LABOR_LAW_NOTES = {
+    "law_combination_acts": "法律禁止成立任何形式的劳工组织",
+    "law_right_to_associate": "工人可自由组织工会并集体议价",
+    "law_corporatized_unions": "工会受国家统制，纳入劳资合作体系",
+    "law_anti_strike_laws": "允许结社，但罢工与部分集体谈判被禁",
+    "law_no_workers_rights": "工人没有组织工会的权利",
+    "law_worker_protections": "工人可组织工会维护权益",
+    "law_rights_of_workers": "工人可组织工会维护权益",
+    "law_factory_councils": "工人可通过工厂委员会参与管理",
+}
+
+
+def _labor_law_line(data):
+    """现行工会法一行 (法律名 + 一句白话解释); 未施行工会法时返回 None。"""
+    laws = set(data.get("laws") or [])
+    for l in LABOR_LAW_ORDER:
+        if l in laws:
+            note = LABOR_LAW_NOTES.get(l)
+            name = LAW_NAMES.get(l, l)
+            return f"- 现行工会法：{name}" + (f"（{note}）" if note else "") + "。"
+    return None
+
 POP_TYPE_NAMES = {
     "peasants": "自给农", "laborers": "劳工", "farmers": "农民",
     "aristocrats": "贵族", "officers": "军官", "clergymen": "教士",
@@ -1263,10 +1293,8 @@ SECTION_DEFS = [
      "含名称（发起意识形态已并入名称表述）、活跃状况（如引发部分群众不满、街头抗议、"
      "街头暴力冲突）、支持者规模与支持度、"
      "本年度法律变化(新施行/废除的法律)。"
-     "每期**必须**至少有一条以「（头衔）（统治者姓名）……」为主干的统治者活动新闻，"
-     "若数据给出「本期统治者活动」一行，以该行事实为基础（人物、头衔、地点、事件按给定事实），"
-     "在其上扩写细节；该行缺失时头衔按政体与国名常识选用，"
-     "在给定国名与数字范围内合理演绎统治者行踪。"),
+     "报道政界动态时以执政集团为核心，结合其力量消长说明朝局与施政倾向。"
+     "每期**必须**至少有一条以「（头衔）（统治者姓名）……」为主干的统治者活动新闻，"),
     ("society", "民族宗教与社会", "报道民族构成、宗教构成、移民动向、社会风尚。"),
     ("epidemic", "疫情专电", "报道我国正在流行的疫病：疾病名与俗称、传播途径、"
      "首发与蔓延的州、累计染病人数与死亡人数（数字一律照抄资料）、感染率、"
@@ -1306,12 +1334,7 @@ _SECTION_CHART_PLACEHOLDERS = {
 
 # 所有风格共用的「数据解读规则」：与具体风格无关, 保证各风格拿到的事实口径一致
 FACT_GUIDE = (
-    "报道政界动态时以执政集团为核心，结合其力量消长说明朝局与施政倾向。"
-    "数据中给出的姓名（统治者、大臣、受访人等）直接使用；"
-    "未给出姓名的直接描写对象用身份/职业代称。"
-    "描写建筑、机构与城邑的体量风貌时，用符合时代语境的自然措辞呈现其气象"
-    "（如城邑繁盛、厂房林立、市井喧阗、机构初具规模、市镇街巷纵横）。"
-    "度量衡一律使用公制单位（吨、千克、千米、米、升、度、平方米），数值以资料为准。"
+    "数据中给出的姓名直接使用；未给出姓名的直接描写对象用身份/职业代称。"
 )
 
 # 货币规则只注入有金额数据的板块 (广告/政界/社会板块无金额数据, 不注入,
@@ -1578,13 +1601,15 @@ def render_war(data, history=None):
         parties = _war_parties_line(w.get('participants') or [])
         if w.get('ended'):
             pz = w.get('peace_date')
-            status = f"已结束（和约 {pz}）" if pz and pz != "1.1.1" else "已结束"
+            pz_cn = fmt_cn_date(pz) if pz and pz != "1.1.1" else None
+            status = f"已结束（和约 {pz_cn}）" if pz_cn else "已结束"
         else:
             status = "仍在进行"
         start = w.get('start_date')
         line = f"- {parties}：{status}" if parties else f"- 交战方未知：{status}"
-        if start:
-            line += f"（始于{start}）"
+        start_cn = fmt_cn_date(start) if start else None
+        if start_cn and start_cn != "未知":
+            line += f"（始于{start_cn}）"
         tail = []
         side_parts = []
         # 某一方的代表国家 TAG (优先同 side 的参与者, 再按 dp 主方), 供币种换算
@@ -1742,7 +1767,7 @@ def render_diplo(data):
     L.append(f"- 恶名：{_infamy_band(data.get('infamy'))}")
     powers = data.get("powers") or []
     if powers:
-        L.append("- 世界前八强战况(外交背景)（其中标注「我国」者即本报所属国家）：")
+        L.append("- 世界前八强战况：")
         for p in powers:
             nm = strip_loc_formatting(p['name'])
             if p.get("is_player"):
@@ -2183,7 +2208,8 @@ def render_politics(data, history=None):
                 lead = f"，首领：{bg}{g['leader_name']}"
                 if g.get("leader_ideology"):
                     lead += f"，意识形态：{g['leader_ideology']}"
-            L.append(f"  - {nm}（{cl_s}{gov}{lead}{band}）")
+            party_s = f"，隶属{g['party_zh']}" if g.get("party_zh") else ""
+            L.append(f"  - {nm}（{cl_s}{gov}{lead}{band}{party_s}）")
         ruling = [g for g in igs if g.get("in_government")]
         if ruling:
             L.append("- 当前执政利益集团：" + "、".join(
@@ -2547,17 +2573,27 @@ def _render_pop_politics(obj, data=None):
     return L
 
 
-def _render_pop_igs(obj):
+def _render_pop_igs(obj, data=None):
     """该 POP 的政治阵营: 吸引力前三的利益集团 (占劳动力比例) + 无政治阵营。
-    兼容旧存档数据 (仅单一 interest_group 字段)。"""
+    兼容旧存档数据 (仅单一 interest_group 字段)。
+    data 提供时附各集团所属党派 (数据来自存档 parties 结构解析, 见 journal_save)。"""
     L = []
+    ig_map = {}
+    if data:
+        for g in (data.get("interest_groups") or []):
+            if g.get("name") and g.get("party_zh"):
+                ig_map[g.get("name")] = g["party_zh"]
     igs = obj.get("interest_groups") or []
     if igs:
         segs = []
         for g in igs[:3]:
-            nm = ig_zh(g.get("name")) if isinstance(g, dict) else str(g)
+            key = g.get("name") if isinstance(g, dict) else str(g)
+            nm = ig_zh(key) if isinstance(g, dict) else str(g)
             pct = g.get("pct_of_workforce") if isinstance(g, dict) else None
-            segs.append(f"{nm}（{pct:.0f}%）" if isinstance(pct, (int, float)) else nm)
+            party = ig_map.get(key)
+            party_s = f"，隶属{party}" if party else ""
+            segs.append(f"{nm}（{pct:.0f}%{party_s}）"
+                        if isinstance(pct, (int, float)) else nm)
         line = "- 政治阵营：该人群前三利益集团为" + "、".join(segs)
         una = obj.get("unaffiliated_pct")
         if isinstance(una, (int, float)) and una >= 0.5:
@@ -3163,6 +3199,8 @@ def _ownership_lines(own):
     """workplace_ownership (旧字符串或新结构化 dict) → 提示行。
 
     新格式: {"summary": 一句话, "holders": [持有人明细]}。
+    摘要已覆盖全部持有人时 (单一持有人100%, 或构成式摘要已列全≤3个持有人),
+    只输出「工作场所所有权」一行, 不再重复「所有权明细」。
     """
     if not own:
         return []
@@ -3170,9 +3208,21 @@ def _ownership_lines(own):
         return [f"- {own}"]
     L = []
     summary = own.get("summary")
+    holders = list(own.get("holders") or [])
+    # 摘要是否已覆盖全部持有人: 单一持有人 (必然100%) 或构成式摘要 (top≤50%) 已列全
+    top_pct = None
+    if holders:
+        top_pct = holders[0].get("pct")
+        if not isinstance(top_pct, (int, float)):
+            top_pct = None
+    covered = (len(holders) == 1
+               or (isinstance(top_pct, (int, float)) and top_pct <= 50
+                   and len(holders) <= 3))
     if summary:
         L.append(f"- 工作场所所有权：{summary}")
-    for h in own.get("holders") or []:
+        if covered:
+            return L
+    for h in holders:
         seg = [h.get("zh") or h.get("kind") or "未知持有人"]
         pct = h.get("pct")
         if isinstance(pct, (int, float)):
@@ -3186,10 +3236,18 @@ def _ownership_lines(own):
             extras.append("从业职业：" + names)
         ow = h.get("owner")
         if ow:
-            place = "的".join(x for x in (ow.get("state_zh"),
-                                          ow.get("building_zh")) if x)
-            if place:
-                extras.append("持有者：" + place)
+            # 公司份额: 自定义名 company_name 优先 (如「达能食品」), 无自定义名才退回
+            # 公司总部建筑名 (building_zh, 即公司类型本地化名, 如「优质食品」)
+            cname = ow.get("company_name")
+            if cname:
+                place = "的".join(x for x in (ow.get("state_zh"), cname) if x)
+                if place:
+                    extras.append("持有者：" + place)
+            else:
+                place = "的".join(x for x in (ow.get("state_zh"),
+                                              ow.get("building_zh")) if x)
+                if place:
+                    extras.append("持有者：" + place)
             owf = ow.get("workforce") or []
             if owf:
                 names = "、".join(
@@ -3306,7 +3364,10 @@ def render_family(data, style=None):
     acc_status = fi.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
-    L.extend(_render_pop_igs(fi))
+    L.extend(_render_pop_igs(fi, data))
+    lab = _labor_law_line(data)
+    if lab:
+        L.append(lab)
     job_sat = fi.get("job_satisfaction")
     if job_sat is not None:
         band = job_satisfaction_band(job_sat)
@@ -3456,7 +3517,7 @@ def render_peer(data, style=None):
     acc_status = peer.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
-    L.extend(_render_pop_igs(peer))
+    L.extend(_render_pop_igs(peer, data))
     job_sat = peer.get("job_satisfaction")
     if job_sat is not None:
         band = job_satisfaction_band(job_sat)
@@ -3583,7 +3644,10 @@ def render_unemployed(data, style=None):
     acc_status = uni.get("acceptance_status")
     if acc_status:
         L.append(f"- 社会地位：{ACCEPTANCE_NAMES.get(acc_status, acc_status)}")
-    L.extend(_render_pop_igs(uni))
+    L.extend(_render_pop_igs(uni, data))
+    lab = _labor_law_line(data)
+    if lab:
+        L.append(lab)
     job_sat = uni.get("job_satisfaction")
     if job_sat is not None:
         band = job_satisfaction_band(job_sat)
@@ -4005,6 +4069,14 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
         # 疫情专电板块要求中的行政区域称谓随政体 (州/省) 动态替换
         div = _division_label(data.get("govt_key")) or "州"
         req = req.replace("首发与蔓延的州", f"首发与蔓延的{div}")
+    # 政界动态: 「本期统治者活动」有数据时按事实扩写, 缺失时才追加演绎指引
+    if key == "politics":
+        if data.get("ruler_activity"):
+            req += ("以数据给出的「本期统治者活动」一行为事实基础"
+                    "（人物、头衔、地点、事件按给定事实），在其上扩写细节。")
+        else:
+            req += ("本期统治者活动数据缺失：头衔按政体与国名常识选用，"
+                    "在给定国名与数字范围内合理演绎统治者行踪。")
     parts = [st["voice"], FACT_GUIDE]
     num_guide = st.get("number_guide")
     if num_guide:
@@ -4044,6 +4116,20 @@ def _bold_echo_heading(line, title):
         return f"## {title}"
     return None
 
+# 数字与汉字之间的空格清理: 模型输出常见「第 3 街」「约 25.8%」「第 18 个年头」,
+# 按现代汉语规范去除 (汉字与阿拉伯数字之间不空格)。杂志经 journal 复用同一实现。
+_NUM_CJK_SPACE_RES = (
+    re.compile(r"(?<=[\u4e00-\u9fff])\s+(?=\d)"),   # 汉字 空格 数字
+    re.compile(r"(?<=\d)\s+(?=[\u4e00-\u9fff])"),   # 数字 空格 汉字
+)
+
+
+def clean_number_spaces(text):
+    """去掉汉字与阿拉伯数字之间的空格 (「第 3 街」→「第3街」)。"""
+    for r in _NUM_CJK_SPACE_RES:
+        text = r.sub("", text or "")
+    return text
+
 def _normalize_section_text(text, title, use_separators=False, paper_name=None):
     """规范化板块正文的标题层级:
     - 剔除模型回显的报名(# 《报名》)与抬头信息行(**国名：...｜都城：...**), 避免正文重复报头;
@@ -4082,6 +4168,7 @@ def _normalize_section_text(text, title, use_separators=False, paper_name=None):
                        r"\1 ", s).strip()
         out.append(s)
     body = "\n".join(out).strip()
+    body = clean_number_spaces(body)
     if use_separators:
         body = _insert_thousand_separators(body)
     if not body:

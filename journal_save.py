@@ -5797,6 +5797,21 @@ _POOL_WELFARE_LAWS = (
 _POOL_LABOR_RIGHTS_LAWS = (
     "law_no_workers_rights", "law_regulatory_bodies", "law_worker_protections",
 )
+
+
+def _labor_union_line(melted, cid, loc=None):
+    """现行工会法一行 (法律名 + 一句白话解释); 未施行工会法时返回 None。
+    供杂志下层人群采访板块注入 (与报纸 journal._labor_law_line 同口径)。"""
+    laws = query_laws(melted, cid)
+    hit = next((l for l in _journal.LABOR_LAW_ORDER if l in laws), None)
+    if not hit:
+        return None
+    loc = _load_loc_all() if loc is None else loc
+    name = loc.get(hit) or _journal.law_zh(hit)
+    note = _journal.LABOR_LAW_NOTES.get(hit)
+    return f"现行工会法：{name}" + (f"（{note}）" if note else "") + "。"
+
+
 _POOL_COLONIAL_LAWS = (
     "law_no_colonial_affairs", "law_frontier_colonization",
     "law_colonial_resettlement", "law_colonial_exploitation",
@@ -6178,6 +6193,9 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
         for pid, o in lows:
             life_lines.append("- " + _pool_pop_text(pid, o, ctx, loc,
                                                     unit=unit, snap=snap))
+        _lab = _labor_union_line(melted, cid, loc)
+        if _lab:
+            life_lines.append("- " + _lab)
         if lows and lows[0][1].get("culture") is not None:
             life_ck = culture_id_to_key(lows[0][1].get("culture"))
         if not lows:
@@ -6255,8 +6273,7 @@ def _pool_turmoil_data(melted, snap, ctx, rnd, country, cid, data):
             f"{top.get('ideology') or '未知思潮'}）。")
         if top.get("activism"):
             movement_lines.append(
-                f"运动当前处于「{top.get('activism')}」状态，"
-                f"激进指数{round(top.get('radicalism') or 0, 2)}。")
+                f"运动当前处于「{top.get('activism')}」状态。")
         if top.get("supporters"):
             movement_lines.append(
                 f"全国支持者约{format(int(round(top['supporters'])), ',')}人，"
@@ -6519,6 +6536,9 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                     pid, po, ctx, loc, unit=unit, snap=snap))
                 if wk_ck is None and po.get("culture") is not None:
                     wk_ck = culture_id_to_key(po.get("culture"))
+        _lab = _labor_union_line(melted, cid, loc)
+        if _lab:
+            workshop_lines.append("- " + _lab)
     else:
         workshop_lines.append(
             "（该商品本地无生产建筑样本；按产业链，此类商品通常由"
@@ -6562,6 +6582,9 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                     pid, po, ctx, loc, unit=unit, snap=snap))
                 if mn_ck is None and po.get("culture") is not None:
                     mn_ck = culture_id_to_key(po.get("culture"))
+        _lab = _labor_union_line(melted, cid, loc)
+        if _lab:
+            mine_lines.append("- " + _lab)
     else:
         mine_lines.append(
             ("（本地无上游生产建筑样本；该商品的主要原料为"
@@ -6776,6 +6799,9 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     if grassroots_pop:
         pid, o = grassroots_pop[0]
         grassroots.append(_pool_pop_text(pid, o, ctx, loc, unit=unit, snap=snap))
+        _lab = _labor_union_line(melted, cid, loc)
+        if _lab:
+            grassroots.append(_lab)
         grassroots.extend(_pool_investment_lines(snap, st_zh, o, "mag_service"))
     else:
         grassroots.append("（无足量基层人群样本，请含蓄写作。）")
@@ -6933,8 +6959,11 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
         if _blk:
             ballot.append(_blk)
         ballot.append(f"判定结果：{reason}。")
-        ballot.append("请按判定结果描写投票日场景：拥有则写他履行权利的过程；"
-                      "不拥有则写他被拦在门外的情景。")
+        # 投票资格由程序判定 (ok 布尔), 直接下发对应场景, 不再让模型解读判定结果自行决定
+        if ok:
+            ballot.append("投票资格已确认：写他前往投票站、核验资格、领取选票并完成投票的过程。")
+        else:
+            ballot.append("投票资格已被拒绝：写他在投票日被拦在投票站外、无法参与选举的情景。")
     else:
         ballot.append("（该州无人群样本。）")
     future = []
@@ -6944,6 +6973,11 @@ def _pool_voting_data(melted, snap, ctx, rnd, country, cid, data):
         future.append(f"当前最有影响力的政治运动：{m0.get('name') or '未知'}（"
                       f"{m0.get('ideology') or '未知思潮'}），大众支持率"
                       f"{round(m0.get('popular_pct') or 0, 1)}%。")
+    # 投票文党派描写: 一党制下点出唯一合法政党 (存档 parties 结构解析)
+    if dop == "law_single_party_state":
+        pname = _player_legal_party_name(melted, cid, loc)
+        if pname:
+            future.append(f"现行一党制下，唯一合法政党为{pname}。")
     if snap.get("laws_in_progress"):
         future.append("立法进行中：" + "、".join(
             str(loc.get(x.get("law"), x.get("law")))
@@ -7051,6 +7085,9 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
         pid, o = lows[0]
         household.append("餐桌上的主妇/劳工样本：" + _pool_pop_text(
             pid, o, ctx, loc, unit=unit, snap=snap))
+        _lab = _labor_union_line(melted, cid, loc)
+        if _lab:
+            household.append(_lab)
         hh_ck = (culture_id_to_key(o.get("culture"))
                  if o.get("culture") is not None else None)
         _blk = person_names_block(f"{snap.get('year')}|{cid}|price",
@@ -10075,7 +10112,7 @@ def _pool_crime_case(melted, snap, ctx, rnd, country, cid, data,
         mov_line = (
             f"犯罪嫌疑人参与的抗议政治运动：{mv.get('name') or '未知'}（"
             f"{mv.get('ideology') or '未知思潮'}），当前处于「{mv.get('activism')}」"
-            f"状态，激进指数{round(mv.get('radicalism') or 0, 2)}。"
+            f"状态。"
         )
     # 法律与机构 (需求: Policing / Internal Security 法律 + 两机构自然语言等级)
     policing = next((l for l in _POOL_POLICING_LAWS if l in laws), None)
@@ -14000,6 +14037,86 @@ def _ig_approval_band(approval):
     return "忠诚"
 
 
+# ---------------------------------------------------------------------------
+# 政党解析 (问题11): 存档不持久化政党名, 党派由 common/parties/*.txt 模板生成。
+# 存档 interest_groups 带 party 字段 (党 id), parties 结构给出各国党派块
+# (potential 列表), 块内索引 → 12 型模板 (按文件名字母序) → parties_l_*.yml 中文名。
+# 实测: 墨西哥一党制唯一党 (块内索引0) = agrarian_party = 农业党, 与游戏内一致;
+# 大不列颠 (1836) active=[3,5,6,11] = 保守/自由贸易/自由/社民, 亦自洽。
+# ---------------------------------------------------------------------------
+_PARTY_TEMPLATE_ORDER = (
+    "agrarian_party", "anarchist_party", "communist_party", "conservative_party",
+    "fascist_party", "free_trade_party", "liberal_party", "military_party",
+    "radical_party", "religious_party", "revolutionary_party",
+    "social_democrats_party",
+)
+
+_PARTIES_CACHE = {"key": None, "obj": None}  # id(data) -> 解析后的 parties 对象
+
+
+def _parties_object(melted):
+    """存档 "parties" 结构 → {"countries": [{country, potential, active, ...}]}。"""
+    if not melted:
+        return None
+    key = (id(melted), len(melted))
+    if _PARTIES_CACHE.get("key") == key:
+        return _PARTIES_CACHE["obj"]
+    obj = None
+    try:
+        idx = melted.find(b'"parties"')
+        if idx >= 0:
+            brace = melted.find(b'{', idx)
+            if brace >= 0:
+                raw, _end = extract_json_object(melted, brace)
+                if raw:
+                    obj = json.loads(raw)
+    except Exception:
+        obj = None
+    _PARTIES_CACHE["key"] = key
+    _PARTIES_CACHE["obj"] = obj
+    return obj
+
+
+def _party_template_map(melted):
+    """parties 结构 → {party_id: 模板 key} (全国家, 按国家块内索引映射)。"""
+    out = {}
+    obj = _parties_object(melted) or {}
+    for c in obj.get("countries") or []:
+        pot = c.get("potential") or []
+        for i, pid in enumerate(pot):
+            if i < len(_PARTY_TEMPLATE_ORDER):
+                out[int(pid)] = _PARTY_TEMPLATE_ORDER[i]
+    return out
+
+
+def _party_name_zh(party_id, melted, loc=None):
+    """党 id → 中文名 (模板兜底名, 如 party_agrarian→农业党); 解析不到返回 None。"""
+    if party_id is None:
+        return None
+    tmpl = _party_template_map(melted).get(int(party_id))
+    if not tmpl:
+        return None
+    loc = _load_loc_all() if loc is None else loc
+    key = "party_" + tmpl[: -len("_party")]
+    return loc.get(key) or None
+
+
+def _player_legal_party_name(melted, country_id, loc=None):
+    """玩家国唯一/首选合法政党中文名 (一党制用); 解析不到返回 None。"""
+    obj = _parties_object(melted) or {}
+    for c in obj.get("countries") or []:
+        if c.get("country") != country_id:
+            continue
+        pid = None
+        if isinstance(c.get("only_legal_party"), int):
+            pid = c["only_legal_party"]
+        elif c.get("active"):
+            pid = c["active"][0]
+        if pid is not None:
+            return _party_name_zh(pid, melted, loc)
+    return None
+
+
 def _extract_interest_groups(data, player_id, chars=None):
     """从 interest_groups.database 提取玩家全部利益集团。
     返回按 clout 降序的 [{name, definition, clout_pct, in_government, approval_state,
@@ -14048,6 +14165,8 @@ def _extract_interest_groups(data, player_id, chars=None):
                 "in_government": bool(obj.get("in_government")),
                 "approval_state": obj.get("approval_state"),
                 "approval_band": _ig_approval_band(approval),
+                # 党派: 存档 ig.party 字段 → parties 结构块内索引 → 模板中文名
+                "party_zh": _party_name_zh(obj.get("party"), data, loc),
                 "leader_name": (leader or {}).get("name"),
                 "leader_last_name": (leader or {}).get("last_name"),
                 "leader_ideology": (_clean_loc_name(loc.get(lideo, lideo), loc)
@@ -16243,7 +16362,9 @@ def _attach_snapshot_extras(melted, snap, ctx, country, cid, journal_dir=None):
 # 从美利坚合众国解放霍迪诺肖尼」); liberate_subject 点名宗主国 (如「阿根廷
 # 邦联要求从玻利维亚解放附属国伊基查」), 并新增 country_definition /
 # liberated_zh 字段, 旧缓存需重新熔化提取。
-SNAPSHOT_CACHE_VERSION = 17
+# 版本 18: 利益集团新增 party_zh 党派字段 (存档 ig.party → parties 结构
+# 块内索引 → 12 型政党模板中文名, 如 农业党), 旧缓存需重新熔化提取。
+SNAPSHOT_CACHE_VERSION = 18
 # raw/snapshot 携带国家名解析表版本: 跨年合并时若上一年 raw 无此表,
 # 只能沿用烘焙名, 提示用 tools/regen_data.py 重新生成。
 NAME_TABLE_VERSION = 1
