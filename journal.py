@@ -959,8 +959,9 @@ LAW_NAMES = {
 def law_zh(law):
     return LAW_NAMES.get(law, law.replace("law_", ""))
 
-# 工会法短句 (下层人群采访板块): 法律名 + 一句白话解释, 让模型直接了解现行工会法。
-# 顺序即优先级: 工会法组各法律互斥, 命中即用。
+# 工会法短句 (下层人群采访板块): 法律名 + 一句介绍, 让模型直接了解现行工会法。
+# 介绍优先用游戏本地化自带的法律描述 (law_*_desc, 与游戏内一致, 含已启用 mod),
+# 未命中时回退 LABOR_LAW_NOTES 硬编码短句。顺序即优先级: 工会法组各法律互斥, 命中即用。
 LABOR_LAW_ORDER = (
     "law_combination_acts", "law_right_to_associate",
     "law_corporatized_unions", "law_anti_strike_laws",
@@ -968,25 +969,37 @@ LABOR_LAW_ORDER = (
     "law_rights_of_workers", "law_factory_councils",
 )
 LABOR_LAW_NOTES = {
+    # 兜底短句 (游戏本地化缺 law_*_desc 时使用)
     "law_combination_acts": "法律禁止成立任何形式的劳工组织",
     "law_right_to_associate": "工人可自由组织工会并集体议价",
     "law_corporatized_unions": "工会受国家统制，纳入劳资合作体系",
     "law_anti_strike_laws": "允许结社，但罢工与部分集体谈判被禁",
     "law_no_workers_rights": "工人没有组织工会的权利",
     "law_worker_protections": "工人可组织工会维护权益",
-    "law_rights_of_workers": "工人可组织工会维护权益",
+    "law_rights_of_workers": "工人可组织工会维护权益",  # 旧版本遗留 key, 游戏已无 desc
     "law_factory_councils": "工人可通过工厂委员会参与管理",
 }
 
 
 def _labor_law_line(data):
-    """现行工会法一行 (法律名 + 一句白话解释); 未施行工会法时返回 None。"""
+    """现行工会法一行 (法律名 + 介绍): 介绍优先读游戏本地化 law_*_desc
+    (与游戏内一致, 含已启用 mod), 未命中回退 LABOR_LAW_NOTES; 未施行工会法返回 None。"""
     laws = set(data.get("laws") or [])
     for l in LABOR_LAW_ORDER:
-        if l in laws:
-            note = LABOR_LAW_NOTES.get(l)
-            name = LAW_NAMES.get(l, l)
-            return f"- 现行工会法：{name}" + (f"（{note}）" if note else "") + "。"
+        if l not in laws:
+            continue
+        name = LAW_NAMES.get(l, l)
+        intro = ""
+        try:
+            from journal_save import _load_loc_all
+            intro = (_load_loc_all().get(l + "_desc") or "").strip()
+        except Exception:
+            intro = ""
+        if not intro:
+            intro = LABOR_LAW_NOTES.get(l) or ""
+        if not intro:
+            return f"- 现行工会法：{name}。"
+        return f"- 现行工会法：{name}——{intro.rstrip('。')}。"
     return None
 
 POP_TYPE_NAMES = {

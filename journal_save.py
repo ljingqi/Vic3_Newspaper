@@ -5800,7 +5800,8 @@ _POOL_LABOR_RIGHTS_LAWS = (
 
 
 def _labor_union_line(melted, cid, loc=None):
-    """现行工会法一行 (法律名 + 一句白话解释); 未施行工会法时返回 None。
+    """现行工会法一行 (法律名 + 介绍): 介绍优先读游戏本地化 law_*_desc,
+    未命中回退 journal.LABOR_LAW_NOTES; 未施行工会法时返回 None。
     供杂志下层人群采访板块注入 (与报纸 journal._labor_law_line 同口径)。"""
     laws = query_laws(melted, cid)
     hit = next((l for l in _journal.LABOR_LAW_ORDER if l in laws), None)
@@ -5808,8 +5809,11 @@ def _labor_union_line(melted, cid, loc=None):
         return None
     loc = _load_loc_all() if loc is None else loc
     name = loc.get(hit) or _journal.law_zh(hit)
-    note = _journal.LABOR_LAW_NOTES.get(hit)
-    return f"现行工会法：{name}" + (f"（{note}）" if note else "") + "。"
+    intro = (loc.get(hit + "_desc") or "").strip() \
+        or _journal.LABOR_LAW_NOTES.get(hit) or ""
+    if not intro:
+        return f"现行工会法：{name}。"
+    return f"现行工会法：{name}——{intro.rstrip('。')}。"
 
 
 _POOL_COLONIAL_LAWS = (
@@ -6655,9 +6659,8 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                     else f"出口关税约{abs(er):g}%")
             if abs(ir) >= 1e-9:
                 bits.append(
-                    f"进口补贴约{abs(ir):g}%，按到岸价{_imp_fmt(import_base)}计"
-                    if ir < 0
-                    else f"进口关税约{abs(ir):g}%，按到岸价{_imp_fmt(import_base)}计")
+                    f"进口补贴约{abs(ir):g}%" if ir < 0
+                    else f"进口关税约{abs(ir):g}%")
             cust_lines.append(
                 f"该消费者购买时共花费约{_imp_fmt(total)}，"
                 + "，".join(bits) + "。")

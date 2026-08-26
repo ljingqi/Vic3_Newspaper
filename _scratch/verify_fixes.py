@@ -77,6 +77,15 @@ cur_laws = JS.query_laws(melted, 185)
 labj = J._labor_law_line({"laws": cur_laws})
 check("P9 报纸工会法行", labj is not None and "工会法" in labj, repr(labj))
 check("P9 未施行工会法返回None", J._labor_law_line({"laws": ["law_technocracy"]}) is None)
+# P9 工会法介绍主来源: 游戏本地化 desc; 遗留 key (游戏已无 desc) 回退硬编码表
+labd = J._labor_law_line({"laws": ["law_corporatized_unions"]})
+check("P9 报纸desc主来源", labd is not None
+      and "劳工组织被置于国家直接或间接控制之下" in labd, repr(labd))
+labd2 = J._labor_law_line({"laws": ["law_rights_of_workers"]})
+check("P9 遗留key回退硬编码", labd2 is not None
+      and "工人可组织工会维护权益" in labd2, repr(labd2))
+print("P9 报纸示例:", labd)
+print("P9 杂志示例:", lab)
 
 # ---------- P10+P2: _ownership_lines ----------
 own_single = {"summary": "该建筑物完全由国家所有",
