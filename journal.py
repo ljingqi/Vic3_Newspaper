@@ -2371,7 +2371,7 @@ def render_society(data):
             L.append(f"  - {POP_TYPE_NAMES.get(p.get('name'), p.get('name'))}（{sh}）")
     migr = [e for e in (data.get("events") or []) if e.get("kind") == "migration"]
     if migr:
-        L.append(f"- 移民动向：本年度有 {len(migr)} 处地区成为新的移民目的地")
+        L.append(f"- 移民动向：本年度有{len(migr)}处地区成为新的移民目的地")
     sfl = data.get("society_flavor_lines") or []
     if sfl:
         L.append("- 【全国社会演进】")
@@ -2412,11 +2412,11 @@ def render_epidemic(data, history=None):
                  f"流行至今，本年已第{ob.get('age')}年（预计持续{ob.get('total_duration')}年，"
                  f"{waves_txt}）。")
         L.append(f"- 传播途径：{ob.get('trans')}；本时代应对此病的通行手段：{ob.get('measures')}。")
-        L.append(f"- 蔓延情形（波及 {len(ob.get('states') or [])} 个{div}）：")
+        L.append(f"- 蔓延情形（波及{len(ob.get('states') or [])}个{div}）：")
         for s in ob.get("states") or []:
-            L.append(f"  - 「{s.get('name')}」{s.get('status')}：累计染病 "
-                     f"{_fmt_epidemic_num(s.get('infected'))} 人（约占该{div}人口"
-                     f"{s.get('infection_rate_pct')}%）、死亡 {_fmt_epidemic_num(s.get('deaths'))} 人")
+            L.append(f"  - 「{s.get('name')}」{s.get('status')}：累计染病"
+                     f"{_fmt_epidemic_num(s.get('infected'))}人（约占该{div}人口"
+                     f"{s.get('infection_rate_pct')}%）、死亡{_fmt_epidemic_num(s.get('deaths'))}人")
         if ob.get("spread_to"):
             L.append(f"- 本年疫情由疫区新传至：「{'、'.join(ob['spread_to'])}」")
         for x in ob.get("spread_abroad") or []:
@@ -2427,15 +2427,15 @@ def render_epidemic(data, history=None):
             if (pt.get("infected") or 0) != (ct.get("infected") or 0):
                 verb = ("增至" if (ct.get("infected") or 0) > (pt.get("infected") or 0)
                         else "回落至")
-                L.append(f"- 较上年：全国累计染病人数由 {_fmt_epidemic_num(pt.get('infected'))} 人"
-                         f"{verb} {_fmt_epidemic_num(ct.get('infected'))} 人")
+                L.append(f"- 较上年：全国累计染病人数由{_fmt_epidemic_num(pt.get('infected'))}人"
+                         f"{verb}{_fmt_epidemic_num(ct.get('infected'))}人")
         tots = ob.get("totals") or {}
-        L.append(f"- 本疫累计：染病 {_fmt_epidemic_num(tots.get('infected'))} 人、"
-                 f"死亡 {_fmt_epidemic_num(tots.get('deaths'))} 人")
+        L.append(f"- 本疫累计：染病{_fmt_epidemic_num(tots.get('infected'))}人、"
+                 f"死亡{_fmt_epidemic_num(tots.get('deaths'))}人")
     nat = ep.get("national") or {}
     resp = ep.get("response") or {}
-    L.append(f"- 全国疫情合计：染病 {_fmt_epidemic_num(nat.get('infected'))} 人、"
-             f"死亡 {_fmt_epidemic_num(nat.get('deaths'))} 人")
+    L.append(f"- 全国疫情合计：染病{_fmt_epidemic_num(nat.get('infected'))}人、"
+             f"死亡{_fmt_epidemic_num(nat.get('deaths'))}人")
     techs = "、".join(resp.get("techs") or []) or "（无）"
     L.append(f"- 本国应对：卫生法律为{resp.get('health_law')}；"
              f"卫生机构{resp.get('health_institution')}；相关科技：{techs}"
@@ -4143,6 +4143,21 @@ def clean_number_spaces(text):
         text = r.sub("", text or "")
     return text
 
+
+def clean_prompt_messages(messages):
+    """提示词侧数字↔汉字空格清理: 发送给模型的 sys/user 内容统一执行
+    clean_number_spaces (「死亡 174,057 人」→「死亡174,057人」), 与输出侧
+    规范一致, 避免模型照抄带空格的数字写法。原列表不修改, 返回新列表。"""
+    if not messages:
+        return messages or []
+    cleaned = []
+    for m in messages:
+        c = m.get("content")
+        if isinstance(c, str):
+            c = clean_number_spaces(c)
+        cleaned.append({**m, "content": c})
+    return cleaned
+
 def _normalize_section_text(text, title, use_separators=False, paper_name=None):
     """规范化板块正文的标题层级:
     - 剔除模型回显的报名(# 《报名》)与抬头信息行(**国名：...｜都城：...**), 避免正文重复报头;
@@ -4248,6 +4263,9 @@ def generate_newspaper(data, cfg, history=None):
 # ---------------------------------------------------------------------------
 
 def call_deepseek(messages, cfg, retries=3):
+    # 提示词侧统一清理汉字与数字之间的空格 (如「死亡 174,057 人」→「死亡174,057人」),
+    # 日志与发送都用清理后的文本, 与输出侧 clean_number_spaces 规范一致。
+    messages = clean_prompt_messages(messages)
     if cfg.get("prompt_log_enabled", True):
         _log_prompt(messages)
     url = cfg["deepseek_base_url"]

@@ -5983,6 +5983,69 @@ def _pool_pop_text(pid, obj, ctx, loc, unit=None, literacy_band=False,
     return "，".join(bits) + "。"
 
 
+def _pool_consumption_basket_lines(snap, ctx, pop_obj, unit, seed_key,
+                                   prices=None, gm=None):
+    """杂志样本池消费篮子 (与报纸民生访谈同口径): 下层人群样本附每月消费量 +
+    每显示单位市价 (「主要消费商品月消费：谷物每月约X千克…」), 供涉及日常生活的
+    文章池 (餐桌上的账本/疫区人物样本/货架/服务/铁道/海外来信) 复用。
+    数据不足 (无 pop_needs / 无消费画像) 返回 []。prices 为市价表 {gid: 价格},
+    缺省从快照 stock_market.goods_prices 取 (与 price 池同源); seed_key 保证
+    同年同人群子女数可复现。"""
+    try:
+        sid = pop_obj.get("location")
+        sobj = ctx.state_object(sid) if sid is not None else None
+        pn = (sobj or {}).get("pop_needs") or {}
+        culture = pop_obj.get("culture")
+        entry = None
+        if isinstance(pn, dict) and culture is not None:
+            entry = pn.get(str(culture)) or pn.get(culture)
+        if not entry:
+            return []
+        prof = _consumption_profile(
+            entry, pop_obj.get("previous_quality_of_life"))
+        if not prof or not prof.get("goods"):
+            return []
+        gm = gm or build_goods_map()
+        if prices is None:
+            prices = ((snap.get("stock_market") or {}).get("goods_prices")
+                      or {})
+        basket = {
+            "budget_rates": _pop_budget_rates(
+                pop_obj.get("weekly_budget") or [], pop_obj.get("workforce"),
+                pop_obj.get("dependents")),
+            "consumption_goods": prof.get("goods") or [],
+            "engel_coefficient": prof.get("engel"),
+            "wife_works": snap.get("women_law") in (
+                "law_women_in_the_workplace", "law_womens_suffrage"),
+            "children_count": _family_children_count(random.Random(
+                f"{seed_key}|family")),
+        }
+        for _g in basket["consumption_goods"]:
+            _b0 = gm["cost"].get(_g.get("key")) if _g.get("key") else None
+            _p0 = None
+            if _g.get("id") is not None:
+                _p0 = prices.get(str(_g.get("id")))
+                if _p0 is None:
+                    _p0 = prices.get(_g.get("id"))
+            if _b0 and _p0 is not None:
+                _g["dev_pct"] = round((_p0 - _b0) / _b0 * 100)
+            else:
+                _g["dev_pct"] = None
+        lines = _journal._consumption_breakdown_lines(
+            basket, unit, _fx_rate(snap, unit))
+        # 每显示单位市价 (与报纸「主要消费品市价」同口径): 谷物每千克约X分…
+        price_bits = []
+        for _g in basket["consumption_goods"]:
+            _t = _journal._goods_unit_price_text(snap, _g, unit)
+            if _t:
+                price_bits.append(_t)
+        if price_bits:
+            lines.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
+        return lines
+    except Exception:
+        return []
+
+
 def _pop_dividend_rate(obj):
     """一个 POP 的分红/投资月人均率: weekly_budget 槽位4 ÷ 劳动力 × 52/12,
     与家庭采访 budget_rates.dividends 同口径 (游戏槽位: 4=分红/投资收入)。
@@ -6172,9 +6235,13 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
     if ups:
         workers_lines.append("- " + _pool_pop_text(
             ups[0][0], ups[0][1], ctx, loc, unit=unit, snap=snap))
+        workers_lines.extend(_pool_consumption_basket_lines(
+            snap, ctx, ups[0][1], unit, f"{snap.get('year')}|{cid}|railway|workers"))
     if low_rail:
         workers_lines.append("- " + _pool_pop_text(
             low_rail[0][0], low_rail[0][1], ctx, loc, unit=unit, snap=snap))
+        workers_lines.extend(_pool_consumption_basket_lines(
+            snap, ctx, low_rail[0][1], unit, f"{snap.get('year')}|{cid}|railway|workers"))
     if not ups and not low_rail:
         workers_lines.append("（该铁路建筑当前无足量人群样本，请据雇佣与产出情况含蓄写作。）")
     _blk = person_names_block(f"{snap.get('year')}|{cid}|railway",
@@ -6197,6 +6264,8 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
         for pid, o in lows:
             life_lines.append("- " + _pool_pop_text(pid, o, ctx, loc,
                                                     unit=unit, snap=snap))
+            life_lines.extend(_pool_consumption_basket_lines(
+                snap, ctx, o, unit, f"{snap.get('year')}|{cid}|railway|life"))
         _lab = _labor_union_line(melted, cid, loc)
         if _lab:
             life_lines.append("- " + _lab)
@@ -6538,6 +6607,8 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             for pid, po in picked:
                 workshop_lines.append("  工人样本：" + _pool_pop_text(
                     pid, po, ctx, loc, unit=unit, snap=snap))
+                workshop_lines.extend(_pool_consumption_basket_lines(
+                    snap, ctx, po, unit, f"{snap.get('year')}|{cid}|shelf|workshop"))
                 if wk_ck is None and po.get("culture") is not None:
                     wk_ck = culture_id_to_key(po.get("culture"))
         _lab = _labor_union_line(melted, cid, loc)
@@ -6584,6 +6655,8 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             for pid, po in picked:
                 mine_lines.append(f"  {up_label}：" + _pool_pop_text(
                     pid, po, ctx, loc, unit=unit, snap=snap))
+                mine_lines.extend(_pool_consumption_basket_lines(
+                    snap, ctx, po, unit, f"{snap.get('year')}|{cid}|shelf|mine"))
                 if mn_ck is None and po.get("culture") is not None:
                     mn_ck = culture_id_to_key(po.get("culture"))
         _lab = _labor_union_line(melted, cid, loc)
@@ -6672,6 +6745,8 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         for pid, po in picked:
             cust_lines.append("- " + _pool_pop_text(pid, po, ctx, loc,
                                                     unit=unit, snap=snap))
+            cust_lines.extend(_pool_consumption_basket_lines(
+                snap, ctx, po, unit, f"{snap.get('year')}|{cid}|shelf|customer"))
             if cu_ck is None and po.get("culture") is not None:
                 cu_ck = culture_id_to_key(po.get("culture"))
         cust_lines.append("（出口去向资料不足，按本地市场情况写目的地顾客。）")
@@ -6787,6 +6862,8 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
         for pid, o in staff:
             classroom.append("- " + _pool_pop_text(pid, o, ctx, loc,
                                                    unit=unit, snap=snap))
+            classroom.extend(_pool_consumption_basket_lines(
+                snap, ctx, o, unit, f"{snap.get('year')}|{cid}|service|staff"))
     st_ck = (culture_id_to_key(staff[0][1].get("culture"))
              if staff and staff[0][1].get("culture") is not None else None)
     _blk = person_names_block(f"{snap.get('year')}|{cid}|service",
@@ -6802,6 +6879,8 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
     if grassroots_pop:
         pid, o = grassroots_pop[0]
         grassroots.append(_pool_pop_text(pid, o, ctx, loc, unit=unit, snap=snap))
+        grassroots.extend(_pool_consumption_basket_lines(
+            snap, ctx, o, unit, f"{snap.get('year')}|{cid}|service|grassroots"))
         _lab = _labor_union_line(melted, cid, loc)
         if _lab:
             grassroots.append(_lab)
@@ -7022,6 +7101,14 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
     rows_dev = [r for r in rows if abs(r["ratio"] - 1) > 1e-6]
     if rows_dev:
         rows = rows_dev
+    # 价格下限守卫: 市价贴近游戏价格下限 (ratio ≤ 0.3, V3 市价区间下限为
+    # 0.25×基准价) 的商品视为未形成有效市价 (典型: 新商品产能过剩触底, 如
+    # 1880 年 aeroplanes 市价 20 镑 = 基准价 80 的 25%), 与「未交易」同类,
+    # 剔除出榜单——避免「一架飞机才66比索」式失真读数, 也消除未交易→触底
+    # 产生的虚假同比 (上年 80 未交易 → 本年 20 → 假「下跌75%」)。
+    rows_floor = [r for r in rows if r["ratio"] > 0.3]
+    if rows_floor:
+        rows = rows_floor
     # 较上年市价: 供「上涨/下跌最明显」排行与市场段同比 (快照附加层缓存)。
     # 无上年数据 (首年) 时改报「市价最高/最低」, 不写涨跌幅度, 避免凭空断言。
     prev_gp = snap.get("_prev_goods_prices") or {}
@@ -7032,6 +7119,11 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
         pv = prev_gp.get(str(r["gid"]))
         if isinstance(pv, (int, float)) and pv > 0 \
                 and isinstance(r["price"], (int, float)):
+            c0 = cost.get(r["key"])
+            # 同比守卫: 上年市价为基准价 (未交易, 价格报告显示默认价) 时不报
+            # 涨跌幅度, 防止「未交易→已交易」的虚假同比。
+            if isinstance(c0, (int, float)) and c0 > 0 and abs(pv - c0) < 1e-6:
+                return None
             return (r["price"] - pv) / pv
         return None
 
@@ -7044,25 +7136,35 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
             return "，与上年基本持平"
         return f"，较上年{'上涨' if y > 0 else '下跌'}约{abs(y) * 100:.0f}%"
 
+    def _fm_unit_price(r):
+        """市价行: 每显示单位市价 + 量词 (动态量词体系, 与报纸访谈同口径)。
+        每游戏单位市价 ÷ ppu → 每显示单位市价 (谷物→每千克、轻武器→每支、
+        飞机→每架), 避免模型自行脑补单位并错读量级 (谷物 77 比索实为
+        每 1 游戏单位 = 2500 千克的价); 无有效量词 (单位) 时退回原写法。"""
+        unit_, _per, _dec, ppu, _prod = _goods_measure(r["key"])
+        if unit_ == "单位" or not isinstance(ppu, (int, float)) or ppu <= 0:
+            return f"市价约{_fm_goods_price(snap, r['price'])}"
+        return f"每{unit_}约{_fm_goods_price(snap, r['price'] / ppu)}"
+
     lead = []
     if have_prev:
         up = sorted(rows, key=lambda r: -(_yoy_pct(r) if _yoy_pct(r) is not None else -1e9))[:3]
         down = sorted(rows, key=lambda r: (_yoy_pct(r) if _yoy_pct(r) is not None else 1e9))[:3]
         lead.append("本年度市场物价涨落：")
         lead.append("上涨最明显：" + "、".join(
-            f"{r['zh']}（市价约{_fm_goods_price(snap, r['price'])}{_yoy_txt(r)}）"
+            f"{r['zh']}（{_fm_unit_price(r)}{_yoy_txt(r)}）"
             for r in up) + "。")
         lead.append("下跌最明显：" + "、".join(
-            f"{r['zh']}（市价约{_fm_goods_price(snap, r['price'])}{_yoy_txt(r)}）"
+            f"{r['zh']}（{_fm_unit_price(r)}{_yoy_txt(r)}）"
             for r in down) + "。")
     else:
         hi = sorted(rows, key=lambda r: -(r["price"] if isinstance(r["price"], (int, float)) else 0))[:3]
         lo = sorted(rows, key=lambda r: r["price"] if isinstance(r["price"], (int, float)) else float("inf"))[:3]
         lead.append("本年度市场物价：")
         lead.append("市价最高：" + "、".join(
-            f"{r['zh']}（市价约{_fm_goods_price(snap, r['price'])}）" for r in hi) + "。")
+            f"{r['zh']}（{_fm_unit_price(r)}）" for r in hi) + "。")
         lead.append("市价最低：" + "、".join(
-            f"{r['zh']}（市价约{_fm_goods_price(snap, r['price'])}）" for r in lo) + "。")
+            f"{r['zh']}（{_fm_unit_price(r)}）" for r in lo) + "。")
     state_ids = _pool_state_ids(snap)
     pops = ctx.player_pops(state_ids)
     states = snap.get("states") or []
@@ -7102,6 +7204,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
         sobj = ctx.state_object(sid)
         pn = (sobj or {}).get("pop_needs") or {}
         entry = None
+        prof = None
         if isinstance(pn, dict):
             entry = pn.get(str(o.get("culture"))) or pn.get(o.get("culture"))
         if entry:
@@ -7133,11 +7236,18 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
             household.extend(_bl)
         except Exception:
             pass
+        # 每月消费篮子 (与报纸民生访谈同口径): 主要消费商品月消费量 +
+        # 每显示单位市价 (谷物每月约X千克、每千克约X分…), 使餐桌账本与
+        # 人群采访完全一致。
+        if prof and prof.get("goods"):
+            household.extend(_pool_consumption_basket_lines(
+                snap, ctx, o, unit,
+                f"{snap.get('year')}|{cid}|price|household",
+                prices=prices, gm=gm))
         household.extend(_pool_investment_lines(snap, st_zh, o, "mag_price"))
     market = ["本刊关注的几件商品与市价："]
     for r in rows[:5]:
-        market.append(f"- {r['zh']}：市价约{_fm_goods_price(snap, r['price'])}"
-                      f"{_yoy_txt(r)}")
+        market.append(f"- {r['zh']}：{_fm_unit_price(r)}{_yoy_txt(r)}")
     street = ["街市与生计收束素材："]
     if wage is not None:
         street.append(f"{st_zh}劳动力人均月薪约{_fm_pounds(snap, wage)}，"
@@ -7223,6 +7333,8 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
         for pid, o in sampled:
             island.append("- " + _pool_pop_text(pid, o, ctx, loc,
                                                 unit=unit, snap=snap))
+            island.extend(_pool_consumption_basket_lines(
+                snap, ctx, o, unit, f"{snap.get('year')}|{cid}|letters|island"))
         if sampled and sampled[0][1].get("culture") is not None:
             isl_ck = culture_id_to_key(sampled[0][1].get("culture"))
     else:
@@ -7240,6 +7352,9 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
     if cap_pops:
         home.append("本土家庭样本：" + _pool_pop_text(
             cap_pops[0][0], cap_pops[0][1], ctx, loc, unit=unit, snap=snap))
+        home.extend(_pool_consumption_basket_lines(
+            snap, ctx, cap_pops[0][1], unit,
+            f"{snap.get('year')}|{cid}|letters|home"))
         if cap_pops[0][1].get("culture") is not None:
             home_ck = culture_id_to_key(cap_pops[0][1].get("culture"))
     _blk = person_names_block(f"{snap.get('year')}|{cid}|letters",
@@ -11589,18 +11704,23 @@ def _pool_epidemic_data(melted, snap, ctx, rnd, country, cid, data):
             chosen.append(cands[-1])
         if len(cands) > 1:
             chosen.append(cands[0])
+        # 币种与杂志其余文章池同口径 (墨西哥→比索); 漏传 unit 会回退英镑
+        unit = snap.get("currency") or currency_unit(country_obj=country)
         for p in chosen:
             pop_lines.append(_pool_pop_text(
-                p.get("id"), p, ctx, _load_loc_all(), snap=snap))
+                p.get("id"), p, ctx, _load_loc_all(), unit=unit, snap=snap))
+            pop_lines.extend(_pool_consumption_basket_lines(
+                snap, ctx, p, unit,
+                f"{snap.get('year')}|{cid}|disease|{p.get('location')}"))
     except Exception as e:
         print(f"[magazine-pool] disease 人物采样失败: {e}")
     pop_txt = "\n".join(f"- {t}" for t in pop_lines)
 
     state_rows = "\n".join(
-        f"- 「{s.get('name')}」{s.get('status')}：累计染病 {_fmt(s.get('infected'))} 人"
-        f"（约占该{div}人口 {s.get('infection_rate_pct')}%）、死亡 {_fmt(s.get('deaths'))} 人"
+        f"- 「{s.get('name')}」{s.get('status')}：累计染病{_fmt(s.get('infected'))}人"
+        f"（约占该{div}人口{s.get('infection_rate_pct')}%）、死亡{_fmt(s.get('deaths'))}人"
         for s in states[:5])
-    extra_states = (f"\n- 另有 {len(states) - 5} {div}情形从略。"
+    extra_states = (f"\n- 另有{len(states) - 5}{div}情形从略。"
                     if len(states) > 5 else "")
     waves_txt = "分多波袭来" if (ob.get("waves") or 1) > 1 else "一波未平"
     techs_txt = "、".join(resp.get("techs") or []) or "（未掌握相关科技）"
@@ -11616,27 +11736,27 @@ def _pool_epidemic_data(melted, snap, ctx, rnd, country, cid, data):
             f"在我国流行，本年已是第{ob.get('age')}年，预计持续{ob.get('total_duration')}年"
             f"（{waves_txt}）。\n"
             f"- 传播途径：{ob.get('trans')}；本时代应对此病的通行手段：{ob.get('measures')}。\n"
-            f"- 首发与蔓延：疫情首发于「{origin.get('name')}」，本年波及 {len(states)} 个{div}。\n"
+            f"- 首发与蔓延：疫情首发于「{origin.get('name')}」，本年波及{len(states)}个{div}。\n"
             f"{state_rows}{extra_states}\n"
-            f"- 全国累计染病 {_fmt(nat.get('infected'))} 人、死亡 {_fmt(nat.get('deaths'))} 人。"),
+            f"- 全国累计染病{_fmt(nat.get('infected'))}人、死亡{_fmt(nat.get('deaths'))}人。"),
         "healers": (
             f"- 本国应对疫病的部署：卫生法律为{resp.get('health_law')}，"
             f"卫生机构{resp.get('health_institution')}，相关科技：{techs_txt}。\n"
             f"- 疫区人物样本（真实居民档案）：\n{pop_txt}"),
         "households": (
-            f"- 疫区实况：最重疫区「{top.get('name')}」累计染病 {_fmt(top.get('infected'))} 人"
-            f"（约占该{div}人口 {top.get('infection_rate_pct')}%）、死亡 {_fmt(top.get('deaths'))} 人。\n"
+            f"- 疫区实况：最重疫区「{top.get('name')}」累计染病{_fmt(top.get('infected'))}人"
+            f"（约占该{div}人口{top.get('infection_rate_pct')}%）、死亡{_fmt(top.get('deaths'))}人。\n"
             + (f"- 本年疫情新传至：{'、'.join(ob.get('spread_to'))}。\n"
                if ob.get('spread_to') else "- 本年疫情尚无扩散。\n")
             + (f"- {abroad_txt}。\n" if abroad_txt else "")
             + (f"- 疫区人物样本：\n{pop_txt}" if pop_txt else "")),
         "aftermath": (
-            f"- 伤亡结算：全国累计染病 {_fmt(nat.get('infected'))} 人、"
-            f"死亡 {_fmt(nat.get('deaths'))} 人；疫情最重的州为「{top.get('name')}」"
-            f"（死亡 {_fmt(top.get('deaths'))} 人）。\n"
+            f"- 伤亡结算：全国累计染病{_fmt(nat.get('infected'))}人、"
+            f"死亡{_fmt(nat.get('deaths'))}人；疫情最重的州为「{top.get('name')}」"
+            f"（死亡{_fmt(top.get('deaths'))}人）。\n"
             + ("- 本年已是疫期最后一年，疫情渐入尾声，善后与反思方兴未艾。"
                if ob.get("age") >= ob.get("total_duration")
-               else f"- 疫情仍将持续约 {ob.get('total_duration') - ob.get('age')} 年，来年势态未明。")),
+               else f"- 疫情仍将持续约{ob.get('total_duration') - ob.get('age')}年，来年势态未明。")),
     }
     data["disease"] = {
         "sections": sec,
