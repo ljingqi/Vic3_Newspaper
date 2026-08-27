@@ -39,6 +39,7 @@ ARTICLES = [
     {
         "key": "war_family",
         "title": "战地与后方",
+        "theme": "战争年代的家庭与故土",
         "lead": "front",
         "sections": [
             {
@@ -85,6 +86,7 @@ ARTICLES = [
     {
         "key": "court_household",
         "title": "庙堂与门庭",
+        "theme": "庙堂决策与大臣门庭",
         "lead": "minister",
         "sections": [
             {
@@ -128,6 +130,7 @@ ARTICLES = [
     {
         "key": "migration_change",
         "title": "迁徙与蜕变",
+        "theme": "移民、同化与身份变迁",
         "lead": "migrants",
         "sections": [
             {
@@ -651,6 +654,7 @@ def _war_article_variant(data):
         return a
     a = dict(ARTICLES[0])
     a["title"] = "军营与家园"
+    a["theme"] = "和平年代的军营与军民生活"
     dom_acc = _garrison_tone(m)
     tone_name, tone_req = ACCEPTANCE_GARRISON_TONES.get(
         dom_acc, ("军民日常相处", "写军队与当地居民的日常相处。"))
@@ -1716,13 +1720,15 @@ def _generate_article_titles(data, cfg):
             theme = f"{theme}（主角商品：{fg}）"
         theme_lines.append(f"{i + 1}. {theme}")
     themes = "\n".join(theme_lines)
+    # 缓存友好 (2026-08-27): system 以静态基调与拟题指引开头, 刊名/主题移入 user。
     sys_msg = (
-        f"你是《{style.derive_magazine_name(data)}》杂志的特稿编辑。本刊基调:\n{voice}\n\n"
-        f"{guide}\n"
+        "你是杂志的特稿编辑。本刊基调:\n" + voice + "\n\n"
+        + guide + "\n"
         "为本期特稿各拟一个正式标题：每个标题不超过24字，与主题一一对应；"
         "输出时每行一个，标题文字紧贴行首。"
     )
-    user_msg = f"本期{len(articles)}篇特稿主题:\n{themes}"
+    user_msg = (f"本刊《{style.derive_magazine_name(data)}》。"
+                f"本期{len(articles)}篇特稿主题:\n{themes}")
     msgs = [{"role": "system", "content": sys_msg},
             {"role": "user", "content": user_msg}]
     text = journal.call_deepseek(msgs, cfg).strip()
@@ -1885,23 +1891,15 @@ def build_intro_messages(data):
     # 政体字段随之从抬头移除
     full = journal.full_country_name(country, govt_zh, data.get("govt_law"))
     mag_name = style.derive_magazine_name(data)
+    # 缓存友好 (2026-08-27): system 以静态定位/基调/通用规则开头,
+    # 动态变量 (刊名/国名/都城/年份/特稿清单/输出格式/数据框架) 移入 user。
     sys_msg = (
         f"你是《{mag_name}》杂志的总编辑。本刊定位为19世纪的非虚构文学月刊, "
         "聚焦具体人物的命运, 以小人物与大人物映照时代大局。\n\n"
-        f"本期关键变量(抬头中的国名必须原样保留正式国名):\n"
-        f"【刊名】《{mag_name}》(经编辑部审定, 导言抬头一律使用该刊名)\n"
-        f"【国名】{country}（合并政体后的正式国名：{full}）\n"
-        f"【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
         f"本刊基调:\n{_voice(data)}\n\n"
-        f"{count_txt}: {preview}。{special_note}\n\n"
         f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}\n"
-        "撰写杂志导言: 概括本年度大势, 预告"
-        f"{count_txt}, 并点明本刊的政体立场。"
+        "撰写杂志导言: 概括本年度大势, 预告本期特稿, 并点明本刊的政体立场。"
         "导言正文控制在约400–600字。"
-        "输出格式:\n"
-        f"# 《{mag_name}》\n"
-        f"国名：{full}｜都城：{capital}｜年份：{year}\n\n"
-        "导言正文..."
     )
     at_war = data.get("player_at_war")
     if at_war is None:
@@ -1911,7 +1909,16 @@ def build_intro_messages(data):
             "\n本期我国无战事记录，各板块均按和平年代写作。"
         )
     user_msg = (
-        "\n\n本期数据框架（以下资料为唯一事实依据）：\n"
+        "本期关键变量(抬头中的国名必须原样保留正式国名):\n"
+        f"【刊名】《{mag_name}》(经编辑部审定, 导言抬头一律使用该刊名)\n"
+        f"【国名】{country}（合并政体后的正式国名：{full}）\n"
+        f"【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
+        f"{count_txt}: {preview}。{special_note}\n\n"
+        "输出格式:\n"
+        f"# 《{mag_name}》\n"
+        f"国名：{full}｜都城：{capital}｜年份：{year}\n\n"
+        "导言正文...\n\n"
+        "本期数据框架（以下资料为唯一事实依据）：\n"
         f"{_intro_framework(data)}\n\n"
         "请据此撰写导言。"
     )
@@ -1943,12 +1950,11 @@ def build_lead_messages(article, data, intro):
     sec = article["sections"][0]
     facts = render_facts(article["key"], sec["key"], data)
     title = _article_display_title(article)
+    # 缓存友好 (2026-08-27): system 以静态基调与通用规则开头, 文章标题/
+    # 板块要求/篇幅/导言/数据全部移入 user (标题不再占据 system 首句)。
     sys_msg = (
-        f"你是本刊特稿《{title}》的主笔。本刊基调:\n{_voice(data)}\n\n"
-        f"这是文章的开篇板块《{sec['title']}》, 需立起全篇的人物与场景。要求: {sec['req']}\n\n"
-        f"篇幅要求：开篇板块正文控制在800–1200字，立起人物与场景。\n\n"
-        f"本篇文章标题已定为《{title}》，正文按该标题撰写。\n\n"
-        f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}"
+        "你是本刊特稿的主笔。本刊基调:\n" + _voice(data) + "\n\n"
+        + NONFICTION_RULE + "\n" + WORLD_FRAME_RULE
     )
     if _article_has_flavor(data, article["key"]):
         sys_msg += f"\n{STATE_FLAVOR_RULE}"
@@ -1956,6 +1962,9 @@ def build_lead_messages(article, data, intro):
         sys_msg += f"\n{CRIME_TERM_RULE}"
     sys_msg += f"\n{_currency_rule(data, article['key'])}"
     user_msg = (
+        f"本篇文章标题已定为《{title}》，正文按该标题撰写。\n\n"
+        f"这是文章的开篇板块《{sec['title']}》, 需立起全篇的人物与场景。要求: {sec['req']}\n\n"
+        f"篇幅要求：开篇板块正文控制在800–1200字，立起人物与场景。\n\n"
         f"本期杂志导言:\n{intro}\n\n"
         f"请撰写开篇板块《{sec['title']}》正文。相关数据如下:\n"
         f"{facts}\n\n输出格式：第一行输出文章标题《{title}》，空一行后输出开篇板块正文，"
@@ -1971,11 +1980,10 @@ def build_section_messages(article, section, data, intro, lead_text,
                            article_title=None, crime_card=None):
     facts = render_facts(article["key"], section["key"], data)
     title = _article_display_title(article, article_title)
+    # 缓存友好 (2026-08-27): 同上, system 静态开头, 动态内容移入 user。
     sys_msg = (
-        f"你是本刊特稿《{title}》的主笔。本刊基调:\n{_voice(data)}\n\n"
-        f"请撰写板块《{section['title']}》。要求: {section['req']}\n\n"
-        f"篇幅要求：板块正文控制在1200–1800字。\n\n"
-        f"{NONFICTION_RULE}\n{WORLD_FRAME_RULE}"
+        "你是本刊特稿的主笔。本刊基调:\n" + _voice(data) + "\n\n"
+        + NONFICTION_RULE + "\n" + WORLD_FRAME_RULE
     )
     if _article_has_flavor(data, article["key"]):
         sys_msg += f"\n{STATE_FLAVOR_RULE}"
@@ -1989,6 +1997,9 @@ def build_section_messages(article, section, data, intro, lead_text,
         # 且罪案开篇普遍较长, 回贴全文会显著膨胀提示词。
         digest = _lead_digest(lead_text, limit=600)
         user_msg = (
+            f"本篇文章标题已定为《{title}》。\n\n"
+            f"请撰写板块《{section['title']}》。要求: {section['req']}\n\n"
+            f"篇幅要求：板块正文控制在1200–1800字。\n\n"
             f"本期杂志导言:\n{intro}\n\n"
             f"{lead_head}{digest}\n\n"
             f"【案件事实卡】（案件事实档案，后续板块必须以此为准，"
@@ -2000,8 +2011,11 @@ def build_section_messages(article, section, data, intro, lead_text,
                 {"role": "user", "content": user_msg}]
     # 非罪案文章 (含货架/铁路/疫情等池文章): 直接回贴开篇全文, 避免摘要截断
     # 切掉主线事实 (商品名/出口去向/价格), 使后续板块与开篇数据一致;
-    # 篇幅要求已在 sys_msg 给出, 模型不会照抄开篇长度。
+    # 篇幅要求已在 user_msg 给出, 模型不会照抄开篇长度。
     user_msg = (
+        f"本篇文章标题已定为《{title}》。\n\n"
+        f"请撰写板块《{section['title']}》。要求: {section['req']}\n\n"
+        f"篇幅要求：板块正文控制在1200–1800字。\n\n"
         f"本期杂志导言:\n{intro}\n\n"
         f"{lead_head}{lead_text}\n\n"
         f"请撰写后续板块《{section['title']}》, 须与开篇呼应。相关数据:\n"

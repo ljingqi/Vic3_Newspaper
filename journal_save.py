@@ -798,6 +798,11 @@ _NEED_KEYS = (
 _ENGEL_NEED_INDEXES = (2, 3, 0)
 # SoL 档位 → 该档位已消费的需求条目数 (近似, 只用于把奢侈品挡在穷人画像外)
 _NEEDS_BY_SOL = ((10, 4), (20, 8), (999, 15))
+# 消费篮子条目上限/权重下限随 SoL 分档 (2026-08-27, 问题7):
+# 低 SoL 只列主食+基本生活必需 (6 项), 温饱/小康 8 项, 富裕才放开奢侈/服务 (10 项);
+# 权重下限同步提高, 把零星商品 (低 SoL 的电力/服务等) 挡在穷人画像外。
+_BASKET_CAP_BY_SOL = ((8, 6), (14, 8), (999, 10))
+_BASKET_MINW_BY_SOL = ((8, 0.08), (14, 0.06), (999, 0.04))
 # hub 名顺序: 存档 naming_data.localized_hub_names 固定为 city/port/farm/mine/wood
 HUB_ORDER = ("city", "port", "farm", "mine", "wood")
 
@@ -1403,19 +1408,34 @@ def _consumption_profile(pop_needs_entry, sol, top=None):
     恩格尔系数按 基础食品+加热供暖+简朴衣物 的权重占比估算。
     top 覆盖 config 的 interview_consumption_goods_max (默认 10);
     权重低于 interview_consumption_goods_min_weight (默认 0.05) 的零星商品
-    (如低 SoL 人群的电力/服务) 直接剔除, 不展示。"""
+    (如低 SoL 人群的电力/服务) 直接剔除, 不展示。
+    2026-08-27 (问题7): top/min_weight 随 SoL 分档 (低 SoL 只列主食+生活必需,
+    高 SoL 才放开奢侈/服务), 避免穷人家报出十项消费篮子的「统计局」感;
+    显式传入 top 时以传参为准 (调用方覆盖)。"""
     gm = build_goods_map()
     order, zh = gm["order"], gm["zh"]
     try:
         _cfg = _journal.load_config()
         if top is None:
-            top = _cfg.get("interview_consumption_goods_max")
-            if top is None or top == "":
-                top = 10
-            else:
-                top = int(top)
-        min_weight = float(_cfg.get("interview_consumption_goods_min_weight")
-                           or 0.05)
+            # SoL 分档条目上限 (绝对上限仍受 interview_consumption_goods_max 约束)
+            top = 10
+            sol_v = sol if isinstance(sol, (int, float)) else None
+            for sol_th, n in _BASKET_CAP_BY_SOL:
+                if sol_v is None or sol_v < sol_th:
+                    top = n
+                    break
+            cfg_max = _cfg.get("interview_consumption_goods_max")
+            if cfg_max not in (None, ""):
+                top = min(top, int(cfg_max))
+        min_weight = 0.05
+        sol_v = sol if isinstance(sol, (int, float)) else None
+        for sol_th, w in _BASKET_MINW_BY_SOL:
+            if sol_v is None or sol_v < sol_th:
+                min_weight = w
+                break
+        cfg_minw = _cfg.get("interview_consumption_goods_min_weight")
+        if cfg_minw not in (None, ""):
+            min_weight = max(min_weight, float(cfg_minw))
     except Exception:
         top = 10
         min_weight = 0.05
@@ -2514,9 +2534,10 @@ def _localize_character_name(first, last, loc, culture_key=None):
 
 def surname_from_name(name, culture_key=None, raw_last=None):
     """从中文姓名中提取姓 (供「子女随受访大臣姓」等场景使用)。
-    优先用原版拉丁姓 (未被子名表覆盖的文化) 本地化, 可正确保留复姓
-    (如伊藤博文→伊藤); 取不到中文时回退到展示名拆分:
-    姓前文化取开头段/首字 (汉字连写无分隔符视为姓前), 名前文化取「·」后的末段。
+    提取顺序: ① raw_last (原版拉丁姓, 未被子名表覆盖的文化) 本地化 → 中文姓,
+    可正确保留复姓 (如伊藤博文→伊藤); ② 该文化中文姓池最长前缀 (如 佐藤保美→
+    佐藤、李伟→李), 修复「汉字连写取首字」误伤复姓的 Bug (佐藤保美→佐);
+    ③ 回退: 姓前文化取开头段/首字, 名前文化取「·」后的末段。
     无姓可提取返回 None (调用方维持不固定姓的原行为)。"""
     if not name:
         return None
@@ -2528,6 +2549,20 @@ def surname_from_name(name, culture_key=None, raw_last=None):
             zh_last = None
         if zh_last and _is_cjk_text(zh_last):
             return zh_last
+    # ② 姓池最长前缀 (覆盖汉字直接入池的文化, 含 CK3 重建后的东亚姓池):
+    #    取 name 前缀中最长的姓 (佐藤保美→佐藤), 避免「取首字」误伤复姓。
+    if culture_key:
+        try:
+            data = build_culture_names().get(culture_key)
+        except Exception:
+            data = None
+        if data:
+            best = ""
+            for cand in (data.get("last") or []):
+                if name.startswith(cand) and len(cand) > len(best):
+                    best = cand
+            if best:
+                return best
     if culture_key in _SURNAME_FIRST_CULTURES or (
             _is_cjk_text(name) and "·" not in name):
         head = name.split("·")[0]
@@ -6015,6 +6050,7 @@ def _pool_consumption_basket_lines(snap, ctx, pop_obj, unit, seed_key,
                 pop_obj.get("dependents")),
             "consumption_goods": prof.get("goods") or [],
             "engel_coefficient": prof.get("engel"),
+            "sol": pop_obj.get("previous_quality_of_life"),
             "wife_works": snap.get("women_law") in (
                 "law_women_in_the_workplace", "law_womens_suffrage"),
             "children_count": _family_children_count(random.Random(
@@ -8225,12 +8261,70 @@ _CJK_SURNAME_OVERRIDES = {
     "miao": _CJK_COMMON_SURNAMES,
 }
 
+# ---------------------------------------------------------------------------
+# CK3 东亚姓名表覆盖 (2026-08-27): Vic3 原版东亚人名池多为历史人物
+# (德川庆喜、佐藤保美…), 改用 CK3 name_lists 重建的东亚表。
+# 表由 tools/build_ck3_ea_names.py 一次性生成到 data/ck3_ea_names.json
+# (池内为中文名/姓, 姓前名后), 运行时只读项目内 JSON, 不再读取 CK3 目录。
+# 映射: japanese→yamato, korean→korean, vietnamese→vietnamese,
+#       ainu→ainu, ryukyuan→ryukyuan, han 系→han (config 开关可选启用)。
+# ---------------------------------------------------------------------------
+_CK3_EA = None
+
+
+def _ck3_ea_enabled():
+    try:
+        return bool(_journal.load_config().get("ck3_ea_names_enabled", True))
+    except Exception:
+        return True
+
+
+def _ck3_ea_han_enabled():
+    try:
+        return bool(_journal.load_config().get("ck3_ea_han_enabled", False))
+    except Exception:
+        return False
+
+
+def _load_ck3_ea_names():
+    """项目内 CK3 东亚姓名表 (data/ck3_ea_names.json) → {list_name: {male, female, last}};
+    文件缺失/损坏返回空 dict (调用方维持原池)。"""
+    global _CK3_EA
+    if _CK3_EA is not None:
+        return _CK3_EA
+    out = {}
+    try:
+        path = os.path.join(SCRIPT_DIR, "data", "ck3_ea_names.json")
+        with open(path, encoding="utf-8") as fp:
+            out = (json.load(fp).get("lists") or {})
+    except Exception:
+        out = {}
+    _CK3_EA = out
+    return out
+
+
+def _ck3_ea_override_for(key):
+    """Vic3 文化键 → CK3 表覆盖 {male, female, last} 或 None。
+    japanese/korean/vietnamese/ainu/ryukyuan 默认启用; han 系默认保留手工表,
+    由 config ck3_ea_han_enabled 开启 CK3 han。"""
+    ck3 = _load_ck3_ea_names()
+    if not ck3 or not _ck3_ea_enabled():
+        return None
+    _H = ("han", "yue", "min", "zhuang", "hakka", "manchu", "yi", "miao")
+    if key in ("japanese", "korean", "vietnamese", "ainu", "ryukyuan"):
+        lst = "yamato" if key == "japanese" else key
+        return ck3.get(lst)
+    if key in _H and _ck3_ea_han_enabled():
+        return ck3.get("han")
+    return None
+
 
 def build_culture_names():
     """culture key → {first: [合并名池], male: [男名池], female: [女名池], last: [姓池]}。
     解析 game/common/cultures/*.txt 中每个文化内联的
     male/female_common_first_names 与 common/noble_last_names (一次性缓存)。
     token 保留原始下划线/连字符形式 (如 Hari_Singh、Ch_ok), 供本地化整词查表;
+    东亚文化 (日/韩/越/阿伊努/琉球, han 系可选) 用项目内 CK3 姓名表覆盖 (见上);
     解析失败返回空 dict (调用方不命名)。"""
     global _CULTURE_NAMES
     if _CULTURE_NAMES is not None:
@@ -8265,6 +8359,11 @@ def build_culture_names():
                     ov = _CJK_GIVEN_OVERRIDES[key]
                     male_first = list(dict.fromkeys(ov["male"]))
                     female_first = list(dict.fromkeys(ov["female"]))
+                # CK3 东亚姓名表覆盖 (日/韩/越/阿伊努/琉球默认, han 系可选)
+                ck3_ov = _ck3_ea_override_for(key)
+                if ck3_ov:
+                    male_first = list(dict.fromkeys(ck3_ov["male"]))
+                    female_first = list(dict.fromkeys(ck3_ov["female"]))
                 # 合并池保持 男→女 的原文顺序, 未指定性别时行为与旧版完全一致
                 first = list(dict.fromkeys(male_first + female_first))
                 last = []
@@ -8275,6 +8374,8 @@ def build_culture_names():
                              if re.fullmatch(r"[A-Za-z][A-Za-z'\-_]*", t)]
                 if key in _CJK_SURNAME_OVERRIDES:
                     last = list(dict.fromkeys(_CJK_SURNAME_OVERRIDES[key]))
+                if ck3_ov:
+                    last = list(dict.fromkeys(ck3_ov["last"]))
                 first = list(dict.fromkeys(first))
                 last = list(dict.fromkeys(last))
                 if first and last:
@@ -8290,17 +8391,14 @@ def build_culture_names():
     return out
 
 
-def _crime_make_name(culture_key, rnd, gender=None, fixed_last=None):
-    """按文化随机组合 姓+名 → (拉丁原名, 中译名); 姓前/名前由文化键值判定;
-    gender 为 "male"/"female" 时从对应名池取, None 用合并池 (现行为);
-    fixed_last 给定时固定使用该姓 (不再从姓池随机), 用于「子女随父姓」等场景;
-    无该文化姓名数据返回 (None, None)。拉丁名仅用于内部身份/唯一性判断,
-    对外一律用中译名 (经 names_l 本地化查表)。"""
+def _crime_make_name_full(culture_key, rnd, gender=None, fixed_last=None):
+    """同 _crime_make_name, 额外返回原始名/姓 token (供姓氏提取与唯一性判定)。
+    返回 (latin, zh, first_raw, last_raw); 无该文化姓名数据返回 (None, None, None, None)。"""
     if not culture_key:
-        return None, None
+        return None, None, None, None
     data = build_culture_names().get(culture_key)
     if not data:
-        return None, None
+        return None, None, None, None
     if gender in ("male", "female"):
         first = rnd.choice(data.get(gender) or data["first"])
     else:
@@ -8313,7 +8411,18 @@ def _crime_make_name(culture_key, rnd, gender=None, fixed_last=None):
     # 展示用拉丁名把下划线还原为空格 (如 Ch_ok→Ch ok)
     latin = " ".join(p.replace("_", " ") for p in latin.split())
     zh = _localize_character_name(first, last, _load_loc_all(), culture_key)
-    return latin, (zh or None)
+    return latin, (zh or None), first, last
+
+
+def _crime_make_name(culture_key, rnd, gender=None, fixed_last=None):
+    """按文化随机组合 姓+名 → (拉丁原名, 中译名); 姓前/名前由文化键值判定;
+    gender 为 "male"/"female" 时从对应名池取, None 用合并池 (现行为);
+    fixed_last 给定时固定使用该姓 (不再从姓池随机), 用于「子女随父姓」等场景;
+    无该文化姓名数据返回 (None, None)。拉丁名仅用于内部身份/唯一性判断,
+    对外一律用中译名 (经 names_l 本地化查表)。"""
+    latin, zh, _f, _l = _crime_make_name_full(
+        culture_key, rnd, gender=gender, fixed_last=fixed_last)
+    return latin, zh
 
 
 def _crime_role_names(case, rnd, female_pct=None):
@@ -8357,6 +8466,24 @@ def _crime_role_names(case, rnd, female_pct=None):
     return names
 
 
+def culture_person_name_full(culture_key, seed=None, gender=None, female_pct=None,
+                             fixed_last=None):
+    """按文化生成一个确定性中文人名, 并返回原始名/姓 token。
+    返回 (zh, latin, first_raw, last_raw) 或 None (无姓名池/查不到译名时)。
+    供需要回传拉丁姓的场景 (家庭受访名单子女随父姓) 使用;
+    seed/gender/female_pct/fixed_last 语义同 culture_person_name。"""
+    if not culture_key:
+        return None
+    rnd = random.Random(seed) if seed is not None else random.Random()
+    if gender is None and female_pct is not None:
+        gender = "female" if rnd.random() < female_pct else "male"
+    latin, zh, first_raw, last_raw = _crime_make_name_full(
+        culture_key, rnd, gender=gender, fixed_last=fixed_last)
+    if not zh:
+        return None
+    return zh, latin, first_raw, last_raw
+
+
 def culture_person_name(culture_key, seed=None, gender=None, female_pct=None,
                         fixed_last=None):
     """按文化生成一个确定性中文人名 (经 names_l 本地化查表)。
@@ -8365,14 +8492,9 @@ def culture_person_name(culture_key, seed=None, gender=None, female_pct=None,
     取名 (同一 seed 结果稳定); 两者皆无时维持合并池现行为。
     fixed_last 固定姓 (如子女沿用受访大臣之姓); 无该文化姓名池或查不到译名时
     返回 None (调用方不得自行命名)。"""
-    if not culture_key:
-        return None
-    rnd = random.Random(seed) if seed is not None else random.Random()
-    if gender is None and female_pct is not None:
-        gender = "female" if rnd.random() < female_pct else "male"
-    _latin, zh = _crime_make_name(culture_key, rnd, gender=gender,
-                                  fixed_last=fixed_last)
-    return zh or None
+    res = culture_person_name_full(culture_key, seed=seed, gender=gender,
+                                   female_pct=female_pct, fixed_last=fixed_last)
+    return res[0] if res else None
 
 
 def person_names(seed, roles, female_pct=None, genders=None, fixed_last=None):
@@ -13444,10 +13566,11 @@ def _goods_measure(key):
 
 
 def _fmt_qty(x, dec):
-    """数量格式: dec=0 取整 (四舍五入, 非银行家舍入), 否则保留 dec 位小数。"""
+    """数量格式: dec=0 取整 (四舍六入五成双, 银行家舍入, 与 journal 同规则),
+    否则保留 dec 位小数。"""
     if dec > 0:
         return f"{x:.{dec}f}"
-    return f"{int(x + 0.5)}"
+    return str(int(round(x)))
 
 
 # 公制量纲自动升格: 显示数值过大时把基本量词升级为更大的公制单位

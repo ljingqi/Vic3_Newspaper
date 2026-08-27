@@ -219,6 +219,9 @@ DEFAULT_CONFIG = {
     # 消费画像商品权重下限: 低于该值的零星商品 (如低 SoL 人群的电力/服务)
     # 直接剔除不展示, 避免「约每数十年1单位」式不可读读数。
     "interview_consumption_goods_min_weight": 0.05,
+    # 非主食商品数量随 SoL 阻尼 (2026-08-27, 问题7): 低 SoL 家庭收入大头在
+    # 食物, 非主食按 金额÷市价 换算常虚高 (如织物每月12米); 开关关闭则恒 1.0。
+    "interview_sol_qty_damp": True,
     # 富户重排 (2026): 人均月商品支出 (游戏镑) 超过 interview_rich_worker_goods_th
     # 视为高收入家庭。其消费篮子按「基础商品压回普通家庭量级 + 超额流向奢侈
     # 商品与服务」重排, 避免资本家画像出现「衣物每月约898件」式离谱读数。
@@ -229,6 +232,13 @@ DEFAULT_CONFIG = {
     "interview_rich_worker_goods_th": 2.0,
     "interview_rich_basic_cap": 0.8,
     "interview_rich_luxury_cap": 2.5,
+    # 东亚人名库 (2026-08-27): 用 CK3 姓名表重建的 data/ck3_ea_names.json
+    # 覆盖 Vic3 原版东亚人名池 (后者多为历史人物, 如德川庆喜/佐藤保美)。
+    # ck3_ea_names_enabled: 日/韩/越/阿伊努/琉球默认启用;
+    # ck3_ea_han_enabled: han 系 (han/yue/min/zhuang/hakka/manchu/yi/miao)
+    # 默认保留手工中文名表 (1830s 语境), 需要 CK3 han 表时置 True。
+    "ck3_ea_names_enabled": True,
+    "ck3_ea_han_enabled": False,
     # watch 自动管线: 报纸与杂志并行生成 (同一快照, 不重复熔化解析)
     "parallel_generation_enabled": True,
     # 是否把每次发给模型的 messages 原文写入 logs/prompts.log (调试用)
@@ -1607,6 +1617,13 @@ def render_overview(data, history=None):
         L.append(pf)
     return "\n".join(L)
 
+def _has_war_report(data, history=None):
+    """战事专电是否有可报道内容: 去年有战争记录 (本国/列强参战, 见
+    _merged_last_year_wars) 才下发战事板块; 无战事 (和平) 时直接跳过该板块,
+    避免「(去年无相关战事记录)+请撰写该板块正文」式空指令被模型回显。"""
+    return bool(_merged_last_year_wars(data, history))
+
+
 def render_war(data, history=None):
     L = []
     # 只传去年发生的战争: 玩家参战或列强参战, 仅主要参加者; 不含当前交战状态
@@ -2651,9 +2668,12 @@ def _newspaper_person_name(data, role, culture_key):
 
 def _family_roster(data, fi, role):
     """受访家庭名单: 受访人 + 配偶 + 子女 (子女随受访人同姓)。
-    性别与姓名全部确定性播种 (同年稳定); 无姓名池时返回 None。"""
+    性别与姓名全部确定性播种 (同年稳定); 无姓名池时返回 None。
+    2026-08-27: 改用 culture_person_name_full 回传拉丁姓, 子女/配偶固定姓用
+    拉丁姓 token (如 SatO_), 修复 surname_from_name 汉字连写取首字把
+    「佐藤」截成「佐」的 Bug。"""
     try:
-        from journal_save import (culture_person_name, surname_from_name,
+        from journal_save import (culture_person_name_full, surname_from_name,
                                   women_law_female_pct, spouse_surname_policy)
     except Exception:
         return None
@@ -2666,35 +2686,40 @@ def _family_roster(data, fi, role):
         gender = "female" if random.Random(seed).random() < pct else "male"
     else:
         gender = None
-    nm = culture_person_name(ck, seed=seed, gender=gender)
-    if not nm:
+    head = culture_person_name_full(ck, seed=seed, gender=gender)
+    if not head:
         return None
+    nm, _latin, _first, raw_last = head
     used = {nm}
-    surname = surname_from_name(nm, ck)
+    surname = surname_from_name(nm, ck, raw_last=raw_last)
+    # 子女/配偶沿用同一拉丁姓 (随夫姓文化); 拉丁姓缺失时回退中文姓
+    surname_raw = raw_last or surname
     spouse_gender = "male" if gender == "female" else "female"
     policy = spouse_surname_policy(ck)
     spouse = None
     if policy == "double" and surname:
         # 双姓: 妻保留本姓, 再加夫姓 (名·妻姓·夫姓)
         for k in range(20):
-            own = culture_person_name(ck, seed=f"{seed}|spouse|own|{k}",
-                                      gender=spouse_gender, fixed_last=None)
-            if not own or own in used:
+            own = culture_person_name_full(ck, seed=f"{seed}|spouse|own|{k}",
+                                           gender=spouse_gender, fixed_last=None)
+            if not own or own[0] in used:
                 continue
-            maiden = surname_from_name(own, ck)
-            if maiden and own.endswith(maiden):
-                given = own[: -len(maiden)].rstrip("·")
+            own_zh, _ol, _of, own_raw = own
+            maiden = surname_from_name(own_zh, ck, raw_last=own_raw)
+            if maiden and own_zh.endswith(maiden):
+                given = own_zh[: -len(maiden)].rstrip("·")
                 spouse = f"{given}·{maiden}·{surname}"
             else:
-                spouse = own
+                spouse = own_zh
             if spouse:
                 break
     else:
         for k in range(20):
-            spouse = culture_person_name(
+            sp = culture_person_name_full(
                 ck, seed=f"{seed}|spouse|{k}", gender=spouse_gender,
-                fixed_last=(None if policy == "own" else surname))
-            if spouse and spouse not in used:
+                fixed_last=(None if policy == "own" else surname_raw))
+            if sp and sp[0] not in used:
+                spouse = sp[0]
                 break
     if spouse:
         used.add(spouse)
@@ -2707,9 +2732,10 @@ def _family_roster(data, fi, role):
         g = "female" if random.Random(cs).random() < 0.5 else "male"
         cnm = None
         for k in range(20):
-            cnm = culture_person_name(ck, seed=f"{cs}|{g}|{k}", gender=g,
-                                      fixed_last=surname)
-            if cnm and cnm not in used:
+            ch = culture_person_name_full(ck, seed=f"{cs}|{g}|{k}", gender=g,
+                                          fixed_last=surname_raw)
+            if ch and ch[0] not in used:
+                cnm = ch[0]
                 break
         if not cnm or cnm in used:
             continue
@@ -2928,6 +2954,28 @@ def _is_rich_basic_good(key):
     return any(m in need for m in _RICH_BASIC_NEED_MARKERS)
 
 
+def _sol_qty_damp(profile, cfg=None):
+    """非主食数量随 SoL 阻尼系数 (2026-08-27, 问题7): 低 SoL 家庭收入大头在
+    食物, 非主食按 金额÷市价 换算常虚高; SoL≤4 → 0.55, SoL≥14 → 1.0,
+    线性插值; 数据缺失/开关关闭 (config interview_sol_qty_damp=false) 返回 1.0。
+    主食数量走热量锚定, 不经本系数。"""
+    if cfg is None:
+        try:
+            cfg = load_config()
+        except Exception:
+            cfg = {}
+    if not cfg.get("interview_sol_qty_damp", True):
+        return 1.0
+    sol = profile.get("sol")
+    if not isinstance(sol, (int, float)):
+        return 1.0
+    if sol <= 4:
+        return 0.55
+    if sol >= 14:
+        return 1.0
+    return 0.55 + (sol - 4) * (1.0 - 0.55) / 10.0
+
+
 # 主食热量锚定 (2026, WHO/FAO 能量需求基准): 访谈板块中「基本食物」类商品
 # 的数量不再由游戏金额÷基准价换算 (结果过小, 六口之家谷物仅0.5千克/月),
 # 改按家庭每日热量需求推算。_STAPLE_KCAL_SHARE 为各主食商品在家庭热量中的
@@ -2974,24 +3022,27 @@ def _consumption_goods_name(nm):
     return _KEROSENE_NAME_RE.sub("煤油", nm)
 
 
-def _fmt_month_qty(name, q, unit, dec, lumpy=False):
-    """月度数量自然语言: ≥1 取整/按 dec 保小数; 0.1~1 保 1 位;
-    <0.1 聚合为「约每N个月1/约每N年1单位」;
-    耐用品 (lumpy=True, 按件/辆购置的衣物、家具、汽车等) 在每月不足 1 件时
-    同样聚合为「约每N个月1件/1辆」, 避免「每月约0.3件」式别扭读数
-    (每月 0.5~1 件保留小数, 避免「约每1个月1件」式更别扭读数)。"""
-    if q >= 100:
-        return f"{name}每月约{int(q + 0.5)}{unit}"
+def _banker_int(x):
+    """四舍六入五成双: 取整到最近整数, 恰为 .5 时舍入到偶数 (Python round 对
+    float 即银行家舍入: round(0.5)=0、round(1.5)=2、round(2.5)=2、round(3.5)=4)。"""
+    return int(round(x))
+
+
+def _fmt_month_qty(name, q, unit):
+    """月度数量自然语言 (2026-08-27 改): 一律四舍六入五成双取整, 能整数就整数
+    (0.9→每月约1件、1.0→每月约1件、59.4→每月约59千克), 不再报小数;
+    每月不足 0.5 单位时聚合为「约每N个月1单位」/「约每N年1单位」,
+    避免「每月约0.3件」式别扭读数。"""
     if q >= 1:
-        s = f"{q:.{dec}f}" if dec else f"{int(q + 0.5)}"
-        return f"{name}每月约{s}{unit}"
-    if q >= 0.5 and lumpy:
-        # 每月半件/半辆以上: 保留小数读数比「约每1个月1件」自然
-        return f"{name}每月约{q:.1f}{unit}"
-    if q >= 0.1 and not lumpy:
-        return f"{name}每月约{q:.1f}{unit}"
+        return f"{name}每月约{_banker_int(q)}{unit}"
+    if q >= 0.5:
+        n = _banker_int(q)          # 0.5 成双→0, 0.6~0.99→1
+        if n >= 1:
+            return f"{name}每月约{n}{unit}"
+        n = max(1, round(1.0 / q))  # 0.5 → 约每2个月1件
+        return f"{name}约每{n}个月1{unit}"
     if q > 0:
-        n = max(1, round(1 / q))
+        n = max(1, round(1.0 / q))
         if n >= 24:
             return f"{name}约每{max(1, round(n / 12))}年1{unit}"
         return f"{name}约每{n}个月1{unit}"
@@ -3038,6 +3089,38 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
     wsum = sum((w or 0) for _k, _n, w, _d in items)
     if wsum <= 0:
         return []
+    # 问题7 (2026-08-27): 渲染侧同样按 SoL 分档裁剪条目 (与 journal_save
+    # _consumption_profile 同表), 使旧快照数据也生效: 低 SoL 只列主食+生活必需。
+    # 规则: 主食(热量锚定, 数量已现实)全部保留, 非主食按权重降序填满 cap;
+    # 权重低于该档下限的零星商品剔除。
+    sol_v = profile.get("sol")
+    if isinstance(sol_v, (int, float)):
+        try:
+            from journal_save import _BASKET_CAP_BY_SOL, _BASKET_MINW_BY_SOL
+        except Exception:
+            _BASKET_CAP_BY_SOL = _BASKET_MINW_BY_SOL = ()
+        cap = 10
+        for sol_th, n in _BASKET_CAP_BY_SOL:
+            if sol_v < sol_th:
+                cap = n
+                break
+        minw = 0.05
+        for sol_th, w in _BASKET_MINW_BY_SOL:
+            if sol_v < sol_th:
+                minw = w
+                break
+        staples = [it for it in items if _is_staple_kcal_good(it[0])]
+        non_staples = [it for it in items if not _is_staple_kcal_good(it[0])]
+        non_staples = [it for it in sorted(non_staples,
+                                           key=lambda x: -(x[2] or 0))
+                       if (it[2] or 0) >= minw]
+        if len(staples) >= cap:
+            items = sorted(staples, key=lambda x: -(x[2] or 0))[:cap]
+        else:
+            items = staples + non_staples[:cap - len(staples)]
+        wsum = sum((w or 0) for _k, _n, w, _d in items)
+        if wsum <= 0:
+            return []
     # 富户判定与重排参数 (游戏镑/月): 人均月商品支出超阈值视为富户;
     # 富户家庭月商品金额封顶 (含奢侈), 基础商品另有普通家庭上限。
     try:
@@ -3151,6 +3234,10 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
             # 消费量以价格行为准, 避免「价格按 12.8kg/单位 但数量按 500g/单位」
             # 的两套读数打架)。per 已按史实单价重标定, qty_scale 归 1。
             q = mi / price * ppu * qty_scale
+            # 非主食数量随 SoL 阻尼 (2026-08-27, 问题7): 低 SoL 家庭收入大头在
+            # 食物, 非主食按 金额÷市价 换算常虚高 (德川劳工织物12米/月≈144米/年);
+            # SoL≤4 → ×0.55, SoL≥14 → ×1.0, 线性插值; 主食(热量锚定)不参与。
+            q = q * _sol_qty_damp(profile, cfg)
             if food_min > 0 and unit_ in ("千克", "升"):
                 need = _goods_need(key)
                 if need and any(k in need for k in ("食物", "刺激", "嗜好")):
@@ -3164,10 +3251,9 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         # 其金额已在金额行给出; 避免「约每数十年1单位」式不可读读数。
         if q <= 0 or 1.0 / q >= 120:
             continue
-        # 耐用品 (件/辆) 每月不足 1 件时聚合为「约每N个月1件/1辆」;
+        # 耐用品/稀疏商品一律按四舍六入五成双取整 (见 _fmt_month_qty);
         # 油→煤油
-        qbits.append(_fmt_month_qty(_consumption_goods_name(nm), q, unit_, dec,
-                                    lumpy=(unit_ in ("件", "辆"))))
+        qbits.append(_fmt_month_qty(_consumption_goods_name(nm), q, unit_))
     if qbits:
         out.append("- 主要消费商品月消费：" + "、".join(qbits) + "。")
     return out
@@ -4082,20 +4168,21 @@ def build_masthead_messages(data, style=DEFAULT_STYLE):
     _reqs.append(f"只输出 Markdown 抬头，格式：\n# 《报名》"
                  f"\n国名：{full}｜都城：{cap_note}｜年份：{year}")
     _numbered = "\n".join(f"{i}. {r}" for i, r in enumerate(_reqs, 1))
+    # 缓存友好 (2026-08-27): system 只含静态文风与取报名指引 (动态变量移入 user),
+    # 同风格下 system 前缀跨年一致, 可命中上下文缓存。
     sys_msg = (
-        f"你是这份{st['name']}报纸的总编辑。本期报纸的关键变量如下，抬头中的国名必须**原样保留**正式国名：\n"
-        f"【国名】{country}（合并政体后的正式国名：{full}）\n"
-        f"【都城】{cap_note}\n"
-        f"【政体】{govt_zh}\n"
-        f"【年份】{year}\n\n"
+        f"你是这份{st['name']}报纸的总编辑。\n\n"
         f"{st['masthead']}\n\n"
         f"请据此取报名并撰写抬头。要求：\n{_numbered}"
     )
     _user_cap = ("都城数据缺失，请根据国名常识选用该国广为人知的都城名"
                  if cap_fallback else "")
     user_msg = (
-        f"本期报纸：【国名】={country}（正式国名 {full}），【都城】={cap_note}，"
-        f"【政体】={govt_zh}，【年份】={year}。"
+        f"本期报纸的关键变量：\n"
+        f"【国名】{country}（合并政体后的正式国名：{full}）\n"
+        f"【都城】{cap_note}\n"
+        f"【政体】{govt_zh}\n"
+        f"【年份】{year}\n\n"
         f"请据此撰写抬头（抬头中的国名须按正式国名「{full}」一字不改写入"
         + (f"；{_user_cap}" if _user_cap else "")
         + "）。"
@@ -4113,6 +4200,7 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     title = st["section_titles"].get(key, spec[1])
     country = data.get("player", "未知")
     capital = data.get("capital", "未知")
+    year = data.get("year", "?")
     unit = data.get("currency") or "英镑"
     req = spec[2]
     if key == "peer":
@@ -4155,6 +4243,9 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
         else:
             req += ("本期统治者活动数据缺失：头衔按政体与国名常识选用，"
                     "在给定国名与数字范围内合理演绎统治者行踪。")
+    # 缓存友好 (2026-08-27): system 只含静态规则 (文风+数据解读+数字格式+货币),
+    # 同一风格+币种下逐字节一致, 整段可命中上下文缓存; 运行级动态内容
+    # (国名/都城/年份/抬头) 与板块级内容 (标题/要求/数据) 全部移入 user。
     parts = [st["voice"], FACT_GUIDE]
     num_guide = st.get("number_guide")
     if num_guide:
@@ -4164,11 +4255,15 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     if key in _MONEY_SECTIONS:
         parts.append(f"货币规则：金额一律按资料币种的主辅币书写（{currency_system_text(unit)}）；"
                      "金额以资料给出者为限。")
-    parts.append(f"本期报纸：【国名】={country}，【都城】={capital}。抬头如下，行文须与之呼应：\n{masthead}\n\n"
-                 f"请撰写「{title}」板块。要求：{req}")
     sys_msg = "\n\n".join(parts)
     facts = render_section_facts(key, data, history, style=style)
-    user_msg = f"以下是本期报纸关于「{title}」板块的相关数据（涉及国名、都城请用上述变量）：\n{facts}\n\n请撰写该板块正文。"
+    user_msg = (
+        f"本期报纸：【国名】={country}，【都城】={capital}，【年份】={year}。"
+        f"抬头如下，行文须与之呼应：\n{masthead}\n\n"
+        f"请撰写「{title}」板块。要求：{req}\n\n"
+        f"以下是本期报纸关于「{title}」板块的相关数据（涉及国名、都城请用上述变量）：\n"
+        f"{facts}\n\n请撰写该板块正文。"
+    )
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
 _MASTHEAD_ECHO_RE = re.compile(r"^#\s*《.+》\s*$")
@@ -4196,9 +4291,11 @@ def _bold_echo_heading(line, title):
 
 # 数字与汉字之间的空格清理: 模型输出常见「第 3 街」「约 25.8%」「第 18 个年头」,
 # 按现代汉语规范去除 (汉字与阿拉伯数字之间不空格)。杂志经 journal 复用同一实现。
+# 只清空格/Tab, 不跨行: 用 [ \t]+ 而非 \s+, 防止把「年份：1836\n\n请撰写…」的
+# 换行也吞掉 (2026-08-27 修复: 曾用 \s+ 导致提示词缺 \n)。
 _NUM_CJK_SPACE_RES = (
-    re.compile(r"(?<=[\u4e00-\u9fff])\s+(?=\d)"),   # 汉字 空格 数字
-    re.compile(r"(?<=\d)\s+(?=[\u4e00-\u9fff])"),   # 数字 空格 汉字
+    re.compile(r"(?<=[\u4e00-\u9fff])[ \t]+(?=\d)"),   # 汉字 空格 数字
+    re.compile(r"(?<=\d)[ \t]+(?=[\u4e00-\u9fff])"),   # 数字 空格 汉字
 )
 
 
@@ -4310,7 +4407,8 @@ def generate_newspaper(data, cfg, history=None):
     sections = [(k, st["section_titles"].get(k, t)) for k, t, _d in SECTION_DEFS
                 if not (k == "unemployed" and not data.get("unemployed_interview"))
                 and not (k == "stock" and not data.get("stock_market"))
-                and not (k == "epidemic" and not (data.get("epidemic") or {}).get("active"))]
+                and not (k == "epidemic" and not (data.get("epidemic") or {}).get("active"))
+                and not (k == "war" and not _has_war_report(data, history))]
     # 各板块彼此独立, 并发请求 (DeepSeek 并发充足时大幅提速)
     with ThreadPoolExecutor(max_workers=len(SECTION_DEFS)) as ex:
         futures = [ex.submit(_gen_section, key, title)
