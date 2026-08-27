@@ -3098,6 +3098,10 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
     # 收入」 (股息率按阶级取 中产6%/上等9%, 19 世纪地方企业合理区间), 供
     # 报纸访谈账本行与投资行情联动 (journal.investment_outcome_lines) 使用。
     social_class = _pool_pop_class(pop)
+    # 方案D2 (2026-08-27): 下层阶级无论游戏数据如何一律不显示分红/投资收入
+    # (穷 pop 没有钱投资); 中上阶级保留真实或合成的分红/投资收入 (无科技门槛)。
+    if social_class == "lower_class":
+        budget_rates["dividends"] = 0.0
     synthetic_dividend_yield = None
     if social_class in ("middle_class", "upper_class") and budget_rates["dividends"] <= 0:
         inc_rate = sum(v for k, v in budget_rates.items()
@@ -6102,7 +6106,7 @@ def _pool_investment_lines(snap, st_zh, pop_obj, seed_key):
     合成一份分红/投资收入 (与家庭采访 _family_from_pop 同口径: 中产8%/上等
     15%, 股息率 中产6%/上等9%)。条件不满足返回空列表。"""
     unit = snap.get("currency") or currency_unit(
-        tag=snap.get("player_tag"), player_name=snap.get("player"))
+        tag=snap.get("player_tag"))
     dividends = _pop_dividend_rate(pop_obj)
     yield_pct = None
     cls = _pool_pop_class(pop_obj)
@@ -6127,11 +6131,28 @@ def _pool_investment_lines(snap, st_zh, pop_obj, seed_key):
         unit=unit, rate=_fx_rate(snap, unit), yield_pct=yield_pct)
 
 
+# 存档 social_class 的 strata_* 格式 → 三阶级 (2026-08-27): 本 mod 存档多数
+# pop 的 social_class 为 strata_* 字符串 (strata_commoners_peasants 等) 而非
+# lower/middle/upper_class, 导致按阶级过滤的人物抽取只命中少数孤例 pop。
+# 按日本身份制语义映射: 百姓/町人→下层/中层, 武士(上·下)→上层, 寺社→中层。
+_STRATA_TO_CLASS = {
+    "strata_commoners_peasants": "lower_class",
+    "strata_commoners_townspeople": "middle_class",
+    "strata_samurai_high": "upper_class",
+    "strata_samurai_low": "upper_class",
+    "strata_religious": "middle_class",
+    "strata_royal": "upper_class",
+}
+
+
 def _pool_pop_class(obj):
-    """存档 social_class 为嵌套 dict ({"social_class": "lower_class"})。"""
+    """存档 social_class 为嵌套 dict ({"social_class": "lower_class"}) 或
+    strata_* 字符串; 归一化为 lower_class/middle_class/upper_class。"""
     v = obj.get("social_class")
     if isinstance(v, dict):
-        return v.get("social_class")
+        v = v.get("social_class")
+    if isinstance(v, str) and v in _STRATA_TO_CLASS:
+        return _STRATA_TO_CLASS[v]
     return v
 
 
@@ -7248,12 +7269,22 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
                                   genders={"餐桌主妇（家庭主妇/劳工）": "female"})
         if _blk:
             household.append(_blk)
-        sobj = ctx.state_object(sid)
+        # 消费画像: pop_needs 一律按「被抽中 pop 实际所在州」取 (2026-08-27 修复:
+        # 旧代码用样本州 sid 按 pop 文化查, 样本州与被抽中 pop 所在州不一致时
+        # (如样本州关东/四国、pop 在虾夷的阿伊努劳工) 查不到 → 画像/恩格尔/
+        # 篮子静默缺失), 样本州无该文化时回退样本州兜底。
+        pop_sid = o.get("location")
+        sobj = ctx.state_object(pop_sid) if pop_sid is not None else None
         pn = (sobj or {}).get("pop_needs") or {}
         entry = None
         prof = None
         if isinstance(pn, dict):
             entry = pn.get(str(o.get("culture"))) or pn.get(o.get("culture"))
+        if not entry and sid != pop_sid:
+            sobj = ctx.state_object(sid)
+            pn = (sobj or {}).get("pop_needs") or {}
+            if isinstance(pn, dict):
+                entry = pn.get(str(o.get("culture"))) or pn.get(o.get("culture"))
         if entry:
             try:
                 prof = _consumption_profile(entry, o.get("previous_quality_of_life"))
@@ -7277,7 +7308,11 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
                 "wife_works": snap.get("women_law") in (
                     "law_women_in_the_workplace", "law_womens_suffrage"),
                 "wealth": o.get("wealth"),
+                "social_class": _pool_pop_class(o),
             }
+            # 方案D2: 下层阶级不显示分红/投资收入
+            if _fi.get("social_class") == "lower_class":
+                _fi["budget_rates"]["dividends"] = 0.0
             _bl = _journal._family_budget_lines(
                 _fi, unit, _fx_rate(snap, unit))
             household.extend(_bl)
@@ -11304,8 +11339,18 @@ def _exchange_rates_data(melted, snap, ctx, country, cid, prev_snap=None,
             lo = base * (1.0 - total_clamp)
             hi = base * (1.0 + total_clamp)
             if isinstance(prev, (int, float)) and prev > 0:
-                lo = max(lo, prev * (1.0 - yoy_clamp))
-                hi = min(hi, prev * (1.0 + yoy_clamp))
+                yoy_lo = prev * (1.0 - yoy_clamp)
+                yoy_hi = prev * (1.0 + yoy_clamp)
+                # 年际钳制优先 (2026-08-27, 方案E1): 贫穷闭关国家 (g/t 双双饱和,
+                # 如日本的两/清国的银两) 因子上限乘积超过总钳制, 总钳制上/下界
+                # 会等于上年汇率把 rate 钉死, 导致 yoy 恒 0.0 的「贬值约0.0%」;
+                # 此时改用年际钳制放开移动, 总钳制仅约束首次定锚。
+                if hi <= prev * (1.0 + 1e-12):
+                    hi = yoy_hi
+                if lo >= prev * (1.0 - 1e-12):
+                    lo = yoy_lo
+                lo = max(lo, yoy_lo)
+                hi = min(hi, yoy_hi)
             rate = max(lo, min(hi, target))
         rates[currency] = {
             "rate": round(rate, 4),
@@ -12963,7 +13008,7 @@ def build_journal_data(snap):
     data["tag"] = snap.get("tag")
     data["player_tag"] = snap.get("player_tag")
     data["currency"] = snap.get("currency") or currency_unit(
-        tag=snap.get("player_tag"), player_name=snap.get("player"))
+        tag=snap.get("player_tag"))
     # 汇率体系: 随 raw_<年>.json 持久化, 供跨年对照表按各年汇率换算
     data["exchange_rates"] = snap.get("exchange_rates") or {}
     data["player_country_id"] = snap.get("player_country_id")
@@ -13083,8 +13128,7 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
     snap["country_id"] = cid
     player_tag = tag or (country or {}).get("definition")
     snap["player_tag"] = player_tag
-    snap["currency"] = currency_unit(tag=player_tag,
-                                     player_name=snap.get("player"))
+    snap["currency"] = currency_unit(tag=player_tag)
     snap["govt_zh"] = gov_to_name(snap.get("govt"))
     snap["capital"] = ctx.capital_name(country)
     # 首都州(区域)键与中文名: 供领袖/统治者「家乡非首都州」判定
@@ -13883,10 +13927,12 @@ def _article_detail(a):
     return None, None
 
 
-def _article_natural(article_type, fname, sname, meta):
+def _article_natural(article_type, fname, sname, meta, f_tag=None, t_tag=None):
     """条款 → 一句自然语言描述 (方向=source→target, 均为中文国名)。
     优先用游戏官方 *_article_short_desc 模板填国名/商品/数量/州/法律;
-    无法识别时兜底为"{from}对{to}实施{条款名}", 保证永不出现"下文略"。"""
+    无法识别时兜底为"{from}对{to}实施{条款名}", 保证永不出现"下文略"。
+    金额类条款 (money_transfer) 的币种一律按付款方国家 TAG 取 (2026-08-27:
+    中文国名不稳定, 合并政体/改名后查不到会静默回退英镑)。"""
     fname = fname or "？"
     sname = sname or "？"
     if article_type == "free_text":
@@ -13906,11 +13952,13 @@ def _article_natural(article_type, fname, sname, meta):
                 tmpl.replace("$concept_strategic_region$", region), fname, sname)
         return f"{fname}同意不在{region}进行殖民"
     if article_type == "money_transfer" and kind == "quantity":
-        # 游戏内实际逻辑: 每周转移固定数额, 币种按付款方国家取
+        # 游戏内实际逻辑: 每周转移固定数额, 币种按付款方国家 TAG 取
+        # (汇率换算由渲染层 render_diplo 按当年汇率完成)
         qty = meta.get("quantity")
         if qty is not None:
-            return (f"{fname}每周向{sname}转移{qty}"
-                    f"{currency_unit(player_name=fname)}")
+            qty_txt = ("%g" % qty) if isinstance(qty, float) else str(qty)
+            return (f"{fname}每周向{sname}转移{qty_txt}"
+                    f"{currency_unit(tag=f_tag)}")
     tmpl_key = ARTICLE_TEMPLATE_KEYS.get(article_type)
     tmpl = _article_templates().get(tmpl_key) if tmpl_key else None
     if tmpl:
@@ -14190,13 +14238,21 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
                    if src and src != 4294967295 else None)
             t_a = (names.get((index.get(tgt) or {}).get("definition"), str(tgt))
                    if tgt and tgt != 4294967295 else None)
+            f_tag = ((index.get(src) or {}).get("definition")
+                     if src and src != 4294967295 else None)
+            t_tag = ((index.get(tgt) or {}).get("definition")
+                     if tgt and tgt != 4294967295 else None)
             articles.append({
+                "article": article_type,
                 "zh": azh,
                 "from": f_a,
                 "to": t_a,
+                "from_tag": f_tag,
+                "to_tag": t_tag,
                 "detail": detail,
                 "meta": meta,
-                "natural": _article_natural(article_type, f_a, t_a, meta),
+                "natural": _article_natural(article_type, f_a, t_a, meta,
+                                            f_tag=f_tag, t_tag=t_tag),
             })
         treaties.append({
             "id": str(tid),

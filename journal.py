@@ -1337,21 +1337,15 @@ SECTION_DEFS = [
     ("family", "民生访谈", "记者在样本州的一处建筑内，采访生活水平最低的人群，"
      "以访谈体写衣食住行、收入支出、受抚养人口与生活水平；须体现该人群政治倾向"
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
-     "以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，融入叙事作风味。"
-     "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
-     "其投资得失，行情数字一律以资料给出者为限。"),
+     "以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，融入叙事作风味。"),
     ("peer", "邻里富户", "与民生访谈同一建筑内生活水平最高的人群（富户），"
      "以同样的访谈体写其衣食住行与收支，并体现该人群政治倾向与参与比例最高的两个政治运动，"
      "与民生访谈形成贫富对照，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "融入叙事作风味。"
-     "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
-     "其投资得失，行情数字一律以资料给出者为限。"),
+     "融入叙事作风味。"),
     ("unemployed", "失业民生", "仅当样本州失业率超过5%时发送：报道该州失业状况，"
      "采访失业人群中人口最多的一群（同访谈体），体现给定失业率，并体现该人群政治倾向"
      "与参与比例最高的两个政治运动，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "融入叙事作风味。"
-     "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情对应写作"
-     "其投资得失，行情数字一律以资料给出者为限。"),
+     "融入叙事作风味。"),
     ("comment", "本报评论", "编辑部评论，结合历年发展对照，评述国运与民生之变迁。"),
     ("ads", "广告与启示", "围绕本期提供的已研发科技创作一两条趣味广告："
      "至少一条须直接体现所选科技，富有时代气息。"),
@@ -1764,6 +1758,18 @@ def render_diplo(data):
                     if note:
                         L.append(f"    · 备注：{note}")
                     continue
+                # 资金转移条款: 金额(游戏镑)按付款方币种与当年汇率换算为主辅币,
+                # 使条约金额与全篇金额口径一致 (动态汇率系统作用于条约)。
+                if a.get("article") == "money_transfer" \
+                        and isinstance(meta.get("quantity"), (int, float)):
+                    qty = meta.get("quantity")
+                    payer_tag = a.get("from_tag")
+                    payer_cur = currency_unit(tag=payer_tag) if payer_tag else unit
+                    conv = format_money(qty, payer_cur, _fx_rate(data, payer_cur))
+                    f_nm = strip_loc_formatting(a.get("from") or "？")
+                    s_nm = strip_loc_formatting(a.get("to") or "？")
+                    L.append(f"    · {f_nm}每周向{s_nm}转移{conv}")
+                    continue
                 nat = a.get("natural")
                 if nat:
                     L.append(f"    · {nat}")
@@ -2168,8 +2174,12 @@ def render_econ(data, history=None):
             line = f"- 汇率：本年度 1 英镑兑 {disp_rate:.2f}{unit}"
             yoy = fx.get("yoy")
             if yoy is not None:
-                word = "升值" if yoy < 0 else "贬值"
-                line += f"（{unit}较上年{word}约{abs(yoy):.1f}%）"
+                if abs(yoy) < 0.05:
+                    # 年际变化不足 0.05% 时不写「贬值约0.0%」式无意义尾注
+                    line += "（与上年基本持平）"
+                else:
+                    word = "升值" if yoy < 0 else "贬值"
+                    line += f"（{unit}较上年{word}约{abs(yoy):.1f}%）"
             L.append(line)
     # 名义/实际GDP 与通胀率 (问题3, v4 2026): 实际GDP 按基准年价格,
     # 通胀率 = 价格指数同比; 纯比率不受金额放大影响
@@ -2788,7 +2798,20 @@ def _family_budget_lines(fi, unit, rate=None):
     welf = _amt("welfare", workers)
     if welf > 1e-9:
         inc_items.append(f"福利救济约{_m(welf)}")
+    # 方案D2 (2026-08-27): 下层阶级无论游戏数据如何一律不显示分红/投资收入
+    # (穷 pop 没有钱投资), 金额同时从收入总额中扣除, 明细与合计保持一致;
+    # 中上阶级保留真实或合成的分红 (无科技门槛)。旧快照缓存在此兜底,
+    # social_class 可能为 strata_* 原始值, 经 _pool_pop_class 归一化判定。
     inv = _amt("dividends", workers)
+    if inv > 1e-9:
+        try:
+            from journal_save import _pool_pop_class
+        except Exception:
+            _pool_pop_class = None
+        sc = (_pool_pop_class({"social_class": fi.get("social_class")})
+              if _pool_pop_class is not None else fi.get("social_class"))
+        if sc == "lower_class":
+            inv = 0.0
     if inv > 1e-9:
         inc_items.append(f"分红/投资约{_m(inv)}")
     sub = _amt("subsistence", workers)
@@ -2981,14 +3004,40 @@ def _sol_qty_damp(profile, cfg=None):
 # 改按家庭每日热量需求推算。_STAPLE_KCAL_SHARE 为各主食商品在家庭热量中的
 # 目标占比 (只对画像中实际出现的千克计量主食商品归一化); 每千克热量取
 # goods_measure.json 的 kcal 字段, 缺失时用 _STAPLE_KCAL_FALLBACK 兜底。
+# 2026-08-27 (方案C): 占比随 SoL 缩放, 贫困家庭向谷物集中、压低水果/加工
+# 食品等奢侈主食, 富家庭才放开 (见 _staple_kcal_share)。
 _STAPLE_KCAL_SHARE = {
     "grain": 0.60, "food": 0.60, "groceries": 0.20,
     "meat": 0.05, "fish": 0.05, "fruit": 0.05, "livestock": 0.05,
+}
+# 方案C 各主食占比随 SoL 的区间 [贫困档, 富裕档] (SoL≤4 取贫困档,
+# SoL≥14 取富裕档, 之间线性插值): 谷物/食品为主食主体, 贫困档占比更高;
+# 水果/加工食品/肉禽在富裕档才放开, 避免贫困家庭出现「水果每月35千克」式
+# 与生活水平不符的奢侈读数。
+_STAPLE_KCAL_SHARE_BY_SOL = {
+    "grain": (0.65, 0.50), "food": (0.65, 0.50), "groceries": (0.10, 0.30),
+    "meat": (0.02, 0.08), "fish": (0.03, 0.06), "fruit": (0.005, 0.06),
+    "livestock": (0.02, 0.08),
 }
 _STAPLE_KCAL_FALLBACK = {
     "grain": 3500, "food": 3000, "groceries": 2500,
     "meat": 2500, "fish": 1200, "fruit": 500, "livestock": 2500,
 }
+
+
+def _staple_kcal_share(key, sol=None):
+    """主食商品热量占比, 随 SoL 缩放 (方案C): 贫困家庭向谷物集中, 水果/
+    加工食品等奢侈主食占比压低, 富家庭才放开; SoL≤4 取贫困档, SoL≥14 取
+    富裕档, 之间线性插值; sol 缺失或该商品无档位时回退固定占比。"""
+    base = _STAPLE_KCAL_SHARE.get(key, 0.0)
+    if base <= 0 or not isinstance(sol, (int, float)):
+        return base
+    span = _STAPLE_KCAL_SHARE_BY_SOL.get(key)
+    if not span:
+        return base
+    t = min(1.0, max(0.0, (sol - 4.0) / 10.0))
+    lo, hi = span
+    return lo + (hi - lo) * t
 
 
 def _staple_kcal_per_kg(key):
@@ -3194,11 +3243,12 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         n_child = int(n_child) if isinstance(n_child, (int, float)) and n_child >= 0 else 2
         hh_kcal_month = (2 * kcal_adult + n_child * kcal_child) * 30.4
         staple_items = [k for k, _n, _w, _d in items if _is_staple_kcal_good(k)]
-        if hh_kcal_month > 0 and any(_STAPLE_KCAL_SHARE.get(k, 0.0) > 0
+        sol_v = profile.get("sol")
+        if hh_kcal_month > 0 and any(_staple_kcal_share(k, sol_v) > 0
                                      for k in staple_items):
             for k in staple_items:
                 kcal_kg = _staple_kcal_per_kg(k)
-                share = _STAPLE_KCAL_SHARE.get(k, 0.0)
+                share = _staple_kcal_share(k, sol_v)
                 if share > 0 and kcal_kg and kcal_kg > 0:
                     staple_qty[k] = hh_kcal_month * share / kcal_kg
     ordered = sorted(items, key=lambda it: -(it[2] or 0))
@@ -3557,8 +3607,9 @@ def render_family(data, style=None):
         f"{data.get('year')}|investment|family|{region}",
         unit=unit, rate=rate, yield_pct=fi.get("synthetic_dividend_yield")))
     L.extend(_render_pop_politics(fi, data))
+    # 粮食安全: 「安全」(secure/secured) 状态无信息量, 不传输该行
     fs = fi.get("food_security")
-    if fs:
+    if fs and fs not in ("secure", "secured"):
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
     _sf = _state_flavor_lines_for_tier(
         (fi.get("state_flavor") or {}).get("lines") or [], data)
@@ -3707,8 +3758,9 @@ def render_peer(data, style=None):
         f"{data.get('year')}|investment|peer|{region}",
         unit=unit, rate=rate, yield_pct=peer.get("synthetic_dividend_yield")))
     L.extend(_render_pop_politics(peer, data))
+    # 粮食安全: 「安全」(secure/secured) 状态无信息量, 不传输该行
     fs = peer.get("food_security")
-    if fs:
+    if fs and fs not in ("secure", "secured"):
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
     _sf = _state_flavor_lines_for_tier(
         (peer.get("state_flavor") or {}).get("lines") or [], data)
@@ -3837,8 +3889,9 @@ def render_unemployed(data, style=None):
         f"{data.get('year')}|investment|unemployed|{region}",
         unit=unit, rate=rate, yield_pct=uni.get("synthetic_dividend_yield")))
     L.extend(_render_pop_politics(uni, data))
+    # 粮食安全: 「安全」(secure/secured) 状态无信息量, 不传输该行
     fs = uni.get("food_security")
-    if fs:
+    if fs and fs not in ("secure", "secured"):
         L.append(f"- 粮食安全：{food_security_zh(fs)}")
     _sf = _state_flavor_lines_for_tier(
         (uni.get("state_flavor") or {}).get("lines") or [], data)
@@ -4257,6 +4310,12 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
                      "金额以资料给出者为限。")
     sys_msg = "\n\n".join(parts)
     facts = render_section_facts(key, data, history, style=style)
+    # 投资结果联动 (2026-08-27): 「投资结果」行由程序端按 (mutual_funds 科技 +
+    # 分红>0 + 有股市) 门槛生成, 资料含该行时才附加投资得失写作指引 (正向表述);
+    # 无投资数据时不传输该指令, 模型按资料写作。
+    if key in ("family", "peer", "unemployed") and "投资结果" in facts:
+        req += ("该人群分红/投资收入与该企业本年行情对应写作其投资得失，"
+                "行情数字一律以资料给出者为限。")
     user_msg = (
         f"本期报纸：【国名】={country}，【都城】={capital}，【年份】={year}。"
         f"抬头如下，行文须与之呼应：\n{masthead}\n\n"

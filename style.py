@@ -928,8 +928,7 @@ def resolve_newspaper_style(data, cfg=None):
                    .replace("{VOTE}", vote)
                    .replace("{ERA}", era)
                    .replace("{CURRENCY}", currency_unit(
-                       tag=data.get("player_tag"),
-                       player_name=data.get("player"))))
+                       tag=data.get("player_tag"))))
         st[k] = v
     st["tier"] = tier
     st["tier_name"] = TIER_NAMES.get(tier, "")

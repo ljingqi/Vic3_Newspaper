@@ -282,8 +282,6 @@ POOL = {
             {"key": "grassroots", "title": "最基层的一天", "req": (
                 "以样本州的下层民众为主角，写国家服务覆盖到最基层的一日：识字、收支、"
                 "接受度以数据为准，写课堂、诊室或衙门中的具体场景。"
-                "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情"
-                "对应写作其投资得失，行情数字一律以资料给出者为限。"
             )},
             {"key": "lights", "title": "灯火与课本", "req": (
                 "以全国识字率与激进派占比收束，展望国家与民众的关系，行文含蓄克制。"
@@ -305,8 +303,6 @@ POOL = {
             {"key": "ballot", "title": "投票日", "req": (
                 "以样本州某一人群为主角：资料已明确其投票资格，严格按资料写"
                 "投票日履行权利或站在门外的场景。"
-                "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情"
-                "对应写作其投资得失，行情数字一律以资料给出者为限。"
             )},
             {"key": "future", "title": "来年的潮水", "req": (
                 "以政治运动与立法动态收束，展望选举与权利的未来，立法结果以资料为准。"
@@ -325,8 +321,6 @@ POOL = {
             {"key": "household", "title": "餐桌上的账本", "req": (
                 "以样本州一户下层家庭的收支、消费画像与恩格尔系数，写物价如何落在餐桌上，"
                 "数据以给定为准。"
-                "若资料给出「投资结果」行，须把该人群分红/投资收入与该企业本年行情"
-                "对应写作其投资得失，行情数字一律以资料给出者为限。"
             )},
             {"key": "market", "title": "市场的涨落", "req": (
                 "罗列几件商品的市价（及资料给出的较上年涨落），写市场涨落背后的贸易与生产。"
@@ -1946,9 +1940,19 @@ def _article_display_title(article, generated=None):
             or article.get("title") or article.get("key"))
 
 
+def _investment_req_append(req, facts):
+    """资料含「投资结果」行时 (程序端已按 mutual_funds 科技+分红+股市门槛生成),
+    附加投资得失写作指引 (正向表述); 无投资数据时不附加, 模型按资料写作。"""
+    if "投资结果" in facts:
+        req += ("该人群分红/投资收入与该企业本年行情对应写作其投资得失，"
+                "行情数字一律以资料给出者为限。")
+    return req
+
+
 def build_lead_messages(article, data, intro):
     sec = article["sections"][0]
     facts = render_facts(article["key"], sec["key"], data)
+    req = _investment_req_append(sec["req"], facts)
     title = _article_display_title(article)
     # 缓存友好 (2026-08-27): system 以静态基调与通用规则开头, 文章标题/
     # 板块要求/篇幅/导言/数据全部移入 user (标题不再占据 system 首句)。
@@ -1963,7 +1967,7 @@ def build_lead_messages(article, data, intro):
     sys_msg += f"\n{_currency_rule(data, article['key'])}"
     user_msg = (
         f"本篇文章标题已定为《{title}》，正文按该标题撰写。\n\n"
-        f"这是文章的开篇板块《{sec['title']}》, 需立起全篇的人物与场景。要求: {sec['req']}\n\n"
+        f"这是文章的开篇板块《{sec['title']}》, 需立起全篇的人物与场景。要求: {req}\n\n"
         f"篇幅要求：开篇板块正文控制在800–1200字，立起人物与场景。\n\n"
         f"本期杂志导言:\n{intro}\n\n"
         f"请撰写开篇板块《{sec['title']}》正文。相关数据如下:\n"
@@ -1979,6 +1983,7 @@ def build_lead_messages(article, data, intro):
 def build_section_messages(article, section, data, intro, lead_text,
                            article_title=None, crime_card=None):
     facts = render_facts(article["key"], section["key"], data)
+    req = _investment_req_append(section["req"], facts)
     title = _article_display_title(article, article_title)
     # 缓存友好 (2026-08-27): 同上, system 静态开头, 动态内容移入 user。
     sys_msg = (
@@ -1998,7 +2003,7 @@ def build_section_messages(article, section, data, intro, lead_text,
         digest = _lead_digest(lead_text, limit=600)
         user_msg = (
             f"本篇文章标题已定为《{title}》。\n\n"
-            f"请撰写板块《{section['title']}》。要求: {section['req']}\n\n"
+            f"请撰写板块《{section['title']}》。要求: {req}\n\n"
             f"篇幅要求：板块正文控制在1200–1800字。\n\n"
             f"本期杂志导言:\n{intro}\n\n"
             f"{lead_head}{digest}\n\n"
@@ -2014,7 +2019,7 @@ def build_section_messages(article, section, data, intro, lead_text,
     # 篇幅要求已在 user_msg 给出, 模型不会照抄开篇长度。
     user_msg = (
         f"本篇文章标题已定为《{title}》。\n\n"
-        f"请撰写板块《{section['title']}》。要求: {section['req']}\n\n"
+        f"请撰写板块《{section['title']}》。要求: {req}\n\n"
         f"篇幅要求：板块正文控制在1200–1800字。\n\n"
         f"本期杂志导言:\n{intro}\n\n"
         f"{lead_head}{lead_text}\n\n"
