@@ -17,6 +17,8 @@
   "style_system": "legacy",
   "newspaper_enabled": true,
   "magazine_enabled": true,
+  "movie_script_enabled": true,
+  "movie_script_mode": "full",
   "epidemic_enabled": true,
   "magazine_pool_size": 3,
   "magazine_pool_override": null,

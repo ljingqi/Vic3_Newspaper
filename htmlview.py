@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """阅读页生成器 (htmlview.py)
 =============================
-把 <项目目录>/output/<国名>/ 下的报纸/杂志 Markdown 汇总成一个自包含的
+把 <项目目录>/output/<国名>/ 下的报纸/杂志/电影剧本 Markdown 汇总成一个自包含的
 index.html 阅读页:
-  - 同一页面内可切换「报纸 / 杂志」两种版式(两套 CSS 主题);
+  - 同一页面内可切换「报纸 / 杂志 / 电影剧本」三种版式(三套 CSS 主题);
   - 同一页面内可按年份切换当期文章;
   - 全部样式与脚本内嵌, 不依赖任何外部资源, 离线双击即可阅读。
 
@@ -15,6 +15,7 @@ index.html 阅读页:
 目录约定 (写入/迁移后):
   output/<国名>/报纸/报纸_<年份>.md   + 由本模块生成 index.html
   output/<国名>/杂志/杂志_<年份>.md
+  output/<国名>/电影剧本/电影剧本_<年份>.md
   output/<国名>/data/               原始数据, 保持不动
 """
 
@@ -25,9 +26,11 @@ import re
 import shutil
 import sys
 
+import numpy as np
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-KINDS = ("报纸", "杂志")
-FILE_RE = re.compile(r"^(报纸|杂志)_(\d{4})\.md$")
+KINDS = ("报纸", "杂志", "电影剧本")
+FILE_RE = re.compile(r"^(报纸|杂志|电影剧本)_(\d{4})\.md$")
 
 
 def _journal_dir():
@@ -285,6 +288,20 @@ code{background:#efe7d3;border-radius:3px;padding:1px 5px;font-family:Consolas,m
 .chart svg text.val{fill:var(--ink);font-size:10px}
 .chart svg text.axis{font-size:11px}
 .chart svg text.legend{font-size:12px;font-weight:700}
+/* 社论疆域图 (服务端 matplotlib 渲染, 内嵌 SVG) */
+.map-figure{margin:18px 0 22px;text-align:center}
+.map-figure .map-caption{font-weight:700;color:var(--accent);margin:0 0 6px;font-size:15px}
+.map-figure svg{display:block;margin:0 auto;max-width:100%;height:auto;border:1px solid #d9cba8;border-radius:4px;background:#fbf6e9}
+.map-figure svg [id^="STATE_"]{cursor:pointer;transition:filter .12s}
+.map-figure svg [id^="STATE_"]:hover{filter:brightness(1.12)}
+.map-tip{position:fixed;z-index:50;pointer-events:none;min-width:190px;max-width:260px;background:rgba(38,32,22,.96);color:#f0e6d2;font-size:13px;line-height:1.65;padding:10px 12px;border-radius:6px;box-shadow:0 3px 12px rgba(20,14,4,.45);text-align:left;display:none}
+.map-tip b{color:var(--gold);font-size:14px}
+.map-tip .tip-row{display:flex;justify-content:space-between;gap:10px}
+.map-tip .tip-row span:last-child{color:#e8d9a8}
+.map-tip .tip-pies{display:flex;gap:10px;margin-top:8px}
+.map-tip .tip-pie{text-align:center;font-size:11px;color:#cbbf9c}
+.map-tip .tip-pie svg{display:block;margin:0 auto 2px}
+.map-tip .pie-legend{font-size:10.5px;color:#d8cdab;line-height:1.5;margin-top:2px}
 /* 个股年K线: TradingView 风格坐标轴/网格/悬停 */
 .stock-chart{position:relative;margin:0 0 16px}
 .chart svg .grid{stroke:#d8cba7;stroke-width:1}
@@ -338,10 +355,19 @@ code{background:#efe7d3;border-radius:3px;padding:1px 5px;font-family:Consolas,m
 .view-magazine h3{font-size:18px;color:#33506e;margin:22px 0 8px}
 .view-magazine p{line-height:2.1}
 
+/* 电影剧本版式 */
+.view-movie .masthead{font-family:"STKaiti","KaiTi","SimSun",serif;text-align:center;font-size:40px;letter-spacing:8px;color:#3c2a1a;margin:0 0 6px;font-weight:700}
+.view-movie .masthead-meta{text-align:center;color:#6a5c4a;font-size:14px;margin-bottom:20px;letter-spacing:1px}
+.view-movie h2{font-size:26px;color:#4a3220;margin:34px 0 12px;padding-left:12px;border-left:5px solid #b08d57}
+.view-movie h3{font-size:18px;color:#5c4630;margin:22px 0 8px}
+.view-movie p{line-height:2.1;text-indent:2em}
+.view-movie ul,.view-movie ol{margin:12px 0 12px 2em}
+
 @media (max-width:640px){
   .paper{padding:22px 16px}
   .view-newspaper .masthead{font-size:27px;letter-spacing:3px}
   .view-magazine .masthead{font-size:26px;letter-spacing:2px}
+  .view-movie .masthead{font-size:26px;letter-spacing:3px}
   .years{margin-left:0;width:100%}
 }
 @media print{
@@ -368,7 +394,8 @@ code{background:#efe7d3;border-radius:3px;padding:1px 5px;font-family:Consolas,m
 <script>
 const ARTICLES = __ARTICLES__;
 const CHARTS = __CHARTS__;
-const kinds = ["报纸", "杂志"];
+const MAPS = __MAPS__;
+const kinds = ["报纸", "杂志", "电影剧本"];
 const tabsEl = document.getElementById("tabs");
 const yearSelect = document.getElementById("year-select");
 const stage = document.getElementById("stage");
@@ -696,6 +723,86 @@ function renderCharts(root) {
   });
 }
 
+// ---- 疆域图悬浮提示 ----
+const mapTip = document.createElement("div");
+mapTip.className = "map-tip";
+document.body.appendChild(mapTip);
+
+const PIE_COLORS = ["#e8a87c", "#9ec9e0", "#a8d5a2", "#d7b7e0", "#e5cf86",
+                    "#b8b0a0", "#e0a0b0", "#8fb8c8"];
+
+function pieSvg(parts, size) {
+  // parts: [{name, pct}] 前 4 项; 画实心圆环饼图
+  const total = parts.reduce((s, p) => s + p.pct, 0) || 1;
+  // 单扇区 (≈100%) 时起点=终点, 扇形路径退化为零面积楔形, 直接画整圆
+  if (parts.length === 1 || parts[0].pct >= total - 0.05) {
+    return `<svg width="64" height="64" viewBox="0 0 100 100">`
+         + `<circle cx="50" cy="50" r="${size / 2}" fill="${PIE_COLORS[0]}"/>`
+         + `</svg>`;
+  }
+  let ang = -90, segs = "";
+  parts.forEach((p, i) => {
+    // 最后一个扇区强制收口到整圆, 避免四舍五入留下尾缝
+    const a2 = (i === parts.length - 1) ? 270 : ang + p.pct / total * 360;
+    const x1 = 50 + size / 2 * Math.cos(ang * Math.PI / 180);
+    const y1 = 50 + size / 2 * Math.sin(ang * Math.PI / 180);
+    const x2 = 50 + size / 2 * Math.cos(a2 * Math.PI / 180);
+    const y2 = 50 + size / 2 * Math.sin(a2 * Math.PI / 180);
+    const large = (a2 - ang) > 180 ? 1 : 0;
+    segs += `<path d="M50 50 L${x1.toFixed(1)} ${y1.toFixed(1)} `
+          + `A${size / 2} ${size / 2} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z" `
+          + `fill="${PIE_COLORS[i % PIE_COLORS.length]}"/>`;
+    ang = a2;
+  });
+  return `<svg width="64" height="64" viewBox="0 0 100 100">${segs}</svg>`;
+}
+
+function fmtPct(v) {
+  return (v == null ? 0 : Number(v).toFixed(1)) + "%";
+}
+
+function bindMapTips(root) {
+  root.querySelectorAll(".map-figure").forEach(fig => {
+    const svg = fig.querySelector("svg");
+    if (!svg) return;
+    const data = (MAPS && MAPS[year]) || {};
+    svg.querySelectorAll("[id^='STATE_']").forEach(g => {
+      const rk = g.getAttribute("id");
+      const det = data[rk];
+      if (!det) return;
+      g.addEventListener("mouseenter", ev => {
+        const cult = (det.culture || []).map(c => c.name + " " + fmtPct(c.pct)).join("、") || "—";
+        const rel = (det.religion || []).map(r => r.name + " " + fmtPct(r.pct)).join("、") || "—";
+        const hub = det.hub ? `（首府${det.hub}）` : "";
+        mapTip.innerHTML =
+          `<div class="tip-row"><b>${esc(det.name || rk)}</b>${hub}</div>`
+          + `<div class="tip-row"><span>GDP</span><span>${esc(det.gdp == null ? "—" : shortNum(det.gdp))}`
+          + `（占${fmtPct(det.gdp_pct)}）</span></div>`
+          + `<div class="tip-pies">`
+          + `<div class="tip-pie">${pieSvg(det.culture || [], 100)}<div>文化</div>`
+          + `<div class="pie-legend">${esc(cult)}</div></div>`
+          + `<div class="tip-pie">${pieSvg(det.religion || [], 100)}<div>宗教</div>`
+          + `<div class="pie-legend">${esc(rel)}</div></div>`
+          + `</div>`;
+        mapTip.style.display = "block";
+        moveTip(ev);
+      });
+      g.addEventListener("mousemove", moveTip);
+      g.addEventListener("mouseleave", () => { mapTip.style.display = "none"; });
+    });
+  });
+}
+
+function moveTip(ev) {
+  const pad = 14;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  const r = mapTip.getBoundingClientRect();
+  if (x + r.width > window.innerWidth - 8) x = ev.clientX - r.width - pad;
+  if (y + r.height > window.innerHeight - 8) y = ev.clientY - r.height - pad;
+  mapTip.style.left = x + "px";
+  mapTip.style.top = y + "px";
+}
+
 function yearsOf(k) {
   return ARTICLES.filter(a => a.type === k).map(a => a.year).sort((x, y) => x - y);
 }
@@ -735,9 +842,10 @@ function render() {
     metaLine.textContent = "";
     return;
   }
-  const theme = type === "报纸" ? "newspaper" : "magazine";
+  const theme = type === "报纸" ? "newspaper" : (type === "电影剧本" ? "movie" : "magazine");
   stage.innerHTML = `<article class="paper view-${theme}">${art.html}</article>`;
   renderCharts(stage);
+  bindMapTips(stage);
   metaLine.textContent = art.meta || "";
 }
 
@@ -1012,6 +1120,395 @@ def _write_history_json(base_dir, charts):
     return path
 
 
+# ---------------------------------------------------------------------------
+# 社论疆域图 (报纸): 服务端 matplotlib 渲染 SVG, 内嵌进阅读页
+# 数据来自 data/raw_<年>.json 的 "map" 字段 + 仓库根 state_geojson.json 几何。
+# state_geojson.json 由 tools/build_state_shapes.py (QGIS Python 环境, 含
+# GDAL Polygonize + shapely) 一次性生成: {width, height, features:
+# [{id, polys: [[[x,y],...], ...], point: [x,y](内陆代表点)}]}。
+# 纯海域州 (STATE_*_SEA 等) 已在构建时剔除, 海洋由渲染底层海色矩形呈现。
+# ---------------------------------------------------------------------------
+
+_MAP_SHAPES = None
+
+
+def _map_shapes():
+    """加载州域几何缓存 (state_geojson.json) 并转成便捷索引:
+      {"shapes": {STATE_XXX: [Nx2 数组, ...]}, "points": {STATE_XXX: [x,y]},
+       "width": W, "height": H}
+    缺失/解析失败返回 None。"""
+    global _MAP_SHAPES
+    if _MAP_SHAPES is not None:
+        return _MAP_SHAPES
+    p = os.path.join(SCRIPT_DIR, "state_geojson.json")
+    if os.path.exists(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                raw = json.load(f)
+            shapes = {}
+            points = {}
+            for feat in raw.get("features") or []:
+                rid = feat.get("id")
+                if not rid:
+                    continue
+                polys = [np.array(poly) for poly in (feat.get("polys") or [])
+                         if len(poly) >= 4]
+                if polys:
+                    shapes[rid] = polys
+                pt = feat.get("point")
+                if pt and len(pt) == 2:
+                    points[rid] = pt
+            _MAP_SHAPES = {"shapes": shapes, "points": points,
+                           "width": raw.get("width") or 2048,
+                           "height": raw.get("height") or 904}
+            return _MAP_SHAPES
+        except (OSError, ValueError):
+            pass
+    _MAP_SHAPES = None
+    return None
+
+
+def _load_year_map_data(base_dir, year):
+    """读 data/raw_<年>.json 的 "map" 字段; 无则返回 None。"""
+    p = os.path.join(base_dir, "data", f"raw_{year}.json")
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, encoding="utf-8") as f:
+            return (json.load(f) or {}).get("map")
+    except (OSError, ValueError):
+        return None
+
+
+def _map_viewport(regions, shapes, pad=0.15):
+    """若干州域键 → 视野框 (x0,y0,x1,y1) (降采样像素坐标, 外扩 pad)。"""
+    x0 = y0 = float("inf")
+    x1 = y1 = float("-inf")
+    for r in regions:
+        for poly in shapes.get("shapes", {}).get(r, ()):
+            for x, y in poly:
+                x0 = min(x0, x); y0 = min(y0, y)
+                x1 = max(x1, x); y1 = max(y1, y)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    dx, dy = (x1 - x0) * pad, (y1 - y0) * pad
+    return (x0 - dx, y0 - dy, x1 + dx, y1 + dy)
+
+
+def render_map_svg(map_data, shapes, fmt="svg"):
+    """用 matplotlib 渲染疆域图 (中国地图风格: 米黄底/细边界/标题/图例/
+    指北针/比例尺; 主图 + 海外附图; 四色填色; 外国首都圆点; 相邻铁路州连线)。
+    几何来自 state_geojson.json (GDAL Polygonize + shapely, 已剔除海域州,
+    内陆代表点保证标记不落海)。fmt="svg" 返回 <svg>...</svg> 字符串;
+    fmt="png" 返回 PNG bytes (测试/预览用); 渲染失败返回 None。"""
+    if not map_data or not shapes:
+        return None
+    try:
+        import io
+        import math
+        import numpy as np
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib import font_manager
+        from matplotlib.patches import Polygon as MplPolygon
+    except Exception:
+        return None
+
+    # 中文字体: 优先楷体/宋体 (系统已装), 兜底任意 CJK 字体
+    _CJK_FONTS = ("KaiTi", "SimHei", "SimSun", "Microsoft YaHei",
+                  "Source Han Serif SC", "Source Han Sans CN", "Noto Sans CJK SC")
+    available = {f.name for f in font_manager.fontManager.ttflist}
+    fam = next((f for f in _CJK_FONTS if f in available), None)
+    if fam:
+        plt.rcParams["font.sans-serif"] = [fam]
+    # SVG 文本模式: 中文输出为 <text> + font-family (浏览器用系统字体渲染),
+    # 而非默认的字体路径子集 (fonttype=path, 内嵌轮廓在部分浏览器乱码/空白)。
+    plt.rcParams["svg.fonttype"] = "none"
+    plt.rcParams["axes.unicode_minus"] = False
+
+    # ColorBrewer Pastel1 前四色 (与 journal_save.MAP_PALETTE 同源)
+    _PALETTE = ["#FBB4AE", "#B3CDE3", "#CCEBC5", "#DECBE4"]
+    _SEA = "#dceaf2"
+    _LAND = "#efe6cf"
+    _BORDER = "#c9bb9a"
+    _OWN_BORDER = "#8a6d3b"
+
+    main = map_data.get("main") or []
+    overseas = map_data.get("overseas") or []
+    colors = map_data.get("colors") or {}
+    foreign = map_data.get("foreign_capitals") or []
+    rail_links = map_data.get("rail_links") or []
+    cap_rk = map_data.get("capital_region")
+    player = map_data.get("player") or ""
+    year = map_data.get("year")
+    all_shapes = shapes.get("shapes") or {}
+    points = shapes.get("points") or {}
+
+    view = _map_viewport(main, shapes)
+    if not view:
+        return None
+    vx0, vy0, vx1, vy1 = view
+    data_w, data_h = vx1 - vx0, vy1 - vy0
+
+    # 画布尺寸随视野纵横比自适应 (保持横向报纸版面, 纵向国家不至于压扁)
+    target_w = 10.0
+    target_h = min(8.2, max(4.6, target_w * data_h / data_w * 0.92))
+    fig = plt.figure(figsize=(target_w, target_h), dpi=100)
+    ax = fig.add_axes([0.02, 0.06, 0.92, 0.80])
+    ax.set_xlim(vx0, vx1)
+    ax.set_ylim(vy1, vy0)      # 数据 y 小=北 (图像行号向下), 反转让北朝上
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    def in_view(poly, v):
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+        return (max(xs) >= v[0] and min(xs) <= v[2]
+                and max(ys) >= v[1] and min(ys) <= v[3])
+
+    # 视野框裁剪: V3 地图 wrap_x=yes, 日界线在地图左右边界, 横跨边界的州
+    # (如俄罗斯/阿拉斯加) 多边形会横贯整幅画面, 必须裁剪到视野框内再绘制。
+    _CLIP = None
+
+    def _clip_patch(patch):
+        nonlocal _CLIP
+        if _CLIP is None:
+            _CLIP = plt.Rectangle((vx0, vy0), vx1 - vx0, vy1 - vy0,
+                                  transform=ax.transData)
+        patch.set_clip_path(_CLIP)
+
+    # 海色背景: 显式铺满视野框的矩形 (bbox_inches=tight 会丢 axes facecolor,
+    # 故不用 set_facecolor, 直接画最底层矩形保证 SVG 含海色)
+    ax.add_patch(MplPolygon([(vx0, vy0), (vx1, vy0), (vx1, vy1), (vx0, vy1)],
+                            closed=True, facecolor=_SEA, edgecolor="none",
+                            zorder=0))
+
+    # 背景: 视野内所有非本国州画米黄底 (细边界)。
+    # 跳过 x 跨度超过半张地图的州 (wrap 伪影, 日界线两侧的碎片州)。
+    own_set = set(main) | set(overseas)
+    map_w = shapes.get("width") or 2048
+    for r, polys in all_shapes.items():
+        if r in own_set:
+            continue
+        for poly in polys:
+            if not in_view(poly, view):
+                continue
+            xs0 = [p[0] for p in poly]
+            if (max(xs0) - min(xs0)) > map_w * 0.5:
+                continue   # wrap 伪影州
+            p = MplPolygon(poly, closed=True, facecolor=_LAND,
+                           edgecolor=_BORDER, linewidth=0.3)
+            _clip_patch(p)
+            ax.add_patch(p)
+
+    # 本国州: 四色填色 + 深色边界 (同样跳过 wrap 伪影州)。
+    # 每个州的多边形组设 gid=STATE_XXX, 供 JS 悬浮提示绑定
+    # (matplotlib 会为带 gid 的 patch 输出 <g id="STATE_XXX">)。
+    states_detail = map_data.get("states") or {}
+    for r in main + overseas:
+        c = _PALETTE[colors.get(r, 0) % len(_PALETTE)]
+        for poly in all_shapes.get(r, ()):
+            xs0 = [p[0] for p in poly]
+            if (max(xs0) - min(xs0)) > map_w * 0.5:
+                continue
+            p = MplPolygon(poly, closed=True, facecolor=c,
+                           edgecolor=_OWN_BORDER, linewidth=1.0)
+            p.set_gid(r)
+            _clip_patch(p)
+            ax.add_patch(p)
+        # 州首府 hub 名标注 (city hub, 位于内陆代表点旁)
+        det = states_detail.get(r) or {}
+        hub = det.get("hub")
+        pt = points.get(r)
+        if hub and pt:
+            ax.text(pt[0], pt[1] + 14, hub, fontsize=7, color="#2a1d0e",
+                    ha="center", va="bottom", zorder=7)
+
+    # 铁路连线: 相邻且均有铁路的玩家州, 用内陆代表点连线 (不会跨海)。
+    # 曲线化 (二次贝塞尔, 中点按固定弧垂偏折) + 黑白相间铁路样式
+    # (真实地图铁路: 粗黑实线 + 白色虚线间隔, 即「黑段/白段」交替)。
+    if rail_links:
+        for a, b in rail_links:
+            pa, pb = points.get(a), points.get(b)
+            if not pa or not pb:
+                continue
+            x1_, y1_ = pa[0], pa[1]
+            x2_, y2_ = pb[0], pb[1]
+            dx, dy = x2_ - x1_, y2_ - y1_
+            dist = math.hypot(dx, dy)
+            if dist < 8:
+                continue
+            # 控制点: 中点沿法线偏移, 弧垂约为弦长的 18% (随距离封顶)
+            sag = min(18.0, dist * 0.18)
+            mx, my = (x1_ + x2_) / 2, (y1_ + y2_) / 2
+            nx, ny = -dy / dist, dx / dist
+            cx_, cy_ = mx + nx * sag, my + ny * sag
+            t = np.linspace(0, 1, 40)
+            bx = (1 - t) ** 2 * x1_ + 2 * (1 - t) * t * cx_ + t ** 2 * x2_
+            by = (1 - t) ** 2 * y1_ + 2 * (1 - t) * t * cy_ + t ** 2 * y2_
+            # 黑底实线 (粗) + 白色虚线 (细) 叠出黑白相间
+            ax.plot(bx, by, color="#1a1a1a", linewidth=2.0,
+                    solid_capstyle="round", zorder=5)
+            ax.plot(bx, by, color="#ffffff", linewidth=1.1,
+                    linestyle=(0, (6, 6)), solid_capstyle="round", zorder=6)
+
+    # 外国首都: 游戏色圆点 + 国名 (内陆代表点)
+    for fc in foreign:
+        pt = points.get(fc.get("region"))
+        if not pt:
+            continue
+        rgb = fc.get("color") or [120, 120, 120]
+        ax.plot(pt[0], pt[1], "o", ms=4.5, color=tuple(v / 255 for v in rgb),
+                mec="#222", mew=0.5, zorder=6)
+        ax.text(pt[0] + 6, pt[1] + 3, fc.get("name", ""), fontsize=7.5,
+                color="#2a1d0e", zorder=6)
+
+    # 本国首都: 红五角星 (内陆代表点)
+    if cap_rk and points.get(cap_rk):
+        cx, cy = points[cap_rk]
+        ax.plot(cx, cy, marker="*", ms=13, color="#d23b2e",
+                mec="#7a1508", mew=0.8, zorder=7)
+
+    # 附图 (海外省): 右上角小框, 奶油色面板底
+    if overseas:
+        ov = _map_viewport(overseas, shapes, pad=0.10)
+        if ov:
+            ox0, oy0, ox1, oy1 = ov
+            iw, ih = 0.20, 0.24
+            iax = fig.add_axes([0.78, 0.70, iw, ih])
+            iax.set_xlim(ox0, ox1)
+            iax.set_ylim(oy1, oy0)
+            iax.set_aspect("equal")
+            iax.axis("off")
+            iax.patch.set_facecolor("#fbf6e9")
+            iax.patch.set_edgecolor("#8a6d3b")
+            iax.patch.set_linewidth(0.8)
+            iax.add_patch(MplPolygon(
+                [(ox0, oy0), (ox1, oy0), (ox1, oy1), (ox0, oy1)],
+                closed=True, facecolor=_SEA, edgecolor="none", zorder=0))
+            for r, polys in all_shapes.items():
+                if r in own_set:
+                    continue
+                for poly in polys:
+                    if not in_view(poly, (ox0, oy0, ox1, oy1)):
+                        continue
+                    iax.add_patch(MplPolygon(poly, closed=True, facecolor=_LAND,
+                                             edgecolor=_BORDER, linewidth=0.2))
+            for r in overseas:
+                c = _PALETTE[colors.get(r, 0) % len(_PALETTE)]
+                for poly in all_shapes.get(r, ()):
+                    iax.add_patch(MplPolygon(poly, closed=True, facecolor=c,
+                                             edgecolor=_OWN_BORDER,
+                                             linewidth=0.6))
+            iax.set_title("海外省", fontsize=8, pad=2,
+                          color="#3a2c16")
+
+    # 标题: 国名 + 年份
+    title = f"{player}疆域图" + (f" · {year}年" if year else "")
+    fig.suptitle(title, fontsize=17, y=0.965, color="#2a1d0e",
+                 fontweight="bold")
+
+    # 指北针 (axes 分数坐标叠加, 不随数据缩放)
+    ax.annotate("", xy=(0.045, 0.90), xytext=(0.045, 0.83),
+                xycoords="axes fraction", textcoords="axes fraction",
+                arrowprops=dict(arrowstyle="-|>", color="#2a1d0e", lw=1.5))
+    ax.text(0.045, 0.78, "北", fontsize=10, color="#2a1d0e",
+            ha="center", fontweight="bold", transform=ax.transAxes)
+
+    # 图例 (axes 分数坐标, 左下角叠加)
+    legend_items = [
+        ("#FBB4AE", "本国省份（相邻异色）"),
+        ("#d23b2e", "首都"),
+        ("#555555", "外国首都"),
+        ("#3a3a3a", "铁路"),
+    ]
+    lx, ly = 0.035, 0.075
+    step = 0.052
+    for i, (c, label) in enumerate(legend_items):
+        y = ly + i * step
+        ax.add_patch(plt.Rectangle((lx, y), 0.014, step * 0.55,
+                                   facecolor=c, edgecolor="#6d5230",
+                                   linewidth=0.6,
+                                   transform=ax.transAxes, zorder=8))
+        ax.text(lx + 0.022, y + step * 0.26, label, fontsize=8.5,
+                color="#2a1d0e", va="center", transform=ax.transAxes,
+                zorder=8)
+
+    # 比例尺 (axes 分数坐标, 右下角; 经度每px × 中心纬度 cos 校正)
+    km_per_deg = 111.32
+    center_y = (vy0 + vy1) / 2
+    lat = 70.0 - (center_y / (shapes.get("height") or 904)) * 140.0
+    import math
+    width_px = shapes.get("width") or 2048
+    lon_per_px = 360.0 / width_px
+    km_per_px = km_per_deg * math.cos(math.radians(lat)) * lon_per_px
+    target_km = 500
+    for t in (1000, 500, 250, 100):
+        if km_per_px * data_w >= t:
+            target_km = t
+            break
+    seg_frac = (target_km / km_per_px) / data_w * 0.92  # 转为 axes 分数
+    bx0 = 0.60
+    by = 0.075
+    ax.plot([bx0, bx0 + seg_frac], [by, by], color="#2a1d0e", lw=1.5,
+            transform=ax.transAxes)
+    ax.plot([bx0, bx0], [by - 0.012, by + 0.012], color="#2a1d0e", lw=1.3,
+            transform=ax.transAxes)
+    ax.plot([bx0 + seg_frac, bx0 + seg_frac], [by - 0.012, by + 0.012],
+            color="#2a1d0e", lw=1.3, transform=ax.transAxes)
+    ax.text(bx0 + seg_frac / 2, by - 0.045, f"{target_km}公里", fontsize=8,
+            color="#2a1d0e", ha="center", transform=ax.transAxes)
+
+    buf = io.BytesIO() if fmt == "png" else io.StringIO()
+    fig.savefig(buf, format=fmt, bbox_inches="tight", facecolor="#fbf6e9")
+    plt.close(fig)
+    if fmt == "png":
+        return buf.getvalue()
+    svg = buf.getvalue()
+    # 截取 <svg>...</svg> 主体
+    i = svg.find("<svg")
+    j = svg.rfind("</svg>")
+    if i < 0 or j < 0:
+        return None
+    return svg[i:j + 6]
+
+
+def _inject_map_figures(base_dir, entries):
+    """逐篇报纸把「地图占位 div」替换为渲染好的疆域图 SVG, 并收集悬浮提示
+    数据。占位是 journal.py 在社论板块追加的 <!--CHART map--> (htmlview 转成
+    <div class="chart" data-chart="map"></div>); 杂志/电影剧本不注入。
+    返回 (entries, map_data_by_year): map_data_by_year = {年份: states详情},
+    由 rebuild_session 注入 __MAPS__ 全局 (避免在 ARTICLES 里嵌 script,
+    防止 </script> 提前闭合导致 JS 变纯文本)。"""
+    if not _map_shapes():
+        return entries, {}
+    out = []
+    map_data_by_year = {}
+    for e in entries:
+        html_text = e["html"]
+        if e["type"] != "报纸" or 'data-chart="map"' not in html_text:
+            out.append(e)
+            continue
+        md = _load_year_map_data(base_dir, e["year"])
+        svg = render_map_svg(md, _map_shapes()) if md else None
+        if svg:
+            fig = ('<div class="map-figure"><div class="map-caption">'
+                   '本报疆域图</div>' + svg + "</div>")
+            if md and md.get("states"):
+                map_data_by_year[e["year"]] = md["states"]
+        else:
+            fig = ('<div class="map-figure"><div class="map-caption">'
+                   '本报疆域图</div>'
+                   '<p class="chart-hint">本期无疆域图数据'
+                   '（几何缓存缺失或快照未含地图数据）</p></div>')
+        e = dict(e)
+        e["html"] = html_text.replace(
+            '<div class="chart" data-chart="map"></div>', fig)
+        out.append(e)
+    return out, map_data_by_year
+
+
 def rebuild_session(journal_dir, folder):
     """为单个会话文件夹生成/更新 index.html 与 data/history.json; 无任何 md 时返回 None。"""
     base = os.path.join(journal_dir, folder)
@@ -1020,12 +1517,15 @@ def rebuild_session(journal_dir, folder):
         return None
     charts = _collect_chart_data(base)
     _write_history_json(base, charts)
-    title = f"{folder} · 报纸/杂志阅读页"
+    # 社论疆域图: 逐篇报纸注入 map SVG + 收集悬浮数据
+    entries, map_data = _inject_map_figures(base, entries)
+    title = f"{folder} · 报纸/杂志/电影剧本阅读页"
     out = (TEMPLATE
            .replace("__TITLE__", html.escape(title))
            .replace("__FOLDER__", html.escape(folder))
            .replace("__ARTICLES__", json.dumps(entries, ensure_ascii=False))
-           .replace("__CHARTS__", json.dumps(charts, ensure_ascii=False)))
+           .replace("__CHARTS__", json.dumps(charts, ensure_ascii=False))
+           .replace("__MAPS__", json.dumps(map_data, ensure_ascii=False)))
     path = os.path.join(base, "index.html")
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:

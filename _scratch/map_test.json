@@ -1,0 +1,112 @@
+{
+ "year": 1838,
+ "player": null,
+ "capital_region": "STATE_KYOTO",
+ "main": [
+  "STATE_CHUGOKU",
+  "STATE_HOKKAIDO",
+  "STATE_HOKUSHINETSU",
+  "STATE_KANSAI",
+  "STATE_KANTO",
+  "STATE_KYOTO",
+  "STATE_KYUSHU",
+  "STATE_RYUKYU_ISLANDS",
+  "STATE_SHIKOKU",
+  "STATE_TOHOKU",
+  "STATE_TOKAI"
+ ],
+ "overseas": [],
+ "colors": {
+  "STATE_CHUGOKU": 0,
+  "STATE_HOKKAIDO": 1,
+  "STATE_HOKUSHINETSU": 2,
+  "STATE_KANSAI": 2,
+  "STATE_KANTO": 1,
+  "STATE_KYOTO": 1,
+  "STATE_KYUSHU": 1,
+  "STATE_RYUKYU_ISLANDS": 0,
+  "STATE_SHIKOKU": 1,
+  "STATE_TOHOKU": 0,
+  "STATE_TOKAI": 0
+ },
+ "foreign_capitals": [
+  {
+   "tag": "KOR",
+   "name": "朝鲜",
+   "region": "STATE_SEOUL",
+   "color": [
+    157,
+    144,
+    97
+   ]
+  },
+  {
+   "tag": "RYU",
+   "name": "琉球",
+   "region": "STATE_RYUKYU_ISLANDS",
+   "color": [
+    90,
+    138,
+    133
+   ]
+  },
+  {
+   "tag": "EZO",
+   "name": "虾夷地",
+   "region": "STATE_HOKKAIDO",
+   "color": [
+    129,
+    40,
+    147
+   ]
+  }
+ ],
+ "railways": [
+  "STATE_CHUGOKU",
+  "STATE_HOKUSHINETSU",
+  "STATE_KANSAI",
+  "STATE_KANTO",
+  "STATE_KYUSHU",
+  "STATE_SHIKOKU",
+  "STATE_TOHOKU",
+  "STATE_TOKAI"
+ ],
+ "rail_links": [
+  [
+   "STATE_CHUGOKU",
+   "STATE_KANSAI"
+  ],
+  [
+   "STATE_CHUGOKU",
+   "STATE_KYUSHU"
+  ],
+  [
+   "STATE_CHUGOKU",
+   "STATE_SHIKOKU"
+  ],
+  [
+   "STATE_HOKUSHINETSU",
+   "STATE_KANTO"
+  ],
+  [
+   "STATE_HOKUSHINETSU",
+   "STATE_TOHOKU"
+  ],
+  [
+   "STATE_HOKUSHINETSU",
+   "STATE_TOKAI"
+  ],
+  [
+   "STATE_KANSAI",
+   "STATE_TOKAI"
+  ],
+  [
+   "STATE_KANTO",
+   "STATE_TOHOKU"
+  ],
+  [
+   "STATE_KANTO",
+   "STATE_TOKAI"
+  ]
+ ]
+}

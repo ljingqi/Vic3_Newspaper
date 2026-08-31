@@ -1,0 +1,1149 @@
+{
+ "schema": 2,
+ "player_id": 11368,
+ "player_name": "观察使，边诚",
+ "game_version": "1.19.0.6",
+ "sources": [
+  "868.1.1",
+  "869.1.1",
+  "869.2.22"
+ ],
+ "last_date": "869.2.22",
+ "player_death": null,
+ "characters": {
+  "10798": {
+   "id": 10798,
+   "first_name": "Cheng_8AA0",
+   "name_zh": "誠",
+   "birth": "810.1.1",
+   "death": null,
+   "dynasty_house": 7037,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    55,
+    60,
+    62,
+    2,
+    39,
+    285
+   ],
+   "family": {
+    "child": [
+     13119
+    ]
+   },
+   "landed": {},
+   "memories": [
+    {
+     "id": 5797,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 10798
+     },
+     "creation_date": "867.5.27",
+     "end_date": "1022.5.27",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15104
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 5902,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 10798
+     },
+     "creation_date": "867.6.4",
+     "end_date": "1022.6.4",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15105
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 7304,
+     "type": "lost_title_memory",
+     "participants": {
+      "new_holder": 10818
+     },
+     "creation_date": "867.9.8",
+     "end_date": "1022.9.8",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15100
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 16782990,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 10798
+     },
+     "creation_date": "868.6.7",
+     "end_date": "1023.6.7",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15204
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 11184,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 10798
+     },
+     "creation_date": "868.6.15",
+     "end_date": "1023.6.15",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15214
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 11271,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 10798
+     },
+     "creation_date": "868.6.23",
+     "end_date": "1023.6.23",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15205
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "10818": {
+   "id": 10818,
+   "first_name": "Duo_94CE",
+   "name_zh": "铎",
+   "birth": "810.1.1",
+   "death": null,
+   "dynasty_house": 10292,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    61,
+    60,
+    50,
+    8,
+    27,
+    285
+   ],
+   "family": {
+    "primary_spouse": [
+     39561
+    ],
+    "spouse": [
+     39561
+    ],
+    "child": [
+     39562,
+     39563,
+     39564
+    ]
+   },
+   "landed": {},
+   "memories": [
+    {
+     "id": 1831,
+     "type": "married",
+     "participants": {
+      "spouse": 39561
+     },
+     "creation_date": "867.1.1",
+     "end_date": "1022.1.1",
+     "vars": [],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 5820,
+     "type": "imprisoned",
+     "participants": {
+      "imprisoner": 10284
+     },
+     "creation_date": "867.5.28",
+     "end_date": "997.5.28",
+     "vars": [],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 5825,
+     "type": "lost_title_memory",
+     "participants": {
+      "new_holder": 9360
+     },
+     "creation_date": "867.5.29",
+     "end_date": "997.5.29",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15681
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 6707,
+     "type": "released_from_prison_memory",
+     "participants": {
+      "imprisoner": 10284
+     },
+     "creation_date": "867.7.30",
+     "end_date": "997.7.30",
+     "vars": [],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 7307,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 10798
+     },
+     "creation_date": "867.9.8",
+     "end_date": "1022.9.8",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15100
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": 400000
+      }
+     ],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 10035,
+     "type": "became_friends",
+     "participants": {
+      "new_relation": 11990
+     },
+     "creation_date": "868.3.5",
+     "end_date": "1023.3.5",
+     "vars": [],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "11368": {
+   "id": 11368,
+   "first_name": "Cheng_8AA0",
+   "name_zh": "誠",
+   "birth": "817.1.1",
+   "death": null,
+   "dynasty_house": 5756,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    74,
+    58,
+    81,
+    22,
+    40,
+    285
+   ],
+   "family": {
+    "primary_spouse": [
+     39250
+    ],
+    "spouse": [
+     39250
+    ],
+    "former_spouses": [
+     13386
+    ],
+    "child": [
+     13136,
+     13251,
+     13252,
+     13530
+    ]
+   },
+   "landed": {
+    "domain": [
+     14906,
+     14907,
+     14908,
+     16108,
+     14909,
+     14910,
+     14911
+    ],
+    "became_ruler_date": "867.1.1",
+    "government": "celestial_government",
+    "realm_capital": 14909,
+    "vassal_count": 9,
+    "council": [
+     7124,
+     7125,
+     7126,
+     7127,
+     7128,
+     7129
+    ],
+    "laws": [
+     "celestial_bureaucracy_1",
+     "celestial_appointment_succession_law",
+     "male_only_law",
+     "celestial_army_vassal_law_0",
+     "celestial_retirement_law_5",
+     "top_liege_redirected_to_border_wars_law"
+    ],
+    "succession": [
+     9805,
+     9541,
+     11010,
+     9831,
+     11500,
+     9873,
+     9434,
+     9819,
+     9722
+    ]
+   },
+   "memories": [
+    {
+     "id": 7305,
+     "type": "lost_title_memory",
+     "participants": {
+      "new_holder": 10798
+     },
+     "creation_date": "867.9.8",
+     "end_date": "1217.9.8",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 15200
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "868.1.1"
+    },
+    {
+     "id": 9362,
+     "type": "became_rivals",
+     "participants": {
+      "rival": 10692
+     },
+     "creation_date": "868.1.14",
+     "end_date": "1218.1.14",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 9365,
+     "type": "imprisoned_other",
+     "participants": {
+      "imprisoned": 13386
+     },
+     "creation_date": "868.1.14",
+     "end_date": "1218.1.14",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 9448,
+     "type": "spouse_died",
+     "participants": {
+      "dead_relation": 13386
+     },
+     "creation_date": "868.1.21",
+     "end_date": "1218.1.21",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 11762,
+     "type": "married",
+     "participants": {
+      "spouse": 39250
+     },
+     "creation_date": "868.8.18",
+     "end_date": "1218.8.18",
+     "vars": [],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "13136": {
+   "id": 13136,
+   "first_name": "Xi_4FC2",
+   "name_zh": "係",
+   "birth": "833.1.1",
+   "death": null,
+   "dynasty_house": 5756,
+   "culture": null,
+   "faith": null,
+   "traits": [
+    77,
+    82,
+    69,
+    20
+   ],
+   "family": {},
+   "landed": {},
+   "memories": []
+  },
+  "13251": {
+   "id": 13251,
+   "first_name": "Qia_4EF7",
+   "name_zh": "价",
+   "birth": "834.1.1",
+   "death": null,
+   "dynasty_house": 5756,
+   "culture": null,
+   "faith": null,
+   "traits": [
+    68,
+    81,
+    49,
+    7
+   ],
+   "family": {},
+   "landed": {},
+   "memories": []
+  },
+  "13252": {
+   "id": 13252,
+   "first_name": "Wei_4F4D",
+   "name_zh": "位",
+   "birth": "834.1.1",
+   "death": null,
+   "dynasty_house": 5756,
+   "culture": null,
+   "faith": null,
+   "traits": [
+    69,
+    57,
+    54,
+    0
+   ],
+   "family": {},
+   "landed": {},
+   "memories": []
+  },
+  "13386": {
+   "id": 13386,
+   "first_name": "A_zu_963F_8DB3",
+   "name_zh": "阿足",
+   "birth": "835.1.1",
+   "death": {
+    "date": "868.1.21",
+    "reason": "death_execution",
+    "killer": 11368,
+    "liege": 11368,
+    "liege_title": 14906,
+    "named_title": 14906
+   },
+   "dynasty_house": 9094,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    72,
+    81,
+    47,
+    11
+   ],
+   "family": {
+    "primary_spouse": [
+     11368
+    ],
+    "spouse": [
+     11368
+    ],
+    "child": [
+     15935
+    ]
+   },
+   "landed": {},
+   "memories": []
+  },
+  "13530": {
+   "id": 13530,
+   "first_name": "Dao_60BC",
+   "name_zh": "悼",
+   "birth": "836.1.1",
+   "death": null,
+   "dynasty_house": 5756,
+   "culture": null,
+   "faith": null,
+   "traits": [
+    49,
+    52,
+    47,
+    16,
+    251
+   ],
+   "family": {},
+   "landed": {},
+   "memories": []
+  },
+  "9494": {
+   "id": 9494,
+   "first_name": "Xingqun_884C_7FA3",
+   "name_zh": "行羣",
+   "birth": "792.1.1",
+   "death": null,
+   "dynasty_house": 8873,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    79,
+    72,
+    52,
+    20,
+    41,
+    42,
+    285
+   ],
+   "family": {
+    "primary_spouse": [
+     12546
+    ],
+    "spouse": [
+     12546
+    ],
+    "former_spouses": [
+     7750,
+     7891,
+     8623
+    ],
+    "child": [
+     14051,
+     43077
+    ]
+   },
+   "landed": {},
+   "memories": [
+    {
+     "id": 4221,
+     "type": "married",
+     "participants": {
+      "spouse": 12546
+     },
+     "creation_date": "867.3.8",
+     "end_date": "997.3.8",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 6758,
+     "type": "became_rivals",
+     "participants": {
+      "rival": 10692
+     },
+     "creation_date": "867.8.2",
+     "end_date": "997.8.2",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 16783419,
+     "type": "child_born",
+     "participants": {
+      "child": 43077
+     },
+     "creation_date": "868.6.26",
+     "end_date": "998.6.26",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 12284,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 9494
+     },
+     "creation_date": "868.10.5",
+     "end_date": "998.10.5",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 14399
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "10692": {
+   "id": 10692,
+   "first_name": "Huan_6D63",
+   "name_zh": "浣",
+   "birth": "809.1.1",
+   "death": null,
+   "dynasty_house": 8191,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    59,
+    79,
+    47,
+    1,
+    38,
+    285,
+    215
+   ],
+   "family": {
+    "primary_spouse": [
+     20228
+    ],
+    "spouse": [
+     20228
+    ]
+   },
+   "landed": {},
+   "memories": [
+    {
+     "id": 3448,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 10692
+     },
+     "creation_date": "867.2.12",
+     "end_date": "1022.2.12",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 13942
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 3750,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 10692
+     },
+     "creation_date": "867.2.20",
+     "end_date": "1022.2.20",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 13939
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 4121,
+     "type": "married",
+     "participants": {
+      "spouse": 20228
+     },
+     "creation_date": "867.3.7",
+     "end_date": "1022.3.7",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 6759,
+     "type": "became_rivals",
+     "participants": {
+      "rival": 9494
+     },
+     "creation_date": "867.8.2",
+     "end_date": "1022.8.2",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 9282,
+     "type": "became_lovers",
+     "participants": {
+      "new_relation": 13386
+     },
+     "creation_date": "868.1.9",
+     "end_date": "1023.1.9",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 9363,
+     "type": "became_rivals",
+     "participants": {
+      "rival": 11368
+     },
+     "creation_date": "868.1.14",
+     "end_date": "1048.1.14",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 9367,
+     "type": "broke_up_lovers",
+     "participants": {
+      "old_lover": 13386
+     },
+     "creation_date": "868.1.14",
+     "end_date": "1048.1.14",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 10329,
+     "type": "had_sex",
+     "participants": {
+      "sex_partner": 42649
+     },
+     "creation_date": "868.4.2",
+     "end_date": "1048.4.2",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 11494,
+     "type": "became_rivals",
+     "participants": {
+      "rival": 11085
+     },
+     "creation_date": "868.7.18",
+     "end_date": "1048.7.18",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 13060,
+     "type": "became_lovers",
+     "participants": {
+      "new_relation": 15264
+     },
+     "creation_date": "868.12.11",
+     "end_date": "1048.12.11",
+     "vars": [],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "11085": {
+   "id": 11085,
+   "first_name": "Yi_5F5D",
+   "name_zh": "彝",
+   "birth": "813.1.1",
+   "death": null,
+   "dynasty_house": 7652,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    51,
+    73,
+    54,
+    3,
+    39,
+    285
+   ],
+   "family": {
+    "primary_spouse": [
+     13002
+    ],
+    "spouse": [
+     13002
+    ]
+   },
+   "landed": {},
+   "memories": [
+    {
+     "id": 3310,
+     "type": "married",
+     "participants": {
+      "spouse": 13002
+     },
+     "creation_date": "867.2.11",
+     "end_date": "997.2.11",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 4452,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 11085
+     },
+     "creation_date": "867.3.16",
+     "end_date": "997.3.16",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 14165
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 4631,
+     "type": "ascended_throne_memory",
+     "participants": {
+      "flavor_character": 11085
+     },
+     "creation_date": "867.3.24",
+     "end_date": "997.3.24",
+     "vars": [
+      {
+       "flag": "reason",
+       "type": "flag",
+       "identity": null
+      },
+      {
+       "flag": "landed_title",
+       "type": "lt",
+       "identity": 14164
+      },
+      {
+       "flag": "title_count",
+       "type": "value",
+       "identity": null
+      }
+     ],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 11493,
+     "type": "became_rivals",
+     "participants": {
+      "rival": 10692
+     },
+     "creation_date": "868.7.18",
+     "end_date": "998.7.18",
+     "vars": [],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "15264": {
+   "id": 15264,
+   "first_name": "Yin_6147",
+   "name_zh": "慇",
+   "birth": "849.1.1",
+   "death": null,
+   "dynasty_house": 7080,
+   "culture": null,
+   "faith": null,
+   "traits": [
+    73,
+    52,
+    47,
+    10
+   ],
+   "family": {
+    "primary_spouse": [
+     13836
+    ],
+    "spouse": [
+     13836
+    ]
+   },
+   "landed": {},
+   "memories": [
+    {
+     "id": 13059,
+     "type": "had_sex",
+     "participants": {
+      "sex_partner": 10692
+     },
+     "creation_date": "868.12.11",
+     "end_date": "873.12.11",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 13061,
+     "type": "became_lovers",
+     "participants": {
+      "new_relation": 10692
+     },
+     "creation_date": "868.12.11",
+     "end_date": "873.12.11",
+     "vars": [],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "20228": {
+   "id": 20228,
+   "first_name": "Renshun_4EC1_987A",
+   "name_zh": "仁顺",
+   "birth": "820.1.1",
+   "death": null,
+   "dynasty_house": null,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    60,
+    62,
+    66,
+    20,
+    249
+   ],
+   "family": {
+    "primary_spouse": [
+     10692
+    ],
+    "spouse": [
+     10692
+    ]
+   },
+   "landed": {},
+   "memories": [
+    {
+     "id": 4122,
+     "type": "married",
+     "participants": {
+      "spouse": 10692
+     },
+     "creation_date": "867.3.7",
+     "end_date": "997.3.7",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 9386,
+     "type": "became_rivals",
+     "participants": {
+      "rival": 13386
+     },
+     "creation_date": "868.1.16",
+     "end_date": "998.1.16",
+     "vars": [],
+     "first_seen": "869.1.1"
+    },
+    {
+     "id": 9449,
+     "type": "rival_died",
+     "participants": {
+      "dead_relation": 13386
+     },
+     "creation_date": "868.1.21",
+     "end_date": "998.1.21",
+     "vars": [],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "39250": {
+   "id": 39250,
+   "first_name": "Shanzhi_5584_81F3",
+   "name_zh": "善至",
+   "birth": "835.1.1",
+   "death": null,
+   "dynasty_house": 9387,
+   "culture": null,
+   "faith": null,
+   "traits": [
+    62,
+    82,
+    58,
+    3
+   ],
+   "family": {
+    "primary_spouse": [
+     11368
+    ],
+    "spouse": [
+     11368
+    ]
+   },
+   "landed": {},
+   "memories": [
+    {
+     "id": 11763,
+     "type": "married",
+     "participants": {
+      "spouse": 11368
+     },
+     "creation_date": "868.8.18",
+     "end_date": "998.8.18",
+     "vars": [],
+     "first_seen": "869.1.1"
+    }
+   ]
+  },
+  "42649": {
+   "id": 42649,
+   "first_name": "Yuexia_6708_971E",
+   "name_zh": "月霞",
+   "birth": "830.2.20",
+   "death": {
+    "date": "868.4.2",
+    "reason": "death_disappearance",
+    "killer": null,
+    "liege": 11643,
+    "liege_title": 13947,
+    "named_title": null
+   },
+   "dynasty_house": null,
+   "culture": 47,
+   "faith": 41,
+   "traits": [
+    51,
+    47,
+    60,
+    7
+   ],
+   "family": {},
+   "landed": {},
+   "memories": []
+  }
+ },
+ "relations": {}
+}

@@ -874,6 +874,51 @@ def _matching_brace(text, open_idx):
                 return i
     return len(text)
 
+# 国家旗帜色缓存: {TAG: (r, g, b)}; 来源 game/common/country_definitions/*.txt
+_COUNTRY_COLOR_CACHE = None
+
+
+def build_country_color_map():
+    """建立 TAG → (r,g,b) 国家色映射 (数据源 country_definitions 的 color = {...})。
+    解析失败/目录缺失返回 {}; 动态国家 (D00-D99) 多无固定 color, 由调用方兜底。"""
+    global _COUNTRY_COLOR_CACHE
+    if _COUNTRY_COLOR_CACHE is not None:
+        return _COUNTRY_COLOR_CACHE
+    out = {}
+    base = (os.path.join(GAME_DIR, "game", "common", "country_definitions")
+            if GAME_DIR else "")
+    if base and os.path.isdir(base):
+        try:
+            for fn in sorted(os.listdir(base)):
+                if not fn.endswith(".txt"):
+                    continue
+                txt = open(os.path.join(base, fn), encoding="utf-8-sig",
+                           errors="replace").read()
+                for m in re.finditer(r"(?:^|\n)([A-Z]{3})\s*=\s*\{", txt):
+                    tag = m.group(1)
+                    head = txt[m.start():m.start() + 600]
+                    cm = re.search(r"\bcolor\s*=\s*\{\s*(\d+)\s+(\d+)\s+(\d+)",
+                                   head)
+                    if cm:
+                        out[tag] = tuple(int(x) for x in cm.groups())
+        except Exception:
+            pass
+    _COUNTRY_COLOR_CACHE = out
+    return out
+
+
+def _country_color(tag):
+    """TAG → (r,g,b); 无固定色的动态国 (D00-D99) 用确定性哈希兜底色,
+    保证同年结果稳定可复现。"""
+    c = build_country_color_map().get(tag)
+    if c:
+        return c
+    # 确定性兜底: 把 TAG 哈希到一组低饱和色板
+    _FALLBACK = ((120, 120, 130), (140, 120, 100), (110, 135, 120),
+                 (135, 125, 145), (125, 140, 150), (150, 130, 130))
+    h = sum(ord(ch) for ch in str(tag or "?")) if tag else 0
+    return _FALLBACK[h % len(_FALLBACK)]
+
 def _homeland_dirs():
     """本土定义目录: 原版 + 当前 playset 已启用的 mod (mod 覆盖原版)。
     只读取 content_load.json 的 enabledMods, 避免把已安装但未启用的 mod
@@ -2193,6 +2238,40 @@ def _melt_ok(data):
 
 
 _REGION_STATE_IDS_CACHE = {}  # id(data) -> (data, {region_key: [state_id, ...]})
+
+_STATE_ID_REGION_CACHE = {}  # id(data) -> (data, {state_id: region_key})
+
+
+def _state_region_by_id(data):
+    """全库「州 id → 州域键」表 (一次扫描 states.database, 含外国州)。
+
+    供疆域图把外国首都州 id 映射为州域键 (STATE_XXX) 以取几何/质心。
+    按 bytes 对象同一性缓存 (同 _states_db_bounds)。"""
+    key = id(data)
+    m = _STATE_ID_REGION_CACHE.get(key)
+    if m is not None and m[0] is data:
+        return m[1]
+    out = {}
+    sob, so_end = _states_db_bounds(data)
+    if so_end > sob:
+        pat = re.compile(rb'"(\d+)":\{')
+        j = sob
+        while j < so_end:
+            m2 = pat.search(data, j, so_end - 1)
+            if not m2:
+                break
+            ob3 = m2.start() + len(m2.group(0)) - 1
+            raw2, nxt = extract_json_object(data, ob3)
+            if raw2:
+                try:
+                    o = json.loads(raw2)
+                except Exception:
+                    o = None
+                if isinstance(o, dict) and o.get("region"):
+                    out[int(m2.group(1))] = o["region"]
+            j = nxt
+    _STATE_ID_REGION_CACHE[key] = (data, out)
+    return out
 
 def _state_ids_by_region(data):
     """全库「州域键 → 州 id 列表」表 (一次扫描 states.database, 含外国州)。
@@ -11974,6 +12053,564 @@ _POOL_BUILDERS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# 每期电影剧本: 固定 7 槽叙事骨架 (参考 Hollywood-Animal-Calculator 的
+# Genre/Setting/Protagonist/Antagonist/Supporting/Theme&Event/Finale 结构;
+# 类型体系采用该工具的 11 种体裁 + 双体裁配比机制)
+# 全部槽位由程序确定性选值 (种子=年份), LLM 只负责把槽位值扩写成剧本散文。
+# ---------------------------------------------------------------------------
+
+# HAC 11 体裁 (V3 化中文名 + 一句描述)
+MOVIE_GENRES = (
+    ("drama", "正剧", "以人物命运与时代沉浮为核心，悲喜交织"),
+    ("comedy", "喜剧", "以误会与机趣制造笑料，结局圆满"),
+    ("action", "动作", "以激烈冲突、追逐与搏斗推进情节"),
+    ("romance", "爱情", "以男女情愫与聚散离合为主线"),
+    ("detective", "侦探", "以命案疑云与抽丝剥茧的侦查为主线"),
+    ("adventure", "冒险", "以远行、探险与异域遭遇为主线"),
+    ("thriller", "惊悚", "以步步紧逼的危机与悬念压迫人心"),
+    ("historical", "历史", "以真实年代与家国大事为舞台"),
+    ("horror", "恐怖", "以灾祸、未知与恐惧笼罩全篇"),
+    ("scifi", "科幻", "以未来科技与奇想为题材"),
+    ("slapstick", "闹剧", "以夸张动作与错位笑料取胜"),
+)
+MOVIE_GENRE_ZH = {k: zh for k, zh, _d in MOVIE_GENRES}
+MOVIE_GENRE_DESC = {k: (zh, desc) for k, zh, desc in MOVIE_GENRES}
+# 双体裁搭档表 (30% 概率 50/50 配比, 参考 HAC GenrePairs 兼容体裁表)
+MOVIE_GENRE_PARTNERS = {
+    "action": ["historical", "adventure", "thriller"],
+    "drama": ["romance", "historical", "detective"],
+    "comedy": ["adventure", "romance", "slapstick"],
+    "romance": ["drama", "comedy", "historical"],
+    "detective": ["thriller", "drama", "historical"],
+    "adventure": ["action", "historical", "comedy"],
+    "thriller": ["detective", "action", "horror"],
+    "historical": ["drama", "action", "adventure"],
+    "horror": ["thriller", "drama"],
+    "scifi": ["adventure", "thriller"],
+    "slapstick": ["comedy", "adventure"],
+}
+# 结局库 (参考 HAC Finale 槽语义, V3 化; 每项: id/名称/一句描述)
+MOVIE_FINALES = (
+    ("victory", "主角凯旋", "历经艰险，主角得偿所愿，光耀门楣"),
+    ("sacrifice", "英雄牺牲", "主角为家国大义献身，身后之名长存"),
+    ("relief", "苦尽甘来", "灾厄退去，主角与家人重获安稳"),
+    ("true_love", "有情人终成眷属", "跨越阻隔，恋人终成眷属"),
+    ("truth", "真相大白", "疑云散尽，真相水落石出"),
+    ("justice", "反派伏法", "恶行败露，罪有应得"),
+    ("reunion", "大团圆", "离散重聚，皆大欢喜"),
+    ("parting", "悲欢离合", "聚散有时，怅惘而真实"),
+    ("dream_shattered", "梦碎", "满怀希望终成泡影，令人扼腕"),
+    ("redemption", "救赎", "迷途知返，浪子回头"),
+    ("hope", "希望犹存", "时局艰难，仍见微光"),
+    ("changeful", "物是人非", "岁月流转，故人不再，山河依旧"),
+    ("reconcile", "重归于好", "恩怨消解，握手言和"),
+    ("departure", "远走他乡", "主角带着行囊与回忆走向远方"),
+    ("merry", "皆大欢喜", "误会冰释，人人得其所愿"),
+    ("open_ending", "未尽之约", "故事暂告段落，来日方长"),
+)
+MOVIE_FINALE_ZH = {k: zh for k, zh, _d in MOVIE_FINALES}
+MOVIE_FINALE_DESC = {k: (zh, desc) for k, zh, desc in MOVIE_FINALES}
+
+
+def _movie_int(v):
+    """数字 → 千分位字符串; 无效返回「未知」。"""
+    try:
+        return f"{int(round(float(v))):,}"
+    except (TypeError, ValueError):
+        return "未知"
+
+
+def _movie_term(snap, year=None):
+    """电影技术判定 (B2 决策): film 发明已研发或年份达 1895 → 电影剧本, 否则新剧。
+    year 传入生成年份 (快照年份同值); 回退 1895 供缺 tech_keys 的旧数据兜底。"""
+    techs = snap.get("tech_keys") or []
+    if "film" in techs:
+        return "电影剧本"
+    y = year if year is not None else (snap.get("year") or 0)
+    if y >= 1895:
+        return "电影剧本"
+    return "新剧"
+
+
+def _movie_ledger_load(folder):
+    try:
+        with open(os.path.join(folder, "data", "movie_ledger.json"),
+                  encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _movie_ledger_update(folder, year, movie):
+    ledger = _movie_ledger_load(folder)
+    if not isinstance(ledger, list):
+        ledger = []
+    ledger = [r for r in ledger
+              if isinstance(r, dict) and r.get("year") != year]
+    ledger.append({
+        "year": year,
+        "genres": [g.get("zh") for g in (movie.get("genre") or [])],
+        "protagonist": (movie.get("protagonist") or {}).get("name"),
+        "finale": (movie.get("finale") or {}).get("zh"),
+    })
+    try:
+        os.makedirs(os.path.join(folder, "data"), exist_ok=True)
+        with open(os.path.join(folder, "data", "movie_ledger.json"),
+                  "w", encoding="utf-8") as f:
+            json.dump(ledger, f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+    return ledger
+
+
+def _movie_genre_pick(rnd, data, snap, ledger, year=None):
+    """体裁加权选择: 本年情势给权重, 种子掷定; 30% 概率双体裁 50/50;
+    往年已用体裁降权 (参考 HAC 元素新鲜度机制; 同年条目不计, 保证 regen 稳定)。"""
+    weights = {"drama": 1, "historical": 1, "romance": 1,
+               "comedy": 1, "adventure": 1}
+    if data.get("player_at_war"):
+        weights.update({"historical": 3, "action": 3, "drama": 2,
+                        "thriller": 1, "adventure": 1})
+    epi = snap.get("epidemic") or {}
+    if epi.get("active"):
+        weights.update({"horror": 3, "drama": 2, "thriller": 2, "adventure": 1})
+    if data.get("crime") or data.get("crime_big"):
+        weights.update({"detective": 3, "thriller": 3, "drama": 2})
+    if (data.get("migrations") or data.get("conversions")
+            or data.get("promotions")):
+        weights.update({"romance": 2, "adventure": 2, "drama": 2, "comedy": 1})
+    sm = snap.get("stock_market") or {}
+    if isinstance(sm.get("avg_change"), (int, float)) and sm["avg_change"] < -1:
+        weights.update({"drama": 2, "thriller": 2})
+    prev_genres = set()
+    if isinstance(ledger, list):
+        for r in ledger:
+            if isinstance(r, dict) and r.get("year") != year:
+                prev_genres |= set(r.get("genres") or [])
+    for g in list(weights):
+        if MOVIE_GENRE_ZH.get(g) in prev_genres:
+            weights[g] = max(weights.get(g, 0) // 2, 0)
+    genres = [g for g in weights if weights.get(g, 0) > 0]
+    if not genres:
+        genres = list(MOVIE_GENRE_ZH.keys())
+        weights = {g: 1 for g in genres}
+    ws = [weights.get(g, 1) for g in genres]
+    g1 = rnd.choices(genres, weights=ws, k=1)[0]
+    if rnd.random() < 0.30:
+        partners = [p for p in MOVIE_GENRE_PARTNERS.get(g1, [])
+                    if MOVIE_GENRE_ZH.get(p) not in prev_genres]
+        if not partners:
+            partners = MOVIE_GENRE_PARTNERS.get(g1, [])
+        if partners:
+            g2 = rnd.choice(partners)
+            return [{"id": g1, "zh": MOVIE_GENRE_ZH[g1], "percent": 50},
+                    {"id": g2, "zh": MOVIE_GENRE_ZH[g2], "percent": 50}]
+    return [{"id": g1, "zh": MOVIE_GENRE_ZH[g1], "percent": 100}]
+
+
+def _movie_setting(rnd, data, snap):
+    """背景: 都城 + 剧情相关州 + 州情风味行 (场景素材)。"""
+    capital = snap.get("capital") or "未知都城"
+    flavors = data.get("state_flavors") or {}
+    cand_sids = []
+    for b in (data.get("battles") or [])[:4]:
+        for o in b.get("occupation") or []:
+            if o.get("state") is not None:
+                cand_sids.append(o["state"])
+    epi = snap.get("epidemic") or {}
+    for ob in (epi.get("outbreaks") or [])[:2]:
+        for st in (ob.get("states") or [])[:4]:
+            if st.get("sid") is not None:
+                cand_sids.append(st["sid"])
+    fi = snap.get("family_interview") or {}
+    if fi.get("location") is not None:
+        cand_sids.append(fi["location"])
+    cand_sids = [sid for sid in cand_sids if sid in flavors]
+    state = None
+    flavor_lines = []
+    if cand_sids:
+        fl = flavors.get(rnd.choice(cand_sids)) or {}
+        state = fl.get("state")
+        flavor_lines = fl.get("lines") or []
+    elif flavors:
+        fl = flavors.get(rnd.choice(list(flavors.keys()))) or {}
+        state = fl.get("state")
+        flavor_lines = fl.get("lines") or []
+    pref = [ln for ln in flavor_lines
+            if any(k in ln for k in ("城邑", "人群", "路网", "环境", "民生"))]
+    pick = pref[:3] if pref else flavor_lines[:3]
+    govt = snap.get("govt_zh") or snap.get("govt") or ""
+    techs = snap.get("tech_keys") or []
+    era = f"{snap.get('year')}年，{govt}" + (
+        f"，已研发科技{len(techs)}项" if techs else "")
+    return {"capital": capital, "state": state, "flavor": pick, "era": era}
+
+
+def _movie_pop_key(p):
+    """POP 身份指纹 (州id, 职业键, 文化, 生活水平)。
+    池样本 (state/type/culture/sol) 与访谈快照 (location/pop_type/culture/sol)
+    同口径可比, 供选角去重 (主角/配角不取自同一 POP)。无法识别返回 None。"""
+    if not p or not isinstance(p, dict):
+        return None
+    sid = p.get("state") if p.get("state") is not None else p.get("location")
+    tk = p.get("type") or p.get("pop_type")
+    cul = p.get("culture")
+    sol = p.get("sol")
+    sol = round(float(sol), 2) if isinstance(sol, (int, float)) else None
+    if sid is None and tk is None and cul is None and sol is None:
+        return None
+    return (sid, tk, cul, sol)
+
+
+def _movie_pop_card(p, source):
+    """POP 样本 (soldiers/families/elites/civilians/访谈) → 角色卡 (姓名待生成)。
+    同时兼容池字段 (state/type) 与访谈快照字段 (location/pop_type/region_name),
+    并携带 pop_key 身份指纹供选角去重。"""
+    if not p or not isinstance(p, dict):
+        return None
+    tk = p.get("type") or p.get("pop_type")
+    t = _journal.POP_TYPE_NAMES.get(tk, tk or "平民")
+    rel = _religion_zh(p.get("religion")) or p.get("religion") or "未知信仰"
+    return {
+        "name": None, "role": t,
+        "culture": p.get("culture") or "未知文化",
+        "religion": rel,
+        "state": p.get("state_name") or p.get("state") or p.get("region_name"),
+        "place": p.get("hub_name"),
+        "sol": p.get("sol"), "literacy": p.get("literacy_pct"),
+        "income": None, "expense": None, "family": None,
+        "source": source,
+        "pop_id": p.get("pop_id"),
+        "pop_key": _movie_pop_key(p),
+    }
+
+
+def _movie_protagonist(rnd, data, snap, year):
+    """主角: 从真实人物样本取 1 名 (姓名由程序按文化+种子生成, 与杂志文章同机制)。
+    优先: 民生访谈家庭 > 战争年士兵 > 失业者/殷实之家 > 平民/精英样本。"""
+    player = snap.get("player") or "未知"
+    cands = []
+    fi = snap.get("family_interview") or {}
+    if fi:
+        t = _journal.POP_TYPE_NAMES.get(fi.get("pop_type"),
+                                        fi.get("pop_type") or "平民")
+        rel = _religion_zh(fi.get("religion")) or "未知信仰"
+        family_bits = []
+        cc = fi.get("children_count")
+        if isinstance(cc, int) and cc > 0:
+            family_bits.append(f"子女{cc}人")
+        if fi.get("wife_works"):
+            family_bits.append("配偶在外做工")
+        cands.append({
+            "name": None, "role": t,
+            "culture": fi.get("culture") or "未知文化",
+            "religion": rel,
+            "state": fi.get("region_name") or "未知州",
+            "place": fi.get("hub_name"),
+            "sol": fi.get("sol"), "literacy": fi.get("literacy_pct"),
+            "income": fi.get("income"), "expense": fi.get("expense"),
+            "family": ("，".join(family_bits)) or None,
+            "source": "民生访谈家庭",
+            "pop_id": fi.get("pop_id"),
+            "pop_key": _movie_pop_key(fi),
+        })
+    if data.get("player_at_war"):
+        for p in (data.get("soldiers") or [])[:3]:
+            card = _movie_pop_card(p, "士兵样本")
+            if card:
+                cands.append(card)
+    for key, src in (("unemployed_interview", "失业者访谈"),
+                     ("top_sol_peer", "殷实之家")):
+        p = snap.get(key) or {}
+        if p:
+            card = _movie_pop_card(p, src)
+            if card:
+                cands.append(card)
+    for grp, src in (("civilians", "平民样本"), ("families", "后方家庭样本"),
+                     ("elites", "精英样本")):
+        for p in (data.get(grp) or [])[:2]:
+            card = _movie_pop_card(p, src)
+            if card:
+                cands.append(card)
+    if not cands:
+        return {"name": None, "role": "无名氏", "source": "暂无存档人物样本"}
+    # 家庭卡加权优先 (家庭/收支数据最全, 最像「主角」); 其余样本等权
+    w = [9 if c.get("source") == "民生访谈家庭" else 1 for c in cands]
+    card = rnd.choices(cands, weights=w, k=1)[0]
+    ck = None
+    if card.get("culture"):
+        ck = culture_key_from_zh(str(card["culture"]))
+    try:
+        nm = person_names(f"{year}|{player}|movie|protagonist",
+                          [("主角", ck)], genders={"主角": "male"})
+        card["name"] = nm.get("主角")
+    except Exception:
+        card["name"] = None
+    return card
+
+
+def _movie_antagonist(rnd, data, snap):
+    """反派: 战争年敌国+敌将 / 敌对利益集团领袖 / 罪案人物 / 时疫 / 宿敌。"""
+    battles = data.get("battles") or []
+    if data.get("player_at_war") and battles:
+        b = rnd.choice(battles[:4])
+        atk, dfd = b.get("attacker") or {}, b.get("defender") or {}
+        for sd in (atk, dfd):
+            if sd.get("country"):
+                return {
+                    "name": sd.get("commander") or sd.get("country"),
+                    "role": f"{sd['country']}统帅",
+                    "culture": None, "religion": None,
+                    "state": b.get("place"), "place": None,
+                    "sol": None, "literacy": None,
+                    "income": None, "expense": None, "family": None,
+                    "source": "战役数据",
+                    "desc": (f"在{b.get('place') or '未知地点'}与{atk.get('country') or '攻方'}"
+                             f"、{dfd.get('country') or '守方'}交战的敌方统帅"),
+                }
+    igs = snap.get("interest_groups") or []
+    opps = [g for g in igs
+            if g.get("leader_name") and not g.get("in_government")]
+    if opps:
+        g = rnd.choice(opps[:5])
+        ig_nm = _journal.ig_zh(g.get("name"), g.get("definition"))
+        return {
+            "name": g.get("leader_name"),
+            "role": f"{ig_nm}领袖",
+            "culture": g.get("leader_culture") or "未知文化",
+            "religion": g.get("leader_religion") or "未知信仰",
+            "state": g.get("leader_home_region"), "place": None,
+            "sol": None, "literacy": None,
+            "income": None, "expense": None, "family": None,
+            "source": "利益集团",
+            "desc": (f"{ig_nm}领袖，意识形态为{g.get('leader_ideology') or '未知'}，"
+                     f"政治力量占比约{g.get('clout_pct') or 0}%"),
+        }
+    crime = data.get("crime") or data.get("crime_big") or {}
+    if crime:
+        name = None
+        for ln in str((crime.get("sections") or {}).get("case") or "").split("\n"):
+            m = re.match(r"- 【(犯罪嫌疑人|真凶)】([^，,]+)", ln)
+            if m:
+                name = m.group(2).strip()
+                break
+        if name:
+            return {"name": name, "role": "犯罪嫌疑人", "culture": None,
+                    "religion": None, "state": None, "place": None,
+                    "sol": None, "literacy": None, "income": None,
+                    "expense": None, "family": None,
+                    "source": "罪案档案",
+                    "desc": "本年度档案罪案中的被控加害人"}
+    epi = snap.get("epidemic") or {}
+    if epi.get("active"):
+        ob = (epi.get("outbreaks") or [{}])[0]
+        tot = ob.get("totals") or {}
+        return {
+            "name": ob.get("disease") or "时疫",
+            "role": "时疫", "culture": None, "religion": None,
+            "state": ob.get("alias"), "place": None,
+            "sol": None, "literacy": None, "income": None,
+            "expense": None, "family": None,
+            "source": "疫情台账",
+            "desc": (f"{ob.get('disease') or '时疫'}肆虐，全国染病"
+                     f"{_movie_int(tot.get('infected'))}人、病亡"
+                     f"{_movie_int(tot.get('deaths'))}人"),
+        }
+    rivals = snap.get("rivals") or []
+    if rivals:
+        r0 = rivals[0]
+        nm = r0.get("name") or r0.get("country") or "宿敌"
+        return {"name": nm, "role": "宿敌", "culture": None, "religion": None,
+                "state": None, "place": None, "sol": None, "literacy": None,
+                "income": None, "expense": None, "family": None,
+                "source": "外交档案", "desc": f"与我国互为宿敌的{nm}"}
+    return {"name": None, "role": "未知对手", "source": "暂无存档对手数据"}
+
+
+def _movie_supporting(rnd, data, snap, protagonist, year):
+    """配角 0~2 名: 全部取自与主角不同的 POP 样本 (街坊/邻里/乡绅/同乡,
+    每组至多取 1 名, 跨组去重), 保证卡司来自不同 POP, 职业/州/生活水平
+    自然拉开差异。池子耗尽时配角为空 (「暂无」), 不复制家人当配角。"""
+    out = []
+    player = snap.get("player") or "未知"
+    used = set()
+    pk0 = (protagonist or {}).get("pop_key")
+    if pk0 is not None:
+        used.add(pk0)
+    pools = (("civilians", "街坊"), ("families", "邻里"),
+             ("elites", "乡绅"), ("soldiers", "同乡"))
+    for grp, label in pools:
+        if len(out) >= 2:
+            break
+        cands = []
+        for p in (data.get(grp) or []):
+            if not isinstance(p, dict):
+                continue
+            k = _movie_pop_key(p)
+            if k is not None and k in used:
+                continue
+            cands.append(p)
+        if not cands:
+            continue
+        p = rnd.choice(cands)
+        k = _movie_pop_key(p)
+        if k is not None:
+            used.add(k)
+        ck = p.get("culture_key")
+        nm = {}
+        if ck:
+            try:
+                nm = person_names(f"{year}|{player}|movie|supporting2|{grp}",
+                                  [("配角", ck)])
+            except Exception:
+                nm = {}
+        card = _movie_pop_card(p, label)
+        card["name"] = nm.get("配角")
+        out.append(card)
+    return out[:2]
+
+
+def _movie_battle_line(b):
+    atk, dfd = b.get("attacker") or {}, b.get("defender") or {}
+    status = {"attacker_victory": "攻方获胜",
+              "defender_victory": "守方获胜"}.get(
+        b.get("status"), b.get("status") or "结果未知")
+    return (f"{b.get('place') or '地点未知'}之战，自{b.get('start_date') or '未知'}起，"
+            f"{atk.get('country') or '攻方'}对{dfd.get('country') or '守方'}，"
+            f"以{status}告终")
+
+
+def _movie_themes(rnd, data, snap):
+    """主题/事件 1~2 张事件卡 (全部来自真实存档)。"""
+    candidates = []
+    battles = data.get("battles") or []
+    if battles:
+        candidates.append(("战役", _movie_battle_line(battles[0])))
+    laws = snap.get("laws_enacted") or []
+    if laws:
+        candidates.append(("法律变革", "本年新施行法律：" + "、".join(
+            _journal.law_zh(str(x)) for x in laws[:3])))
+    epi = snap.get("epidemic") or {}
+    if epi.get("active"):
+        ob = (epi.get("outbreaks") or [{}])[0]
+        tot = ob.get("totals") or {}
+        candidates.append(("疫情", f"{ob.get('disease') or '时疫'}"
+                                  f"（{ob.get('alias') or ''}）自{ob.get('since') or '未知'}年"
+                                  f"起蔓延，全国染病{_movie_int(tot.get('infected'))}人、"
+                                  f"病亡{_movie_int(tot.get('deaths'))}人"))
+    crime = data.get("crime") or data.get("crime_big") or {}
+    if crime:
+        ct = crime.get("type") or crime.get("crime_type") or "罪案"
+        candidates.append(("罪案", f"档案记录一宗{ct}案（详见杂志罪案报道）"))
+    migs = data.get("migrations") or []
+    if migs:
+        m0 = migs[0]
+        fr = (m0.get("origin_state") or m0.get("source")
+              or m0.get("from_state") or "一地")
+        to = (m0.get("target_name") or m0.get("to_state")
+              or m0.get("target_state") or "他处")
+        n = (m0.get("num_people") or m0.get("count")
+             or m0.get("total") or m0.get("people") or "若干")
+        candidates.append(("移民", f"人口迁移：{fr}至{to}，人数{n}"))
+    convs = data.get("conversions") or []
+    if convs:
+        candidates.append(("改信", f"档案有{len(convs)}个正在改信/同化的人群样本"))
+    sm = snap.get("stock_market") or {}
+    if isinstance(sm.get("avg_change"), (int, float)):
+        candidates.append(("股市", f"本年度股市平均涨跌{sm['avg_change']}%"))
+    if data.get("ruler") and data["ruler"].get("activity"):
+        candidates.append(("朝局", f"统治者活动：{data['ruler']['activity']}"))
+    if not candidates:
+        return []
+    # 情势主卡优先: 战争年战役卡、疫情年疫情卡 先入
+    order = []
+    if data.get("player_at_war"):
+        order.append("战役")
+    if epi.get("active"):
+        order.append("疫情")
+    used = set(order)
+    picks = [(k, t) for k, t in candidates if k in used]
+    rest = [(k, t) for k, t in candidates if k not in used]
+    if rest and rnd.random() < 0.5:
+        picks.append(rnd.choice(rest))
+    if not picks and rest:
+        picks.append(rnd.choice(rest))
+    if not picks and candidates:
+        picks.append(candidates[0])
+    return [{"kind": k, "title": k, "facts": t} for k, t in picks[:2]]
+
+
+def _movie_finale(rnd, data, snap, genre):
+    """结局: 按 题材 × 本年情势 加权, 种子掷定 (程序给定, 模型照写)。
+    与题材/情势相冲突的结局权重归零 (如无罪案年份的「反派伏法」)。"""
+    gids = [g.get("id") for g in genre]
+    weights = {fid: 1 for fid, _z, _d in MOVIE_FINALES}
+    if data.get("player_at_war"):
+        weights.update({"victory": 3, "sacrifice": 2, "hope": 2, "parting": 1})
+    epi = snap.get("epidemic") or {}
+    if epi.get("active"):
+        weights.update({"relief": 3, "hope": 3, "parting": 1, "sacrifice": 1})
+    has_crime = bool(data.get("crime") or data.get("crime_big"))
+    if has_crime:
+        weights.update({"justice": 3, "truth": 3, "redemption": 1})
+    if "romance" in gids:
+        weights.update({"true_love": 3, "parting": 2, "open_ending": 1})
+    if "comedy" in gids or "slapstick" in gids:
+        weights.update({"reunion": 3, "merry": 3, "reconcile": 2})
+    if any(g in ("detective", "thriller", "horror") for g in gids):
+        weights.update({"truth": 2, "justice": 2, "hope": 2})
+    if any(g in ("action", "historical", "adventure") for g in gids):
+        weights.update({"victory": 2, "sacrifice": 2, "departure": 1})
+    # 冲突结局归零: 罪案向结局只在有罪案或侦探/惊悚/恐怖题材时可取
+    if not has_crime and not any(g in ("detective", "thriller", "horror")
+                                 for g in gids):
+        weights["justice"] = 0
+        weights["truth"] = 0
+    # 爱情向结局只在爱情题材时可取
+    if "romance" not in gids:
+        weights["true_love"] = 0
+    # 喜剧向结局只在喜剧/闹剧题材时可取
+    if not ("comedy" in gids or "slapstick" in gids):
+        weights["merry"] = 0
+    # 凯旋结局只在战争年或动作/历史/冒险题材时可取
+    if not data.get("player_at_war") and not any(
+            g in ("action", "historical", "adventure") for g in gids):
+        weights["victory"] = 0
+    items = [k for k in weights if weights[k] > 0]
+    if not items:
+        items = list(weights.keys())
+    ws = [max(weights[k], 1) for k in items]
+    fid = rnd.choices(items, weights=ws, k=1)[0]
+    zh, desc = MOVIE_FINALE_DESC[fid]
+    return {"id": fid, "zh": zh, "desc": desc}
+
+
+def _movie_data(melted, snap, ctx, data, year, folder=None):
+    """每期电影剧本 7 槽数据 (确定性, 种子=年份)。全部取自真实存档,
+    LLM 只负责把槽位值扩写成剧本散文。"""
+    try:
+        rnd = random.Random(f"{year or 0}|movie")
+        ledger = _movie_ledger_load(folder) if folder else []
+        movie = {"seed": year or 0, "term": _movie_term(snap, year or 0)}
+        genre = _movie_genre_pick(rnd, data, snap, ledger, year or 0)
+        movie["genre"] = genre
+        movie["setting"] = _movie_setting(rnd, data, snap)
+        prot = _movie_protagonist(rnd, data, snap, year or 0)
+        movie["protagonist"] = prot
+        movie["antagonist"] = _movie_antagonist(rnd, data, snap)
+        movie["supporting"] = _movie_supporting(rnd, data, snap, prot, year or 0)
+        movie["themes"] = _movie_themes(rnd, data, snap)
+        movie["finale"] = _movie_finale(rnd, data, snap, genre)
+        if folder:
+            _movie_ledger_update(folder, year or 0, movie)
+        return movie
+    except Exception as e:
+        print(f"[movie] 剧本数据构建失败: {e}")
+        return {"seed": year or 0, "term": _movie_term(snap, year or 0),
+                "error": str(e)}
+
+
 def build_magazine_data(melted, snap, folder, year, ctx=None,
                         pool_override=None, pool_size=3):
     """汇总杂志数据 (全部来自真实存档, 采样由 year 播种保证同年稳定)。
@@ -12407,6 +13044,8 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
                     pool["fallback"].append(k)
     data.pop("_crime_used_pids", None)
     data.pop("_crime_small_index", None)
+    data["movie"] = _movie_data(melted, snap, ctx, data, year or 0,
+                                folder=folder)
     data["pool"] = pool
     return data
 
@@ -12997,6 +13636,295 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
     return None, None, None
 
 
+# ---------------------------------------------------------------------------
+# 疆域图数据 (报纸社论板块): 每年快照期提取一次, 随 raw_<年>.json 持久化
+# ---------------------------------------------------------------------------
+
+# 四色原则色板 (ColorBrewer Pastel1 前四色); 第五色起为同色板延伸兜底
+MAP_PALETTE = [
+    (251, 180, 174),  # Pastel1 #FBB4AE
+    (179, 205, 227),  # Pastel1 #B3CDE3
+    (204, 235, 197),  # Pastel1 #CCEBC5
+    (222, 203, 228),  # Pastel1 #DECBE4
+    (255, 255, 179),  # 延伸: 更浅的暖黄 (与四色区分)
+    (179, 222, 210),  # 延伸: 浅青
+    (255, 217, 179),  # 延伸: 浅橙
+    (191, 191, 191),  # 延伸: 浅灰
+]
+_FALLBACK_COLOR = (160, 160, 160)
+
+
+def _dsatur_color(regions, adj):
+    """对玩家州邻接子图做 DSATUR+回溯染色, 返回 {region: color_idx}。
+    四色原则: 相邻州不同色; 少量州回溯失败时延用色板第 5+ 色。"""
+    rs = sorted(regions)
+    idx = {r: i for i, r in enumerate(rs)}
+    n = len(rs)
+    nb = {}
+    for r in rs:
+        nb[idx[r]] = [idx[x] for x in adj.get(r, ()) if x in idx]
+    color = [-1] * n
+
+    def pick():
+        best, bestkey = None, (-1, -1, -1)
+        for i in range(n):
+            if color[i] == -1:
+                sat = len({color[j] for j in nb[i] if color[j] >= 0})
+                key = (sat, len([j for j in nb[i] if color[j] == -1]),
+                       -i)
+                if key > bestkey:
+                    best, bestkey = i, key
+        return best
+
+    def backtrack(i, limit):
+        if i is None:
+            return True
+        used = {color[j] for j in nb[i] if color[j] >= 0}
+        for c in range(limit):
+            if c in used:
+                continue
+            color[i] = c
+            if backtrack(pick(), limit):
+                return True
+            color[i] = -1
+        return False
+
+    # 先试 4 色, 失败逐档放宽 (最多 8 色)
+    limit = 4
+    while not backtrack(pick(), limit) and limit < len(MAP_PALETTE):
+        color = [-1] * n
+        limit += 1
+    if any(c < 0 for c in color):
+        # 理论不可达: 极端图给每州独立色
+        color = list(range(n))
+    return {rs[i]: color[i] for i in range(n)}
+
+
+def _extract_map_data(melted, snap, ctx, cid, state_ids, names=None,
+                      index=None):
+    """提取报纸社论疆域图所需数据 (落盘进 raw JSON 的 "map" 字段):
+      - main: 与首都能连起来的玩家州 (州域键列表);
+      - overseas: 连不起来的海外省 (州域键列表);
+      - colors: 州域键 → 四色索引 (相邻州不同色);
+      - foreign_capitals: 主图视野内各国首都 [{tag, name, region, color}]。
+      - railways: 有运营铁路的玩家州 (州域键列表, 可空);
+      - rail_links: 相邻且都有铁路的玩家州对 (供连线, 可空)。
+    几何缓存 state_shapes.json 缺失时返回 None (htmlview 侧显示提示)。
+    """
+    shapes = _state_shapes()
+    if not shapes:
+        return None
+    adj = _state_adjacency()
+    loc = _load_loc_all()
+    if names is None:
+        names = load_current_country_names(melted, index=index)
+
+    # 1. 玩家州 → 州域键
+    owned = {}
+    for sid in (state_ids or []):
+        rk = ctx.state_region_key(sid)
+        if rk:
+            owned.setdefault(rk, sid)
+    if not owned:
+        return None
+    cap_rk = snap.get("capital_region_key") or ""
+    if cap_rk not in owned:
+        # 兜底: 首都州不在玩家州列表时取玩家任一州
+        cap_rk = sorted(owned)[0]
+
+    # 2. 连通划分: 以首都为起点沿相邻表 BFS (仅玩家州)
+    reach = set()
+    stack = [cap_rk] if cap_rk else []
+    while stack:
+        r = stack.pop()
+        if r in reach:
+            continue
+        reach.add(r)
+        for nb in adj.get(r, ()):
+            if nb in owned and nb not in reach:
+                stack.append(nb)
+    main_r = [r for r in owned if r in reach]
+    overseas_r = [r for r in owned if r not in reach]
+
+    # 2b. 近海州并入主图: V3 里台湾/海南等与大陆无陆地/海峡相邻 (只隔海域),
+    # BFS 连不上会进附图。凡与主图任一州「内陆代表点距离 ≤ 阈值」的玩家州
+    # 并入主图 (阈值 = 地图宽度 1.2%, 全分辨率约 98px, 对应约 4.3° 经度,
+    # 覆盖台湾海峡~87px / 琼州海峡等近海距离)。
+    points = shapes.get("points") or {}
+    if points and overseas_r:
+        near_thr = (shapes.get("width") or 2048) * 0.012
+        merged = True
+        while merged:
+            merged = False
+            for r in [x for x in overseas_r if x not in reach]:
+                pr = points.get(r)
+                if not pr:
+                    continue
+                for m in reach:
+                    pm = points.get(m)
+                    if not pm:
+                        continue
+                    if ((pr[0] - pm[0]) ** 2 + (pr[1] - pm[1]) ** 2
+                            <= near_thr * near_thr):
+                        reach.add(r)
+                        merged = True
+                        break
+    main_r = [r for r in owned if r in reach]
+    overseas_r = [r for r in owned if r not in reach]
+
+    # 3. 四色: 主图与海外省分开染色 (互不相邻, 可复用色号)
+    colors = {}
+    colors.update(_dsatur_color(main_r, adj))
+    colors.update(_dsatur_color(overseas_r, adj))
+
+    # 4. 主图视野框: 主图州轮廓 bbox 外扩 15% (像素, 降采样坐标系)
+    x0 = y0 = 1 << 30
+    x1 = y1 = -(1 << 30)
+    for r in main_r:
+        for poly in shapes.get("shapes", {}).get(r, ()):
+            for x, y in poly:
+                x0 = min(x0, x); y0 = min(y0, y)
+                x1 = max(x1, x); y1 = max(y1, y)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    dx, dy = (x1 - x0) * 0.15, (y1 - y0) * 0.15
+    vx0, vy0, vx1, vy1 = x0 - dx, y0 - dy, x1 + dx, y1 + dy
+
+    # 5. 外国首都: 首都州域键内陆代表点落在视野框内的国家
+    sid_region = _state_region_by_id(melted)
+    cent = shapes.get("points") or {}
+    foreign = []
+    try:
+        countries, _ = _pool_country_objects(melted)
+    except Exception:
+        countries = {}
+    if index is not None:
+        ranked = sorted([cid2 for cid2, e in index.items()
+                         if e.get("prestige") is not None],
+                        key=lambda c: -index[c]["prestige"])
+    else:
+        ranked = []
+    seen = set()
+    for cid2 in ranked:
+        e = index[cid2]
+        tag = e.get("definition")
+        if not tag or not e.get("is_main_tag") or cid2 == cid:
+            continue
+        cap_sid = (countries.get(cid2) or {}).get("capital")
+        rk = sid_region.get(cap_sid) if cap_sid is not None else None
+        if not rk or rk in seen:
+            continue
+        cx, cy = cent.get(rk, (None, None))
+        if cx is None or not (vx0 <= cx <= vx1 and vy0 <= cy <= vy1):
+            continue
+        seen.add(rk)
+        foreign.append({
+            "tag": tag,
+            "name": names.get(tag, tag),
+            "region": rk,
+            "color": list(_country_color(tag)),
+        })
+        if len(foreign) >= 25:
+            break
+
+    # 6. 铁路: 玩家州内有运营铁路建筑者; rail_links = 相邻且均有铁路的州对
+    rail = set()
+    try:
+        _by_state, btype_map, objs = ctx.buildings_index(state_ids)
+        for bid, btype in btype_map.items():
+            if btype == "building_railway" and (objs[bid].get("active")):
+                sid = objs[bid].get("state")
+                rk = ctx.state_region_key(sid)
+                if rk in owned:
+                    rail.add(rk)
+    except Exception:
+        pass
+    rail_links = []
+    for r in sorted(rail):
+        for nb in adj.get(r, ()):
+            if nb in rail and nb > r:
+                rail_links.append([r, nb])
+
+    # 7. 州详情 (悬浮提示用): 州名/hub 首府名/GDP 占比/文化宗教饼图。
+    #    GDP 代理 = 州内建筑 profit_after_reserves 合计 (无独立州GDP字段);
+    #    文化/宗教按州内 POP workforce+dependents 聚合, 取前 4 项。
+    pops = ctx.pops_by_state(state_ids)
+    gdp_sum = 0.0
+    state_gdp = {}
+    try:
+        _by_state, _bt, objs = ctx.buildings_index(state_ids)
+        for sid in state_ids:
+            inc = 0.0
+            for bid in _by_state.get(sid, []):
+                v = objs.get(bid, {}).get("profit_after_reserves")
+                if isinstance(v, (int, float)):
+                    inc += v
+            state_gdp[sid] = inc
+        gdp_sum = sum(state_gdp.values())
+    except Exception:
+        pass
+
+    culture_map = build_culture_map()
+    zh_cult = culture_map.get("_zh") or {}
+
+    def _hub_city_name(sid):
+        sobj = ctx.state_object(sid)
+        hubs = _hub_names(sobj) if sobj else [None] * 5
+        return hubs[0] if hubs and hubs[0] else None
+
+    states_detail = {}
+    for sid in state_ids:
+        rk = ctx.state_region_key(sid)
+        if not rk or rk not in owned:
+            continue
+        st_name = ctx.state_zh(sid) or f"州{sid}"
+        cult = {}
+        rel = {}
+        for p in pops.get(sid, []):
+            wf = p.get("workforce") or 0
+            dep = p.get("dependents") or 0
+            n = wf + dep
+            if n <= 0:
+                continue
+            c = p.get("culture")
+            if c is not None:
+                ckey = culture_id_to_key(c)
+                cult[zh_cult.get(ckey, ckey or f"c{c}")] = \
+                    cult.get(zh_cult.get(ckey, ckey or f"c{c}"), 0) + n
+            rv = p.get("religion")
+            if rv is not None:
+                rname = _religion_zh(rv) or str(rv)
+                rel[rname] = rel.get(rname, 0) + n
+        cult_top = [{"name": k, "pct": round(v / sum(cult.values()) * 100, 1)}
+                    for k, v in sorted(cult.items(), key=lambda kv: -kv[1])[:4]] \
+            if sum(cult.values()) else []
+        rel_top = [{"name": k, "pct": round(v / sum(rel.values()) * 100, 1)}
+                   for k, v in sorted(rel.items(), key=lambda kv: -kv[1])[:4]] \
+            if sum(rel.values()) else []
+        gdp = state_gdp.get(sid, 0.0)
+        states_detail[rk] = {
+            "name": st_name,
+            "hub": _hub_city_name(sid),
+            "gdp": round(gdp, 0),
+            "gdp_pct": round(gdp / gdp_sum * 100, 1) if gdp_sum else 0.0,
+            "culture": cult_top,
+            "religion": rel_top,
+        }
+
+    return {
+        "year": snap.get("year"),
+        "player": snap.get("player"),
+        "capital_region": cap_rk,
+        "main": sorted(main_r),
+        "overseas": sorted(overseas_r),
+        "colors": colors,
+        "foreign_capitals": foreign,
+        "railways": sorted(rail),
+        "rail_links": rail_links,
+        "states": states_detail,
+    }
+
+
 def build_journal_data(snap):
     """把存档快照转成 journal.py 兼容的 data dict。"""
     data = {}
@@ -13102,6 +14030,9 @@ def build_journal_data(snap):
     data["tag_names"] = snap.get("tag_names") or {}
     data["country_names"] = snap.get("country_names") or {}
     data["name_table_version"] = NAME_TABLE_VERSION
+    # 疆域图数据 (报纸社论板块); None 时不落盘, htmlview 侧显示提示
+    if snap.get("map") is not None:
+        data["map"] = snap["map"]
     return data
 
 def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
@@ -13303,6 +14234,14 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
                                 journal_dir=journal_dir)
     except Exception as e:
         print(f"[snapshot-extras] 州情/股市附加层失败, 跳过: {e}")
+    # 疆域图 (报纸社论板块): 几何缓存缺失或解析失败时 snap["map"] 为 None,
+    # build_journal_data 不落盘, htmlview 侧对旧数据/无缓存显示提示。
+    try:
+        snap["map"] = _extract_map_data(melted, snap, ctx, cid, state_ids,
+                                        names=names, index=index)
+    except Exception as e:
+        print(f"[snapshot-map] 疆域图数据提取失败, 跳过: {e}")
+        snap["map"] = None
     return snap
 
 def _extract_powers(data, names, index=None, gp_ids=None, player_id=None, player_tag=None):
@@ -16982,6 +17921,46 @@ DISEASES = {
 }
 
 _ADJ_CACHE = None
+_SHAPES_CACHE = None
+
+
+def _state_shapes():
+    """州域几何缓存 (state_geojson.json, 由 tools/build_state_shapes.py 在
+    QGIS Python 环境一次性生成, 含 GDAL Polygonize + shapely):
+    {width, height, features: [{id, polys: [[[x,y],...], ...],
+    point: [x,y](内陆代表点)}]}。纯海域州已在构建时剔除。
+    返回兼容结构 {shapes: {id: [[x,y],...], ...}, points: {id: [x,y]},
+    width, height}; 文件缺失时返回 None 并提示。"""
+    global _SHAPES_CACHE
+    if _SHAPES_CACHE is not None:
+        return _SHAPES_CACHE
+    path = os.path.join(SCRIPT_DIR, "state_geojson.json")
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                raw = json.load(f)
+            shapes = {}
+            points = {}
+            for feat in raw.get("features") or []:
+                rid = feat.get("id")
+                if not rid:
+                    continue
+                polys = [p for p in (feat.get("polys") or []) if len(p) >= 4]
+                if polys:
+                    shapes[rid] = polys
+                pt = feat.get("point")
+                if pt and len(pt) == 2:
+                    points[rid] = pt
+            _SHAPES_CACHE = {"shapes": shapes, "points": points,
+                             "width": raw.get("width") or 2048,
+                             "height": raw.get("height") or 904}
+            return _SHAPES_CACHE
+        except Exception:
+            pass
+    print("[警告] state_geojson.json 缺失: 报纸社论疆域图将不绘制。"
+          "运行 tools/build_state_shapes.py (QGIS Python 环境) 生成该缓存。")
+    _SHAPES_CACHE = None
+    return None
 
 
 def _state_adjacency():

@@ -1,0 +1,155 @@
+Script Department
+Screenwriters turn ideas into screenplays.
+Hire freelance writers or buy ready-made scripts.
+Advance the development of actors, directors, producers, cinematographers and screenwriters.
+<Description missing>
+The screenwriter can correct problems in the script during the filming, if necessary.
+The script department will submit three to four Story Ideas each month instead of one or two.
+The script department will submit five to six Story Ideas each month instead of three to four.
+Choose the type of story elements the screenwriter will develop: settings, protagonists, supporting characters, antagonists, themes and events, and finales.
+The Head of the Script Department will automatically develop a new Story Element every 6 months.
+The Head of the Script Department will automatically develop a new Story Element every 3 months.
+The Script Writer and Head of the Script Department will receive 25% more experience for each Story Element they develop.
+The Script Writer and Head of the Script Department will receive 50% more experience for each Story Element they develop.
+The Script Writer and Head of the Script Department will receive double experience for each Story Element they develop.
+More scripts for sale
+Increase the market supply of scripts by 50%.
+Twice as many scripts for sale
+Double the market supply of scripts.
+Script doctor
+Give a script to a script doctor — a writer who will try to improve the finished text.
+Faster script doctor
+The script doctor will work twice as fast.
+Cheaper script doctor
+The script doctor will work twice as cheap.
+More careful script doctor
+The likelihood that the script doctor can improve the script will greatly increase.
+Hard working script doctor
+If the script doctor can improve the script, his commercial and artistic ratings will grow stronger.
+The Script Writer and Head of the Script Department will earn 25% more experience when the film is released.
+The Script Writer and Head of the Script Department will earn 50% more experience when the film is released.
+The Script Writer and Head of the Script Department will earn double experience when the film is released.
+The Happiness of the Script Writer and Head of the Script Department will grow twice as much after the release of the film.
+The Loyalty of the Script Writer and Head of the Script Department will grow twice as much after the release of the film.
+The Script Writer and Head of the Script Department will earn experience for getting the film into the audience's top 10 favorite films of the year.
+The Script Writer and Head of the Script Department will earn experience for making it into the critics' top 10 films of the year.
+The Script Writer and Head of the Script Department will earn experience for making one of the top 10 highest grossing films of the year.
+Staff writers write scripts 15% faster.
+Staff writers write scripts 30% faster.
+Staff writers write scripts twice as fast.
+Double IP per script
+Completed scripts will be worth double the Influence.
+Triple IP per script
+Completed scripts will be worth triple the Influence.
+Additional 15% exp per script
+Staff writers earn 15% more experience per finished script.
+Additional 30% exp per script
+Staff writers earn 30% more experience per finished script.
+Additional 50% exp per script
+Staff writers earn 50% more experience per finished script.
+Script by
+Do you want to save this synopsis?
+To hire screenwriters you first need to build the Freelance Writers' Office (Script Department).
+Hire Screenwriter
+Name the script
+Screenwriter selection
+Select screenwriter
+Script Department
+Screenwriter {0} finished researching: {2} {1}
+Screenwriter {0} was unable to come up with anything new. Better luck next time!
+Screenwriter
+Head of Script Department
+Screenwriters
+Script Department
+Script
+Script Doctoring
+Screenwriters
+Ideas and Scripts
+Finished Scripts
+Scripts
+Buy scripts
+Do you really want to delete script "{0}"?
+My Scripts
+Give it to script doctor
+The Script department submitted {0} new Story Ideas
+Script is written
+Script
+Script results
+<size=14><voffset=-2px><sprite name="Scriptwriter" tint=1></voffset></size> Rename
+Scripts purchase
+Screenwriters
+Three Action films (50% Action or more), and a commercial rating of 5 or higher.
+New script
+Scripts for sale
+The script for {0} has been completed.
+The project will be pulled from pre-production, and the script will go back on the shelf. You may return to it later if you want.
+Send to Script Doctor
+Script Doctoring
+The Script Doctor will try to improve the script. If he fails, he can try again.
+The script doctor is working on improving the script
+The script doctor's results
+The script doctor has already improved this script
+Script Ratings
+The most successful story element combinations in the script.
+The least successful story element combinations in the script.
+New script
+Build a Script Department to hire writers
+Renovate the Script Department to hire writers
+Reopen the Script Department to hire writers
+Hire a Head of the Script Department to hire writers
+They say where seven people agree, eight will fight. I don't know how it is in other professions, but it's absolutely true for screenwriters. They're a capricious and jealous bunch. It still amazes me how they can produce lines worthy of Shakespeare, and the next second turn into unbearable children. Anyway, I wouldn't recommend having more than seven writers at a time. Otherwise you can't expect them to be productive.
+You can see the development ceiling of all actors, directors, producers, cinematographers, and screenwriters.
+His life's script still had plenty of unfilmed scenes — but a sudden illness rewrote the ending.
+Her life's script still had plenty of unfilmed scenes — but a sudden illness rewrote the ending.
+Script Doctoring
+Script Rating Limit
+The rating limit for a script, and the movie that follows, depends on the number of story elements involved. The more developed the story, the higher the ceiling.
+Script
+The script has reached its ratings limit.
+A banquet for important guests including businessmen, politicians, and people of refined taste, held on the studio premises.
+Talented writer Colman Graves will, for a modest fee, carefully study the script and tell you how well its elements fit together.
+Don't forget that we pay for the monthly maintenance of all the buildings on the studio premises — as part of the utilities and staff salaries. Now, if a building is idle, we can mothball it, which reduces costs for a while. Just pick a department you want to mothball, and you'll easily find the option.
+Skip Script Reading
+Are you sure you want to skip the script reading?
+A film's commercial and artistic appeal may change after each stage of development. The film "Limpin' Luke" received these ratings after work on the script was completed. 
+
+The screenwriter {SCRIPTWRITER} prefers to resolve conflict through fighting and shootouts rather than dialog. Drawing on his experience and talent, the writer breathed excitement and spectacle into the simple story of vulnerable boy, rising to become a fearless western hero. The story's elements came together to form a coherent whole.
+A film's commercial and artistic appeal may change after each stage of development. The film "Blind Love" received these ratings after work on the script was completed. 
+
+The screenwriter {SCRIPTWRITER} loves writing romances, and thanks to his experience and talent, the love story turned out touching and memorable. The story's elements came together to form a coherent whole.
+A film's commercial and artistic appeal may change after each stage of development. The film "Messenger of Death" received these ratings after work on the script was completed. 
+
+The screenwriter {SCRIPTWRITER} loves to write detective stories. Thanks to his experience and talent, the investigation turned out to be suspenseful and intriguing. The story's elements came together to form a coherent whole.
+Build a Script Department
+To assign a screenwriter to work on a new story element, click the magnifying glass button.
+To send a finished script to pre-production, click the clapperboard button.
+Naturally I'd never doubt your competence! I just want to give you a little professional advice. Choose actors who are at least the same level as the script. If the script is good, but the actor is lousy, they'll drag the film down.
+Don't expect a good result if you ask a screenwriter to just write a story "about a cowboy" or "about a detective". Good movies are more sophisticated, and everything is in its place: secondary characters, themes, events — and a meaningful ending. The more developed the story, the higher its potential. But to write a truly complex synopsis takes a large number of story elements, so you'll need to develop the Script Department.
+The freshness of story elements ultimately affects the performance of the film at the box office. Viewers grow tired of stories with <style="Cliche">stale</style> or <style="Rotten">rotten</style> elements. But you can always shelve the script, or even the finished film, until the audience grows to miss the familiar characters and plots.
+Work on these scripts will be suspended:
+These scripts will not be completed:
+After demolishing the <b>Script Department</b>, you won't be able to work on scripts, story ideas and synopses.
+Until renovations on the <b>Script Department</b> are finished, you won't be able to work on scripts, story ideas and synopses.
+Until the <b>Script Department</b> is reopened, you won't be able to work on scripts, story ideas and synopses.
+The <b>Script Department</b> needs renovation. you won't be able to work on scripts, ideas, or synopses until the renovation is complete.
+It's time to start working on a new movie. First, build a department for developing scripts.
+These are the screenwriters remaining from the studio's former staff. What are their names?
+Screenwriters
+To begin work on a new script, select the Script Department building.
+The department worked up several ideas for the first script.
+Click on "Ideas and Scripts"
+Choose any idea you like, and a screenwriter will develop it into a full screenplay.
+No matter who is working in your script department, no one knows better than you what a film needs to be successful. With this upgrade, you can write your own stories.
+This script's ratings are even higher than the writer's score, because of how well the story elements fit together!
+This script's ratings are lower than the writer's grade because of how poorly the story elements you chose fit together.
+You can always change your mind about this project and cancel it. The script will be shelved until a more opportune moment arises.
+Are you nuts? Maybe next I'll write a script about a female president! Thanks but no thanks. Ask someone else.
+Are you sure this role is right for me? I understand the script, but... it seems strange for a female role. I'm not comfortable with this.
+You promised the mayor within three months you'd convince three actors to sign his petition for raising taxes on the rich. The actors' Skill Level must be 5 \u0005 or higher.
+Assign a screenwriter to create a trash element using the selected recipe.
+You will see the development ceiling of all actors, directors, producers, cinematographers, and screenwriters.
+Pierre Zola pitches its newspapers, magazines, and radio stations to the intelligent and sophisticated man — "with a twist." Theater, cinema, hunting, cars... It's an encyclopedic range of topics, but the articles are so elaborately written that only the most sophisticated readers can understand them. The company has earned its cult status with a solid audience base, mostly thanks to people wanting to look smarter than they actually are.
+For hiring a new screenwriter
+Within three months, convince three actors (with 3+ \u0005 Skill) to sign a petition for higher taxes
+Release a film based on the script "The Sicilian Tiger"
+Make a movie based on the script "Flat Bottom" within three years.

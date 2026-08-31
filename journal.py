@@ -1046,6 +1046,20 @@ def sol_band(sol):
     return "富足安乐"
 
 
+def literacy_band(pct):
+    """识字率百分比 → 档名 (与罪案人物 _crime_literacy_tier 同档):
+    <25 目不识丁, <50 粗通文字, <75 识字明理, 其余饱学多识。"""
+    if not isinstance(pct, (int, float)):
+        return None
+    if pct < 25:
+        return "目不识丁"
+    if pct < 50:
+        return "粗通文字"
+    if pct < 75:
+        return "识字明理"
+    return "饱学多识"
+
+
 def _division_label(govt_key):
     """政体原始键 → 行政区划称谓 (仅"省/州"两种, 无括号):
     共和系政体 → 州; 君主/帝国/摄政/殖民地等 → 省; 无法识别返回 None (沿用旧格式)。"""
@@ -1354,8 +1368,9 @@ SECTION_DEFS = [
 # 报纸板块 → HTML 图表占位标记 (htmlview.py 重建时替换为内嵌 SVG 图表:
 # comment=宏观经济折线图, stock=个股年K线蜡烛图)。占位由生成端确定性追加,
 # 不依赖模型自觉, 图表数据来自 data/raw_*.json 的历史序列。
+# map=社论疆域图 (报纸): htmlview 读 raw JSON 的 "map" 字段渲染 SVG。
 _SECTION_CHART_PLACEHOLDERS = {
-    "comment": "<!--CHART macro-->",
+    "comment": "<!--CHART macro-->\n\n<!--CHART map-->",
     "stock": "<!--CHART stock-->",
 }
 

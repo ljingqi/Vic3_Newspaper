@@ -34,6 +34,7 @@
 | `<项目目录>\journal_save.py` | **Python 伴生程序（存档直读主入口）**：`watch`/`continue` 监控存档，`newspaper`/`magazine` 按年份生成 |
 | `<项目目录>\journal.py` | **渲染库**：分板块生成报纸；另提供 `regen` / `test-llm` / `config` 命令 |
 | `<项目目录>\magazine.py` | **杂志生成程序**（复用 journal.py 的 API 调用，按政体定制基调） |
+| `<项目目录>\movie.py` | **电影剧本生成程序**（每次杂志生成时附带，固定 7 槽叙事骨架 + LLM 扩写） |
 | `<项目目录>\htmlview.py` | **阅读页生成器**：把报纸/杂志 Markdown 汇总为单页 `index.html`（可切换报纸/杂志与年份），并提供存量迁移命令 `rebuild` |
 | `<项目目录>\saveparse.py` | 存档信封解析工具（读取 .v3 元数据与 gamestate，检测格式） |
 | `<项目目录>\config.json` | 配置文件（由 `config.example.json` 复制而来；含你的 DeepSeek Key，**勿上传**） |
@@ -44,6 +45,7 @@
 | `<项目目录>\启动续传.bat` | **一键启动（旧档）**：双击运行 `journal_save.py continue` |
 | `<项目目录>\output\<国名>\报纸\报纸_<年份>.md` | 生成的报纸（每个存档开局一个文件夹，自动产生） |
 | `<项目目录>\output\<国名>\杂志\杂志_<年份>.md` | 生成的杂志（与报纸分文件夹，每年一份） |
+| `<项目目录>\output\<国名>\电影剧本\电影剧本_<年份>.md` | 每期杂志附带生成的电影剧本（独立文件，见下文「电影剧本」） |
 | `<项目目录>\output\<国名>\index.html` | 会话阅读页：一个页面内切换报纸/杂志版式与年份，双击直接用浏览器阅读 |
 | `<项目目录>\output\<国名>\data\raw_<年份>.json` | 每年导出的原始数据（随报纸同放于该会话文件夹，用于 regen 重试） |
 | `<项目目录>\output\<国名>\data\pops_<年份>.json` | 每年玩家州 POP 指纹（跨年比对升职/迁移） |
@@ -301,6 +303,34 @@ python journal_save.py watch                 :: 持续监控自动存档(建议�
 
 ---
 
+## 报纸社论疆域图
+
+每期报纸的「社论」板块（宏观经济图之后）自动附带一张**本国疆域图**，由程序
+（非 LLM）用地图数据确定性渲染，中国地图风格（标题/图例/指北针/比例尺）：
+
+- **绘制内容**：与首都陆地连通的州画在主图（四色原则填色——相邻州异色，
+  配色取 [ColorBrewer](https://colorbrewer2.org/) Pastel1 前四色）；隔海的
+  近海州（如台湾/海南）自动并入主图；真正的海外省（如非洲殖民地）画在右上角
+  「海外省」附图；外国只标首都（圆点用游戏国色）；本国运营铁路的相邻州画
+  黑白相间曲线示意。
+- **交互**（阅读页）：鼠标悬停任一州显示**州名、首府、GDP 及占比、文化/宗教
+  饼图**（数据来自存档 POP 聚合，前 4 项）。
+- **几何缓存**：`<项目目录>\state_geojson.json`（由 `tools/build_state_shapes.py`
+  在 **QGIS 安装的 Python 环境**（如 `C:\Program Files\QGIS 4.0.3\bin\python-qgis.bat`，
+  自带 GDAL + shapely）一次性生成：GDAL Polygonize 把省份栅格转成拓扑正确的
+  州多边形（州间无缝不重叠），剔除纯海域州，每州附内陆代表点）。该缓存只依赖
+  游戏地图，与战役无关，**游戏版本更新时才需重跑**：
+  ```
+  "C:\Program Files\QGIS 4.0.3\bin\python-qgis.bat" tools/build_state_shapes.py
+  ```
+- **数据流**：`journal_save.py` 快照期提取州详情（hub 名/GDP/文化宗教）落盘进
+  `data/raw_<年>.json` 的 `map` 字段 → `htmlview.py` 重建阅读页时用 matplotlib
+  渲染 SVG 内嵌（`svg.fonttype=none` 文本模式，中文走系统字体）。
+- 旧年份（raw 无 `map` 字段）显示「本期无疆域图数据」提示，不报错；重新生成
+  该年报纸即可补上。
+
+---
+
 ## 疫情专题（报纸疫情专电 + 杂志第4篇特稿）
 
 伴生程序按存档数据**确定性推演**本国疫情（种子=年份，同年结果稳定，可 regen 复现），
@@ -321,6 +351,32 @@ python journal_save.py watch                 :: 持续监控自动存档(建议�
 - **台账**：每会话 `output\<国名>\data\epidemics.json`（跨年）与 `epidemic_<年份>.json`
   （当年快照，regen/手动命令可读）；数字由程序算出，模型照抄，不另造。
 - 关闭：`config.json` 设 `"epidemic_enabled": false`。
+
+---
+
+## 电影剧本（每期杂志附带生成）
+
+每次生成杂志时，程序按**固定 7 槽叙事骨架**附带生成一部电影剧本，输出独立文件
+`<项目目录>\output\<国名>\电影剧本\电影剧本_<年份>.md`，阅读页 `index.html` 增加
+「电影剧本」页签切换。叙事骨架与类型体系参考
+[Hollywood-Animal-Calculator](https://callon84.github.io/Hollywood-Animal-Calculator/)
+（源码级研究报告见 `docs/Hollywood_Animal_Calculator_研究报告.md`）：
+
+- **固定 7 槽**：体裁 → 背景 → 主角 → 反派 → 配角 → 主题/事件 → 结局。
+  全部槽位由程序**确定性选值（种子=年份）**，同年可复现、`regen` 可用；
+- **类型体系**：采用其 11 种体裁（正剧/喜剧/动作/爱情/侦探/冒险/惊悚/历史/恐怖/科幻/闹剧），
+  按本年情势加权选择，30% 概率双体裁 50/50 配比；结局库 16 种，按题材×情势加权（程序给定，
+  模型照写）；
+- **素材全部来自存档**：主角/反派/配角取真实人物样本（民生访谈家庭、士兵、平民、利益集团
+  领袖、罪案人物等，姓名由程序按文化+种子生成），背景取都城/州/州情风味行，主题事件取
+  真实战役/法律/疫情/罪案/移民/股市记录，数字一律以资料为准；
+- **称谓随科技演进**：存档已研发 `film` 发明（或年份达 1895）前称「新剧」，之后称
+  「电影剧本」；7 槽骨架与流程不变；
+- **LLM 分工**：片名 1 次 + 分幕 3 次调用（`movie_script_mode=full`，每幕 800~1200 字）；
+  `compact` 模式为片名 1 次 + 全剧 1 次；
+- **去重**：`output\<国名>\data\movie_ledger.json` 记录历年已用体裁/主角，上期已用体裁自动
+  降权；
+- 开关：`config.json` 的 `movie_script_enabled`（默认 true）、`movie_script_mode`（full/compact）。
 
 ---
 

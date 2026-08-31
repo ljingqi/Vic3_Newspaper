@@ -1,0 +1,340 @@
+{
+ "year": 1838,
+ "player": "德川幕府",
+ "capital_region": "STATE_KYOTO",
+ "main": [
+  "STATE_CHUGOKU",
+  "STATE_HOKKAIDO",
+  "STATE_HOKUSHINETSU",
+  "STATE_KANSAI",
+  "STATE_KANTO",
+  "STATE_KYOTO",
+  "STATE_KYUSHU",
+  "STATE_RYUKYU_ISLANDS",
+  "STATE_SHIKOKU",
+  "STATE_TOHOKU",
+  "STATE_TOKAI"
+ ],
+ "overseas": [],
+ "colors": {
+  "STATE_CHUGOKU": 0,
+  "STATE_HOKKAIDO": 1,
+  "STATE_HOKUSHINETSU": 2,
+  "STATE_KANSAI": 2,
+  "STATE_KANTO": 1,
+  "STATE_KYOTO": 1,
+  "STATE_KYUSHU": 1,
+  "STATE_RYUKYU_ISLANDS": 0,
+  "STATE_SHIKOKU": 1,
+  "STATE_TOHOKU": 0,
+  "STATE_TOKAI": 0
+ },
+ "foreign_capitals": [
+  {
+   "tag": "KOR",
+   "name": "朝鲜",
+   "region": "STATE_SEOUL",
+   "color": [
+    157,
+    144,
+    97
+   ]
+  },
+  {
+   "tag": "RYU",
+   "name": "琉球",
+   "region": "STATE_RYUKYU_ISLANDS",
+   "color": [
+    90,
+    138,
+    133
+   ]
+  },
+  {
+   "tag": "EZO",
+   "name": "虾夷地",
+   "region": "STATE_HOKKAIDO",
+   "color": [
+    129,
+    40,
+    147
+   ]
+  }
+ ],
+ "railways": [
+  "STATE_CHUGOKU",
+  "STATE_HOKUSHINETSU",
+  "STATE_KANSAI",
+  "STATE_KANTO",
+  "STATE_KYUSHU",
+  "STATE_SHIKOKU",
+  "STATE_TOHOKU",
+  "STATE_TOKAI"
+ ],
+ "rail_links": [
+  [
+   "STATE_CHUGOKU",
+   "STATE_KANSAI"
+  ],
+  [
+   "STATE_CHUGOKU",
+   "STATE_KYUSHU"
+  ],
+  [
+   "STATE_CHUGOKU",
+   "STATE_SHIKOKU"
+  ],
+  [
+   "STATE_HOKUSHINETSU",
+   "STATE_KANTO"
+  ],
+  [
+   "STATE_HOKUSHINETSU",
+   "STATE_TOHOKU"
+  ],
+  [
+   "STATE_HOKUSHINETSU",
+   "STATE_TOKAI"
+  ],
+  [
+   "STATE_KANSAI",
+   "STATE_TOKAI"
+  ],
+  [
+   "STATE_KANTO",
+   "STATE_TOHOKU"
+  ],
+  [
+   "STATE_KANTO",
+   "STATE_TOKAI"
+  ]
+ ],
+ "states": {
+  "STATE_HOKKAIDO": {
+   "name": "虾夷",
+   "hub": "石狩",
+   "gdp": 903.0,
+   "gdp_pct": 0.5,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 99.9
+    },
+    {
+     "name": "阿伊努",
+     "pct": 0.1
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 99.9
+    },
+    {
+     "name": "泛灵信仰",
+     "pct": 0.1
+    }
+   ]
+  },
+  "STATE_TOHOKU": {
+   "name": "东北",
+   "hub": "仙台",
+   "gdp": 16873.0,
+   "gdp_pct": 9.7,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 100.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    }
+   ]
+  },
+  "STATE_KANTO": {
+   "name": "关东",
+   "hub": "江户",
+   "gdp": 24907.0,
+   "gdp_pct": 14.3,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 100.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    }
+   ]
+  },
+  "STATE_TOKAI": {
+   "name": "东海",
+   "hub": "名古屋",
+   "gdp": 22731.0,
+   "gdp_pct": 13.1,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 100.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    }
+   ]
+  },
+  "STATE_HOKUSHINETSU": {
+   "name": "北信越",
+   "hub": "金泽",
+   "gdp": 21420.0,
+   "gdp_pct": 12.3,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 100.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    }
+   ]
+  },
+  "STATE_KANSAI": {
+   "name": "大阪",
+   "hub": "大阪",
+   "gdp": 21319.0,
+   "gdp_pct": 12.3,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 100.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    }
+   ]
+  },
+  "STATE_KYOTO": {
+   "name": "京都",
+   "hub": "京都",
+   "gdp": 4144.0,
+   "gdp_pct": 2.4,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 100.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    }
+   ]
+  },
+  "STATE_KYUSHU": {
+   "name": "九州",
+   "hub": "博多",
+   "gdp": 29139.0,
+   "gdp_pct": 16.8,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 99.9
+    },
+    {
+     "name": "琉球",
+     "pct": 0.1
+    },
+    {
+     "name": "汉",
+     "pct": 0.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    },
+    {
+     "name": "儒教",
+     "pct": 0.0
+    }
+   ]
+  },
+  "STATE_RYUKYU_ISLANDS": {
+   "name": "琉球群岛",
+   "hub": "首里",
+   "gdp": 647.0,
+   "gdp_pct": 0.4,
+   "culture": [
+    {
+     "name": "琉球",
+     "pct": 89.2
+    },
+    {
+     "name": "大和",
+     "pct": 10.8
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 95.7
+    },
+    {
+     "name": "儒教",
+     "pct": 4.3
+    }
+   ]
+  },
+  "STATE_CHUGOKU": {
+   "name": "中国",
+   "hub": "广岛",
+   "gdp": 16365.0,
+   "gdp_pct": 9.4,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 100.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    }
+   ]
+  },
+  "STATE_SHIKOKU": {
+   "name": "四国",
+   "hub": "高松",
+   "gdp": 15188.0,
+   "gdp_pct": 8.7,
+   "culture": [
+    {
+     "name": "大和",
+     "pct": 100.0
+    }
+   ],
+   "religion": [
+    {
+     "name": "大乘佛教",
+     "pct": 100.0
+    }
+   ]
+  }
+ }
+}

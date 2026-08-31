@@ -1,0 +1,251 @@
+## Genre (3)
+  GENRE_PERCENTAGES_LABEL                                 | Genres | None
+  GENRE_WITH_FRACTION                                     | {0}: {1}% | None
+  GENRE_WITH_PERCENTS_PATTERN                             | {0}: {1} | None
+## Setting (0)
+## Protagonist (50)
+  PROTAGONIST_ACCIDENTAL_HERO                             | Accidental Hero | A simple man, caught up against his will in a whirlwind of events.
+  PROTAGONIST_AMBITIOUS_WOMAN                             | Ambitious Woman | A talented woman endeavors with all her might to carve her way to success, in a conservative and patriarchal world.
+  PROTAGONIST_ATTORNEY                                    | Attorney | Attorney
+  PROTAGONIST_BOUNTY_HUNTER                               | Bounty Hunter | A mercenary who earns his living collecting bounties and going on dangerous missions.
+  PROTAGONIST_BROTHERS_IN_ARMS                            | Brothers in Arms | Warriors who fight side by side.
+  PROTAGONIST_BROTHERS_IN_ARMS_0                          | Soldier 1 | 
+  PROTAGONIST_BROTHERS_IN_ARMS_1                          | Soldier 2 | 
+  PROTAGONIST_BROTHERS_IN_ARMS_2                          | Soldier 3 | 
+  PROTAGONIST_BROTHERS_IN_ARMS_3                          | Soldier 4 | 
+  PROTAGONIST_BROTHERS_IN_ARMS_4                          | Soldier 5 | 
+  PROTAGONIST_CHARISMATIC_CRIMINAL                        | Charismatic Criminal | A goal-oriented, assertive and charming character in his way, on the wrong side of the law. Although technically he numbers among the "bad guys", his personal and professional qualities are captivating.
+  PROTAGONIST_CITY_MOUSE                                  | City Mouse | City Mouse
+  PROTAGONIST_CLUMSY_OAF                                  | Clumsy Oaf | A doofus who always gets into ridiculous situations, but blunders through with a little good heartedness and perseverance, and a lot of luck.
+  PROTAGONIST_COP                                         | Cop | Full time crime fighter.
+  PROTAGONIST_COWBOY                                      | Cowboy | Marksman, equestrian, and hat connoisseur.
+  PROTAGONIST_CYNIC                                       | Hardened Cynic | A gloomy, cold, and heartless character, not accustomed to wasting time on sentimental claptrap. But perhaps somewhere deep inside, a truer and much brighter spirit lies hidden?
+  PROTAGONIST_DARING_ADVENTURER                           | Daring Adventurer | An adventurous traveler and explorer who can't imagine life without secrets and perils.
+  PROTAGONIST_DETECTIVE                                   | Detective | A clever detective who never misses even the smallest clue.
+  PROTAGONIST_DIS_IDEALIST                                | Dejected Idealist | The protagonist always believed unconditionally in love, goodness, and miracles — until unhappy turns of fate recently forced them to see the world in a darker hue.
+  PROTAGONIST_FARM_GIRL                                   | Farm Girl | A country bumpkin who quickly gets in over her head. But despite her foolishness, she melts everyone's hearts with her kindness and perseverence.
+  PROTAGONIST_GIRL_WITH_A_SWEARING_VAGINA_WITH_TURRET_SYNDROME | Girl with a Talking Vagina with Tourette Syndrome | The swearing and insults will be especially filthy.
+  PROTAGONIST_HOPELESS_ROMANTIC                           | Hopeless Romantic | A shy and sensitive dreamer, nourishing a belief in something beautiful.
+  PROTAGONIST_JOURNALIST                                  | Journalist | Journalist
+  PROTAGONIST_KNIGHT                                      | Knight | A knight in shining armor.
+  PROTAGONIST_LAST_SURVIVOR                               | Last Survivor | Initially part of a group, the protagonist, by their own talents or dumb luck, finds themselves alone in the face of evil, or some other challenge.
+  PROTAGONIST_LOVEABLE_ROGUE                              | Loveable Rogue | A charismatic rogue who laughs at the rules and even the law, but never really crosses the line — and at the decisive moment, always comes out on the side of good!
+  PROTAGONIST_LOVELACE_WITH_POISONOUS_BALLS               | Womanizer with Poisoned Balls | Want to see how poisonous they are?
+  PROTAGONIST_OUTCAST                                     | Outcast | Someone rejected by their family or community. They're lonely and trying to figure out where they belong.
+  PROTAGONIST_PARENT_IN_INVISIBLE_CLOTHES                 | Parent in Invisible Clothes | A father or mother who shamelessly walks around in front of everyone in invisible dresses, pants and jackets.
+  PROTAGONIST_PILOT                                       | Pilot | Pilot
+  PROTAGONIST_PIRATE                                      | Pirate | Pirate
+  PROTAGONIST_RETIRED_LEGEND                              | Retired Legend | A distinguished professional who has retired, for one reason or another. His glory days seem long gone — but retirement can't last forever, can it?
+  PROTAGONIST_SAILOR                                      | Sailor | Sailor
+  PROTAGONIST_SECRET_AGENT                                | Secret Agent | Secret Agent
+  PROTAGONIST_SHERIFF                                     | Sheriff | An officer of the law, with a star on his chest.
+  PROTAGONIST_SHERIFFS_CONJOINED_TWINS                    | Siamese Twin Sheriffs | Two guardians of law and order, wearing a single star on their conjoined chest.
+  PROTAGONIST_SHERIFFS_CONJOINED_TWINS_0                  | Sheriff 1 | 
+  PROTAGONIST_SHERIFFS_CONJOINED_TWINS_1                  | Sheriff 2 | 
+  PROTAGONIST_SOLDIER                                     | Soldier | A person who fights in the army and follows orders. He can be anything from a fresh rookie to an experienced fighter.
+  PROTAGONIST_SOUTHERN_BELLE                              | Southern Belle | Southern Belle
+  PROTAGONIST_SPIRITED_YOUNG_LADY                         | Spirited Young Lady | A dreamer and a rebel from a noble family. A strong personality who flies against stereotype.
+  PROTAGONIST_TAG                                         | Protagonist | None
+  PROTAGONIST_TAG_LABEL                                   | Protagonist | None
+  PROTAGONIST_TOXIC_VIGILANTE                             | Toxic Revenger | A poor loser endowed with incredible strength after falling into some chemicals. His body may be covered in stinking pustules and bleeding scabs, but his soul is pure and thirsts for justice.
+  PROTAGONIST_WARRIOR                                     | Warrior | A fighter whose code of honor and personal beliefs are more important than any orders.
+  PROTAGONIST_WAR_VETERAN                                 | War Veteran | A former soldier who just wants a normal civilian life.
+  PROTAGONIST_WAR_WIDOW                                   | War Widow | A lonely woman whose husband died in the war.
+  PROTAGONIST_WAYWARD_SOUL                                | Wayward Soul | Despite seemingly good intentions, this person has lost their way in life and started down a dark path.
+  PROTAGONIST_WHITE_COLLAR                                | White Collar | White Collar
+  PROTAGONIST_WORKING_MAN                                 | Working Man | A hard worker finding joy in life, but facing social injustice and corruption along the way.
+## Antagonist (54)
+  ANTAGONIST_ALIEN                                        | Alien | An uninvited guest from another planet, whose evil plots defy the terrestrial mind.
+  ANTAGONIST_ANCIENT_EVIL                                 | Ancient Evil | A long-forgotten terror awakens from its slumber, taking the form of either man or monster.
+  ANTAGONIST_BANDIT                                       | Bandit | A criminal who lives by robbery and theft.
+  ANTAGONIST_BARBARIAN_TRIBE                              | Warrior Tribe | 
+  ANTAGONIST_CORRUPT_OFFICIAL                             | Corrupt Official | A lawless leech in a position of power.
+  ANTAGONIST_CRIMINAL_GANG                                | Criminal Gang | Thieves or killers who work as a group.
+  ANTAGONIST_CRIMINAL_GANG_0                              | Criminal 1 | 
+  ANTAGONIST_CRIMINAL_GANG_1                              | Criminal 2 | 
+  ANTAGONIST_CRIMINAL_GANG_2                              | Criminal 3 | 
+  ANTAGONIST_CRIMINAL_GANG_3                              | Criminal 4 | 
+  ANTAGONIST_CRIMINAL_GANG_4                              | Criminal 5 | 
+  ANTAGONIST_CRIMINAL_GANG_5                              | Criminal 6 | 
+  ANTAGONIST_CRIMINAL_GANG_6                              | Criminal 7 | 
+  ANTAGONIST_CRIMINAL_MASTERMIND                          | Criminal Mastermind | A notorious villain at the top of the criminal underworld.
+  ANTAGONIST_ENEMY_ARMY                                   | Enemy Army | 
+  ANTAGONIST_ENEMY_FROM_THE_PAST                          | Enemy from the Past | A dangerous opponent who left his mark on the protagonist's past. It seemed he was long gone, but suddenly he emerges from the shadows.
+  ANTAGONIST_EVIL_MONSTER                                 | Evil Monster | A relentless creature, born to terrify and kill everyone it meets.
+  ANTAGONIST_EVIL_SORCERER                                | Evil Sorcerer | A villain who achieves his goals through mastery of the dark arts, or magical creatures he bends to his will.
+  ANTAGONIST_EVIL_WITCH                                   | Evil Witch | A villain who uses the dark arts to pursue her wicked goals.
+  ANTAGONIST_HEADLESS_MIDGETS_HYPNOTISTS                  | Headless Dwarven Hypnotists | They seem even smaller without the head, but size doesn't matter. You'll be deep in a trance when they attack.
+  ANTAGONIST_HEADLESS_MIDGETS_HYPNOTISTS_0                | Hypnotist Dwarf 1 | 
+  ANTAGONIST_HEADLESS_MIDGETS_HYPNOTISTS_1                | Hypnotist Dwarf 2 | 
+  ANTAGONIST_HEADLESS_MIDGETS_HYPNOTISTS_2                | Hypnotist Dwarf 3 | 
+  ANTAGONIST_HEADLESS_MIDGETS_HYPNOTISTS_3                | Hypnotist Dwarf 4 | 
+  ANTAGONIST_HEADLESS_MIDGETS_HYPNOTISTS_4                | Hypnotist Dwarf 5 | 
+  ANTAGONIST_HEARTLESS_BUREAUCRAT                         | Heartless Bureaucrat | An unbending representative of the state or an organization.
+  ANTAGONIST_MAD_SCIENTIST                                | Mad Scientist | A genius with little regard for ethics and morality. Uses his inventions — be they robots, mutants, or viruses — to achieve his villainous ends.
+  ANTAGONIST_MURDERER                                     | Murderer | A criminal who takes another life.
+  ANTAGONIST_OLD_FRIEND_ENEMY                             | Old Friend Turned Enemy | Once, the protagonist and antagonist were on the same side, but circumstances or different views have separated them to opposite sides of the barricade.
+  ANTAGONIST_PATRIARCH                                    | Patriarchal Figure | A powerful man who fetters the will and stymies the aspirations of women.
+  ANTAGONIST_PIRATE                                       | Pirate | A terror of the sea with a broken moral compass.
+  ANTAGONIST_REBELS                                       | Rebels | 
+  ANTAGONIST_ROBBER_WITH_A_HUNDRED_DICKS                  | Robber with a Thousand Penises | A criminal whose entire body is covered in peckers of various size and shape.
+  ANTAGONIST_ROBOT                                        | Robot | A mechanical creature that rebelled against its creators or arrived from another world.
+  ANTAGONIST_ROBOT_RAPIST                                 | Rapist Robot | It's programmed never to harm people. Unless, of course, they resist.
+  ANTAGONIST_RULE_ENFORCER                                | Square Enforcer | A "good guy" but devoid of charm and never inclined to doubt. Technically, the law is on his side, but his rigidity and unwillingness to see the system's flaws make it difficult to cheer for him.
+  ANTAGONIST_SCHOOLGIRL_POSSESSED_DEMON                   | Demon Possessed by a Schoolgirl | An evil monster from hell, possessed somehow by a naughty schoolgirl.
+  ANTAGONIST_SERIAL_KILLER                                | Serial Killer | A maniac who kills to satisfy his impulses.
+  ANTAGONIST_TAG_LABEL                                    | Antagonist | None
+  ANTAGONIST_TOASTER_KILLER                               | Killer Toaster | A ruthless machine that roasts its victims until golden brown.
+  ANTAGONIST_TRIBAL_CHIEF                                 | Tribal Chief | The leader of the local community, who typically wants to expel conquerors and exploiters from their home.
+  ANTAGONIST_TYRANT                                       | Tyrant | A cruel ruler who relies on force and fear.
+  ANTAGONIST_UNDEAD                                       | The Undead | A dead body, risen from the grave, and subject to the will of evil.
+  ANTAGONIST_VAMPIRE                                      | Vampire | Could kill for a drop of blood.
+  ANTAGONIST_VENGEFUL_SPIRIT                              | Vengeful Spirit | A disgruntled otherworldly entity, often with unfinished business and a tragic backstory.
+  ANTAGONIST_WAR_CRIMINAL                                 | War Criminal | A soldier or military leader who violates the laws of war.
+  ANTAGONIST_WOMENS_BOOK_CLUB_OF_CANNIBALS                | Cannibal Women's Book Club | These voracious ladies can consume a good novel in a couple of hours, and a good liver in a couple of minutes.
+  ANTAGONIST_WOMENS_BOOK_CLUB_OF_CANNIBALS_0              | Cannibal Woman 1 | 
+  ANTAGONIST_WOMENS_BOOK_CLUB_OF_CANNIBALS_1              | Cannibal Woman 2 | 
+  ANTAGONIST_WOMENS_BOOK_CLUB_OF_CANNIBALS_2              | Cannibal Woman 3 | 
+  ANTAGONIST_WOMENS_BOOK_CLUB_OF_CANNIBALS_3              | Cannibal Woman 4 | 
+  ANTAGONIST_WOMENS_BOOK_CLUB_OF_CANNIBALS_4              | Cannibal Woman 5 | 
+  ANTAGONIST_WOMENS_BOOK_CLUB_OF_CANNIBALS_5              | Cannibal Woman 6 | 
+  ANTAGONIST_WOMENS_BOOK_CLUB_OF_CANNIBALS_6              | Cannibal Woman 7 | 
+## Supporting Character (22)
+  SUPPORTINGCHARACTER_ANGRY_BOSS                          | Angry Boss | The eternally unhappy boss, who complicates life for the protagonist.
+  SUPPORTINGCHARACTER_ANNOYING_SUITOR                     | Annoying Suitor | Someone who is always nagging their beloved for attention.
+  SUPPORTINGCHARACTER_BROTHER_IN_ARMS                     | Brother in arms | A companion who fights shoulder to shoulder with the main character.
+  SUPPORTINGCHARACTER_BUTLER                              | Butler | 
+  SUPPORTINGCHARACTER_CONCERNED_WIFE                      | Worried Wife | While the protagonist devotes himself entirely to a dangerous calling, his neglected wife can only sigh and hope for the best — while causing the occasional scandal.
+  SUPPORTINGCHARACTER_DAMSEL_IN_DISTRESS                  | Damsel in Distress | A defenseless damsel helplessly waiting to be rescued.
+  SUPPORTINGCHARACTER_FEMME_FATALE                        | Femme Fatale | A mysterious and aloof woman whose motives and intentions seem suspicious.
+  SUPPORTINGCHARACTER_FIRST_VICTIM                        | First Victim | It doesn't matter who represents evil — be it a cold-blooded killer or a demon from the underworld. Its first victim is like a gong, heralding the triumph of chaos. If there's one victim, there will be others.
+  SUPPORTINGCHARACTER_KEY_WITNESS                         | Key Witness | A character who, as fate would have it, possesses critical information. Because of this, he finds himself a target for the antagonist.
+  SUPPORTINGCHARACTER_LOVE_INTEREST                       | Love Interest | The object of the hero's affection.
+  SUPPORTINGCHARACTER_MENTOR                              | Mentor | Someone who helps the protagonist find their path in life, or become a true master.
+  SUPPORTINGCHARACTER_MYSTERIOUS_GUIDE                    | Mysterious Guide | A figure who sheds a little light on the underbelly of hidden worlds. A mysterious and seemingly neutral character, who speaks in riddles and clearly knows more than he says.
+  SUPPORTINGCHARACTER_PARENT_FIGURE                       | Parent Figure | Someone who cares for the protagonist like a parent.
+  SUPPORTINGCHARACTER_PATRIARCH                           | Patriarchal Figure | A powerful man who fetters the will and stymies the aspirations of women.
+  SUPPORTINGCHARACTER_RIVAL                               | Rival | Like Inspector Lestrade for Sherlock Holmes: not a villain, but someone competing with the protagonist — be it to catch the same criminal, find the same treasure, or win the same girl.
+  SUPPORTINGCHARACTER_SHERIFF                             | Sheriff | An officer of the law, with a star on his chest.
+  SUPPORTINGCHARACTER_SIDEKICK                            | Sidekick | The protagonist's faithful companion. Confidant, right-hand man, or maybe just a funny sidekick.
+  SUPPORTINGCHARACTER_STEPCHILD                           | Stepchild | 
+  SUPPORTINGCHARACTER_STEPPARENT                          | Stepparent | 
+  SUPPORTINGCHARACTER_STRICT_PARENT                       | Strict Parent | An authoritarian father or mother who doesn't stop to consider their children's feelings.
+  SUPPORTINGCHARACTER_VILLAINS_RIGHT_HAND                 | Villain's Right-Hand | The antagonist's assistant, who often carries out the villainous plans of his master.
+  SUPPORTINGCHARACTER_WIZARD                              | Wizard | A master of magic and connoisseur of potions, who stands on the side of good.
+## Theme & Event (85)
+  EVENTS_ABUNDANT_PROFANITY                               | Generous Profanity | The characters aren't shy when it comes to expressing themselves with colorful language. They speak like ordinary people: directly, vividly, and without any writerly embellishment.
+  EVENTS_ACCIDENTAL_MURDER                                | Accidental Murder | 
+  EVENTS_ACE_COMBAT                                       | Ace Combat | The roar of engines, aerobatic feats, and the blaze of machine guns in midair.
+  EVENTS_AMBUSH                                           | Ambush | Someone is lured into a dangerous trap.
+  EVENTS_ANCIENT_PUZZLE                                   | Ancient Puzzle | Mysterious symbols, archaic messages, and incomprehensible mechanisms — but what does it all mean, and how does it work?
+  EVENTS_BANK_ROBBERY                                     | Bank Robbery | Someone robs a bank or plans a heist.
+  EVENTS_BAR_BRAWL                                        | Bar Brawl | 
+  EVENTS_BETRAYAL                                         | Betrayal | A seeming good character suddenly turns to the side of evil.
+  EVENTS_BIG_BATTLE_SCENES                                | Big Battle Scene | The opposing sides meet head to head and have an awesome fight.
+  EVENTS_BLACKMAIL                                        | Blackmail | 
+  EVENTS_CAPTURED_AND_TORTURED                            | Torture in captivity | Suffering torture at the hands of the enemy figures into the plot somehow.
+  EVENTS_CHEATING_SPOUSE                                  | Adultery | The plot of the film somehow involves adultery.
+  EVENTS_CITY_SIEGE                                       | City Siege | Someone lays siege to a city, or suffers one.
+  EVENTS_CRIME_OF_NECESSITY                               | Crime of Necessity | Someone commits a crime out of desperation.
+  EVENTS_DIVORCE                                          | Divorce | Divorce somehow figures into the film's plot.
+  EVENTS_ESCAPE_CAPTIVITY                                 | Escape Captivity | Someone escapes captivity, or is planning to.
+  EVENTS_EXCESSIVE_VIOLENCE                               | Vivid Violence | Every squirt of blood, broken bone and skull-shattering bullet is depicted in exquisite detail, to be savored in all its glory.
+  EVENTS_FINAL_SHOWDOWN                                   | Final Showdown | The protagonist and antagonist meet in a decisive battle.
+  EVENTS_FRAME_UP                                         | Frame-Up | 
+  EVENTS_JOUSTING_TOURNAMENT                              | Jousting Tournament | Gleaming armor, clanging metal, a storm of hooves and the cheering crowd.
+  EVENTS_NUDITY                                           | Nudity | Someone is deliberately shown naked on screen.
+  EVENTS_PRISON_BREAK                                     | Prison Break | Someone is escaping from prison, or trying to.
+  EVENTS_PROMISCUITY                                      | Untamed Sex | Someone falls prey to their own animal instincts, and has sex with multiple partners within a short period of time.
+  EVENTS_PROTAGONISTS_CLOSE_ONE_DIES                      | Protagonist’s Close One Dies | By twist of fate or villainous plot, someone close to the protagonist dies.
+  EVENTS_PROT_FRIEND_DIES                                 | Protagonist’s Friend Dies | 
+  EVENTS_RAPE                                             | Rape | The film's plot involves a rape, in one way or another.
+  EVENTS_RESCUE_MISSION                                   | Rescue Mission | Someone endeavors to save someone — or is hoping to be rescued themselves.
+  EVENTS_RUNAWAY                                          | Runaway | Someone runs away from home or dreams of doing so.
+  EVENTS_SAVING_BELOVED                                   | Saving the Beloved | Someone saves the life of a loved one.
+  EVENTS_SELFSACRIFICE                                    | Self-Sacrifice | 
+  EVENTS_SHOOTOUT                                         | Shootout | The whistle of bullets, shells ringing as bounce among the groaning wounded.
+  EVENTS_STAGE                                            | Special Events | Add a little festivity to the corporate routine.
+  EVENTS_STAGECOACH_ROBBERY                               | Stagecoach Robbery | Someone attacks a stagecoach, to rob its passengers or steal valuable cargo.
+  EVENTS_STAGE_DEMOLISH_A                                 | After the <b>Special Events Office</b> is demolished, you won't be able to plan or host events. | None
+  EVENTS_STAGE_FORCED_FREEZE                              | The <b>Special Events Office</b> requires renovation. Until renovations are complete, you won't be able to plan or host events. | None
+  EVENTS_STAGE_FREEZE_A                                   | You won't be able to plan or host events until the <b>Special Events Office</b> has reopened. | None
+  EVENTS_STAGE_REPAIR_A                                   | You won't be able to plan or host events until the <b>Special Events Office</b> is renovated. | None
+  EVENTS_SURVIVAL_TOURNAMENT                              | Survival Tournament | In a fight for survival, people brutally execute each other before billions of viewers.
+  EVENTS_TANK_COMBAT                                      | Tank Combat | The clang of tanks, the roar of cannon fire, and burning piles of metal.
+  EVENTS_THRILLING_CHASE                                  | Thrilling Chase | In the city, desert, or jungle. On land, on water, or in the air. By transport or on foot. It matters not where or why — the main object is suspense and excitement.
+  EVENTS_TRAIN_JOB                                        | Train Job | Someone robs a train or plans to.
+  EVENTS_WEDDING                                          | Wedding | 
+  EVENTS_WORLDWIDE_TRAVELING                              | Worldwide Traveling | 
+  THEME_ALCOHOL_FREEDOM                                   | Alcohol — the Spirit of Freedom | The right to your choice of liquor is an inalienable right of all Americans. True freedom is someone who isn't afraid to have a drink or two whenever he damn feels like it.
+  THEME_AVENGING_LOVED_ONES                               | Avenging Loved Ones | Someone is seeking vengeance for those they held dearest.
+  THEME_A_CURSE                                           | A Curse | Someone suffers a curse, and their life changes dramatically.
+  THEME_CATCHY_ONE_LINERS                                 | Catchy One-Liners | The characters exchange short and memorable phrases. The depth of dialogue and the persuasiveness of the characters inevitably suffers, but the average viewer won't be bored.
+  THEME_CHRISTMAS_CAT                                     | Christmas Rush | The holidays, by the very fact of their approach, intensifiy the drama of what's happening. Conflict sharpens, emotions bubble over, the approaching end of the year moves people to reflect, as the general hustle and bustle inevitably drives events forward.
+  THEME_DESTRUCTIVE_ROMANCE                               | Destructive Romance | 
+  THEME_EVIL_TRANSFORMATION                               | Evil Transformation | Thanks to black magic or unsuccessful scientific experiments, someone loses their human appearance.
+  THEME_FESTIVE_ATM                                       | Highly Festive Atmosphere | Nearly every frame, every fleeting event or distant melody reminds us it's the holiday season. It doesn't matter what kind of story you're telling, or even whether the holiday plays an important role in the plot.
+  THEME_FIGHT_FOR_FREEDOM                                 | Fight for Freedom | 
+  THEME_FIGHT_HYPOCRITICAL_AMERICAN                       | Fighting the Hypocrisy of American Life | Someone confronts American Puritanism, and the outdated moral dogmas that are stifling freedom and progress.
+  THEME_FRAGMENTED_NARRATIVE                              | Fragmented Narrative | The beginning, middle and end are intertwined in a sophisticated tangle. Its non-linear structure sharpens conflicts and gives the film additional depth, but the average viewer may be confused or bored.
+  THEME_FROM_SMALL_TOWN_TO_BIG_TIME                       | From Small Town to Big Time | The protagonist leaves home on the world's outskirts, and sets off to conquer the metropolis — fast, noisy and merciless, and yet so alluring.
+  THEME_GENERATIONAL_CONFLICT                             | Generational Conflict | An inter-generational conflict figures into the plot somehow.
+  THEME_GOLD_FEVER                                        | Gold Fever | 
+  THEME_GREED                                             | Greed | 
+  THEME_HIGHBROW_HUMOR                                    | Highbrow Humor | Wordplay, subtle irony, understated satire and complex cultural homage. The average viewer will be puzzled, but the sophisticates will adore it.
+  THEME_LONG_JOURNEY                                      | Long Journey | Someone goes on a long journey, voluntarily or otherwise.
+  THEME_LOVERS_TAKE_A_BREAK                               | Lovers Take a Break | Thanks to a combination of circumstances, an absurd quarrel or a simple misunderstanding, the lovers temporarily separate — and undergo a true test of their devotion.
+  THEME_LOVE_TRIANGLE                                     | Love Triangle | The relationships of the three characters is entwined in a tangle of love and rivalry.
+  THEME_LOWBROW_HUMOR                                     | Lowbrow Humor | Simple, accessible, sometimes crude and even crass. Nothing to suit the intellectual, but sure to delight to the average moviegoer.
+  THEME_MAGICAL_LESSON                                    | A Magical Lesson | Supernatural intervention leads the protagonist to understand themselves, rethink their life, and get back on the right path.
+  THEME_MOB_WAR                                           | Mob War | Criminal gangs clash in a brutal, large-scale struggle for territory, power and influence.
+  THEME_ONE_LAST_JOB                                      | One Last Job | Before retiring, the protagonist must complete one final task. It's the most important and the most difficult, and fated to be his last.
+  THEME_PROTAGONIST_PASSES_THE_TORCH                      | Protagonist Passes the Torch | The protagonist knows that his journey is coming to an end. As the story unfolds, in one way or another, he entrusts the new generation to continue his work.
+  THEME_PROTAGONIST_ROPED_BACK_IN                         | Protagonist Pulled Back In | The protagonist naively thought he'd retired, but emerging circumstances simply won't allow him to stay away.
+  THEME_PROTECTING_THE_WITNESS                            | Protecting the Witness | The villains are hunting a witness who possesses critical information, and the protagonist must protect him.
+  THEME_READJUSTING_TO_LIFE                               | Readjusting to Life | Someone is trying to resume a peaceful life after the war.
+  THEME_SEARCH_KILLER                                     | Search for a Killer | The search for a killer somehow figures into the plot.
+  THEME_SLAPSTICK_MAYHEM                                  | Slapstick Mayhem | Ridiculous situations, exaggerated reactions, cream cakes flying at outraged faces! Some will find this all too noisy and fussy, but most viewers will have a ball.
+  THEME_SOCIAL_REJECTION                                  | Social Rejection | The people around the protagonist condemn his or her lifestyle or beliefs.
+  THEME_SPY_GAMES                                         | Spy Games | 
+  THEME_STRUGGLE_FOR_BETTER_LIFE                          | Struggle for Better Life | Someone is fighting for a better life for himself or his family.
+  THEME_STRUGGLE_FOR_POWER                                | Struggle for Power | 
+  THEME_SURVIVING_IN_WARTIME                              | Surviving in Wartime | Someone struggles to survive in hostile conditions, be it enemy occupation or other hardships of war.
+  THEME_TREASURE_HUNT                                     | Treasure Hunt | Decayed maps, oaken chests, glittering mountains of riches — and many dangers along the way.
+  THEME_UNIFORM_HEROISM                                   | Heroes in Uniform | Police officers, firefighters, or rescue workers demonstrate ostentatious heroism, flagrantly risking themselves to save others.
+  THEME_UNREQUITED_LOVE                                   | Unrequited Love | Someone's affections are unreciprocated, no matter what they do.
+  THEME_WAR_IS_HELL                                       | War Is Hell | Death, destruction, hunger, broken destinies and crippled souls.
+  THEME_WAR_WITH_SORCERERS                                | Wizard War | Is there any power that can stand against spells, curses and potions?
+  THEME_WHITE_SUPREMACY                                   | White Supremacy | The plot somehow involves white supremacy.
+  THEME_WINNING_THE_BELOVED                               | Winning the Beloved | Someone is hoping an impressive feat will conquer their love's heart.
+  THEME_WRONGFULLY_ACCUSED                                | Wrongfully Accused | 
+## Finale (30)
+  FINALE_ANTAGONIST_DEFEATED_EVIL_PERSISTS                | Antagonist Defeated, Evil Persists | At first glance, the forces of good appear to triumph, but the true source of evil wasn't entirely defeated, and will someday return in a new form.
+  FINALE_ANTAGONIST_ESCAPES_JUSTICE                       | Antagonist Escapes Justice | The villain never gets the punishment he deserves — either thanks to his own deviousness, or just dumb luck.
+  FINALE_ANTAGONIST_GETS_KILLED                           | Antagonist Gets Killed | Evil is physically destroyed.
+  FINALE_ANTAGONIST_GETS_PUNISHED                         | Antagonist Gets Punished | Evil receives its just reward.
+  FINALE_ANTAGONIST_REPENTS                               | Antagonist Repents | The villain realizes the error of his ways, and sincerely regrets what he has done.
+  FINALE_BOY_BECOMES_MAN                                  | Boy Becomes Man | The protagonist has been hardened by experience: he grows up and sets aside his illusions.
+  FINALE_COUPLE_GETS_MARRIED                              | Couple Gets Married | The lovers live happily ever after. Officially.
+  FINALE_EVERYONE_LEARNS_A_LESSON                         | Everyone Learns a Lesson | No one really wins or loses, but everyone learns something important about life.
+  FINALE_EVIL_EXPOSED                                     | Evil Exposed | Evil is brought to light and vanquished.
+  FINALE_FAMILY_REUNION                                   | Family Reunion | Family members, separated by circumstances, are united again.
+  FINALE_HAPPY_ENDING                                     | And Everyone Lived Happily... | An artificially sweet ending, without real catharsis or a convincing resolution of conflicts. — But is that really so bad if a happy ending is what the audience wants?
+  FINALE_PROTAGONISTS_DREAMS_CRUSHED                      | Protagonist's Dreams Crushed | Reality turns out to be cruel and inexorable. The protagonist's dreams were never destined to come true. But did their desperate attempts perhaps pave the way for future dreamers?
+  FINALE_PROTAGONIST_AVOIDS_PUNISHMENT                    | Protagonist Avoids Punishment | The protagonist did wrong, but managed to avoid a reckoning.
+  FINALE_PROTAGONIST_COMMITS_SUICIDE                      | Protagonist Commits Suicide | The protagonist can't bear the weight of the circumstances and commits suicide.
+  FINALE_PROTAGONIST_DIES_HEROICALLY                      | Protagonist Dies Heroically | The main character sacrifices their life for what they hold to be good and just.
+  FINALE_PROTAGONIST_FINDS_LOVE                           | Protagonist Finds Love | The hero finds the love of his life, or finally learns to love again.
+  FINALE_PROTAGONIST_FINDS_TREASURE                       | Protagonist Finds Treasure | The hero surpasses all rivals, to be the first to obtain something of great value.
+  FINALE_PROTAGONIST_GETS_CHANCE_FOR_BETTER_LIFE          | Protagonist Gets Chance for Better Life | The hero overcomes social inequality, poverty, or whatever circumstance was preventing him from building life for himself.
+  FINALE_PROTAGONIST_GETS_PUNISHED_FOR_A_CRIME            | Protagonist Punished for a Crime | Justice will not be denied. The main character did something wrong, and had to pay for it.
+  FINALE_PROTAGONIST_GETS_PUNISHED_FOR_CRIME              | Protagonist's Redemption | The protagonist pays for his mistakes, and rids himself of his burdens.
+  FINALE_PROTAGONIST_OVERCAME_SELFDOUBT                   | Protagonist Overcomes Self-doubt | The hero escapes whatever burden is stopping them from realizing their full potential.
+  FINALE_PROTAGONIST_REFORMED                             | Protagonist Reformed | Having endured trials and learned lessons, a callous or misguided character finds the strength to turn to the light, and begin life anew.
+  FINALE_PROTAGONIST_RESCUES_HOSTAGE                      | Protagonist Rescues Hostage | Thanks to the hero, the hostages are freed.
+  FINALE_PROTAGONIST_RESTORED_FAITH                       | Protagonist Restores Faith in Ideals | Having overcome disappointments and strengthened his character, the protagonist now believes in goodness and justice more than ever.
+  FINALE_PROTAGONIST_RETIRES_FOR_GOOD                     | Protagonist Retires For Good | No matter how bright and eventful the hero's path has been, everything eventually must come to an end.
+  FINALE_PROTAGONIST_RETURNS_HOME                         | Protagonist Returns Home | The hero returns home after a long ordeal.
+  FINALE_PROTAGONIST_TAKES_ANTAGONIST_WITH_THEM           | Protagonist Takes Antagonist With Them | Sometimes sacrificing yourself is the only way to defeat evil, whether it's a common criminal or a demon bent on possessing you.
+  FINALE_STARCROSSED_LOVERS                               | Star-crossed Lovers | The couple was unable to overcome their differences or adversities.
+  FINALE_SWEETHEARTS_STAY_TOGETHER                        | Sweethearts Stay Together | The couple overcomes disageement or adversity, and lives happily ever after.
+  FINALE_TREASURE_LOST_FOREVER                            | Treasure Lost Forever | The treasure wasn't won by the hero or by his rivals — and will never be had by anyone. But perhaps the treasure was never really the main goal.

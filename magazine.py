@@ -2383,3 +2383,10 @@ def generate_magazine(data, cfg, force=True):
             journal.log(f"[{year}年] 更新阅读页失败: {e}")
     except Exception as e:
         journal.log(f"[{year}年] 写入杂志失败: {e}")
+    # 每次杂志生成时附带生成当期电影剧本 (固定 7 槽骨架, 槽位由程序确定性选值,
+    # 本模块只负责把槽位值扩写成剧本散文; 输出独立文件 电影剧本_<年份>.md)
+    try:
+        import movie
+        movie.generate_movie(data, cfg, force=force)
+    except Exception as e:
+        journal.log(f"[{year}年] 电影剧本生成异常: {e}")
