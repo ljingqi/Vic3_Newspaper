@@ -26,3 +26,14 @@ output/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# 个人研究 / 实验 / 草稿（与本项目无关，其他用户无用）
+_hac/
+_hac_wayback/
+_hac_readme.md
+_hac_repo.json
+_hac_tree.json
+Hollywood_Animal_Calculator_研究报告.md
+_scratch/
+expck3/
+_test_pool/
