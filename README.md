@@ -91,7 +91,9 @@
      `style_system` 切换文风系统（`legacy` / `dynamic`）；`crime_outcome_engine` 控制刑事
      案例结局引擎；`parallel_generation_enabled` 控制 watch 时报纸/杂志是否并行生成；
      `prompt_log_enabled` 控制是否把请求原文写入 `logs\prompts.log`；`llm_thinking_disabled`
-     控制是否发送 `thinking: disabled` 关闭模型思考模式。
+     控制是否发送 `thinking: disabled` 关闭模型思考模式；`food_flavor_enabled` 控制采访板块
+     「舌尖上的风味」素材行（灶火/饭食，报纸民生访谈/邻里富户/失业民生与杂志人群样本池共用），
+     `food_flavor_salt` 填任意串可整批换随机（留空 = 同年同样本稳定复现）。
    - `deepseek_model` 可选 `deepseek-chat`（默认）或 `deepseek-reasoner`（推理模式，更慢）；
      `newspaper_style` 取 1~4 切换报纸风格（见下文「报纸风格」）。
 

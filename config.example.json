@@ -73,5 +73,7 @@
   "interview_consumption_qty_scale": 12.0,
   "interview_food_qty_min": 0.5,
   "interview_consumption_goods_max": 10,
-  "interview_consumption_goods_min_weight": 0.05
+  "interview_consumption_goods_min_weight": 0.05,
+  "food_flavor_enabled": true,
+  "food_flavor_salt": ""
 }

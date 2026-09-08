@@ -245,6 +245,12 @@ DEFAULT_CONFIG = {
     "prompt_log_enabled": True,
     # 是否在请求中发送 thinking: disabled (关闭思考模式加快生成)
     "llm_thinking_disabled": True,
+    # 人群采访「舌尖上的风味」素材层 (2026-09): 采访样本消费篮子里的燃料商品
+    # 决定灶具、食品商品按「一商品一篮子」确定性抽具体菜品, 渲染侧追加 灶火/
+    # 饭食 两行硬数据。food_flavor_enabled=False 完全关闭; food_flavor_salt
+    # 填任意串可整批换随机 (留空 = 同年同样本稳定复现)。
+    "food_flavor_enabled": True,
+    "food_flavor_salt": "",
 }
 
 def default_v3_user_dir():
@@ -1319,6 +1325,12 @@ def _leader_bg_phrase(home, religion, culture, data):
 # 分板块生成: 每次请求只生成一个板块, 最后由程序组合成完整报纸
 # ---------------------------------------------------------------------------
 
+# 「舌尖上的风味」素材行写作提示 (报纸采访三板块 + 杂志人群样本池共用):
+# 渲染侧给出【灶火与饭食】行时要求模型写活; 未给该行时按原节奏写作。
+FOOD_FLAVOR_HINT = ("资料给出【灶火与饭食】行时把它们写活：炉火与饭菜的气味、"
+                    "灶台边的一餐，落到受访者的时辰与具体吃食上；写到哪样菜、哪样火，"
+                    "以资料出现者为限。")
+
 SECTION_DEFS = [
     ("headline", "头版", "一句话导语，概括本年度最大事态；须点名国名与年份。"),
     ("war", "战事专电", "报道去年（上一历年）发生的战事：对阵双方（本国参战或列强参战，仅列主要参加者）、"
@@ -1351,15 +1363,16 @@ SECTION_DEFS = [
     ("family", "民生访谈", "记者在样本州的一处建筑内，采访生活水平最低的人群，"
      "以访谈体写衣食住行、收入支出、受抚养人口与生活水平；须体现该人群政治倾向"
      "（激进派/效忠派占该人群百分比）与参与比例最高的两个政治运动，"
-     "以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，融入叙事作风味。"),
+     "以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，融入叙事作风味。"
+     + FOOD_FLAVOR_HINT),
     ("peer", "邻里富户", "与民生访谈同一建筑内生活水平最高的人群（富户），"
      "以同样的访谈体写其衣食住行与收支，并体现该人群政治倾向与参与比例最高的两个政治运动，"
      "与民生访谈形成贫富对照，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "融入叙事作风味。"),
+     "融入叙事作风味。" + FOOD_FLAVOR_HINT),
     ("unemployed", "失业民生", "仅当样本州失业率超过5%时发送：报道该州失业状况，"
      "采访失业人群中人口最多的一群（同访谈体），体现给定失业率，并体现该人群政治倾向"
      "与参与比例最高的两个政治运动，以给定数据为准；「预期寿命」行为按当地死亡情形的风格化估算，"
-     "融入叙事作风味。"),
+     "融入叙事作风味。" + FOOD_FLAVOR_HINT),
     ("comment", "本报评论", "编辑部评论，结合历年发展对照，评述国运与民生之变迁。"),
     ("ads", "广告与启示", "围绕本期提供的已研发科技创作一两条趣味广告："
      "至少一条须直接体现所选科技，富有时代气息。"),
@@ -3489,6 +3502,149 @@ def _ownership_lines(own):
     return L
 
 
+# ---------------------------------------------------------------------------
+# 「舌尖上的风味」素材层 (2026-09): 人群采访板块追加 灶火/饭食 硬数据行
+# 规则: 篮子里的燃料商品 (木材/煤/油/电力) 按权重取主导者决定灶具 (带年代
+# 门槛, 燃料由存档数据背书: 篮子里没有该燃料就不写该灶具); 食品商品按
+# 「一商品一篮子」用确定性种子抽具体菜品, 期与期不重样、同年同样本恒定。
+# 不写篮子里没有的东西; 无可用数据返回空列表。年代/忌口常量集中在此表,
+# 需要考据精修时只改这里。
+# ---------------------------------------------------------------------------
+
+# 燃料商品 → (灶具默认名, 最早年份, 火源说法)
+_FUEL_STOVES = {
+    "wood": ("柴灶（土灶）", 1836, "柴火"),
+    "coal": ("煤炉（烧煤球）", 1836, "煤"),
+    "oil": ("煤油炉", 1865, "煤油"),
+    "electricity": ("电炉", 1890, None),
+}
+
+# 宗教忌口 → 命中该忌口的宗教键集合 (与快照 religion 字段同键)
+_RELIGION_BANS = {
+    "pork": {"sunni", "shiite", "ibadi", "jewish"},
+    "beef": {"hindu"},
+}
+
+# 食品商品 → 变体篮: (菜品名, 最早年份或 None, 忌口或 None)
+_FOOD_BASKETS = {
+    "grain": [
+        ("大米饭", None, None), ("白粥", None, None),
+        ("馒头、面条（麦面）", None, None), ("烙饼", None, None),
+        ("玉米糊糊", None, None), ("烤玉米", None, None),
+        ("土豆炖菜", None, None), ("烤红薯、红薯粥", None, None),
+        ("小米粥", None, None), ("高粱米饭", None, None),
+        ("黑麦/白面包", None, None),
+    ],
+    "meat": [
+        ("猪肉炖菜", None, "pork"), ("腊肉、腌肉", None, "pork"),
+        ("牛肉汤", None, "beef"), ("烤羊肉", None, None),
+        ("鸡鸭禽肉", None, None), ("肉干", None, None),
+    ],
+    "fish": [
+        ("煎河鱼", None, None), ("咸鱼、鱼干", None, None),
+        ("腌鱼", None, None), ("鱼汤", None, None),
+        ("熏鱼", None, None),
+    ],
+    "groceries": [
+        ("腌菜、酱菜", None, None), ("腐乳", None, None),
+        ("香肠", None, "pork"), ("饼干", None, None),
+        ("挂面", None, None), ("罐头食品", 1850, None),
+        ("炼乳", 1860, None),
+    ],
+    "fruit": [
+        ("当季果品（枣、梨、桃）", None, None), ("柑橘", None, None),
+        ("香蕉", None, None), ("芒果", None, None),
+    ],
+    "tea": [("粗茶", None, None), ("细茶", None, None)],
+    "coffee": [("咖啡", None, None)],
+    "liquor": [("烧酒", None, None), ("黄酒", None, None)],
+    "wine": [("葡萄酒", None, None)],
+}
+
+# 嗜好品槽位的动宾说法
+_TREAT_VERB = {"tea": "饭后喝", "coffee": "饭后喝",
+               "liquor": "年节饮", "wine": "待客饮"}
+
+
+def _food_basket_draw(rnd, key, year, religion):
+    """从商品变体篮里确定性抽一个菜品; 年代/忌口过滤后为空返回 None。"""
+    entries = _FOOD_BASKETS.get(key) or []
+    ok = []
+    for name, since, ban in entries:
+        if since is not None and year < since:
+            continue
+        if ban and (religion or "") in _RELIGION_BANS.get(ban, set()):
+            continue
+        ok.append(name)
+    return rnd.choice(ok) if ok else None
+
+
+def _food_flavor_lines(goods, year=None, religion=None, seed_key=""):
+    """人群采访「舌尖上的风味」素材行 (确定性, 以消费篮子为限)。
+    goods: [{key, name, weight}] (快照 consumption_goods 同构)。
+    返回形如 "- 灶火：…" / "- 饭食：…" 的资料行, 无数据或功能关闭返回 []。
+    seed_key 变化 → 同篮子抽不同菜品; 同年同 key 恒定 (regen 稳定)。"""
+    if not goods:
+        return []
+    try:
+        cfg = load_config()
+        if not bool(cfg.get("food_flavor_enabled", True)):
+            return []
+        salt = str(cfg.get("food_flavor_salt") or "")
+    except Exception:
+        salt = ""
+    year = year if isinstance(year, (int, float)) else 9999
+    rnd = random.Random(f"{year}|food|{salt}|{seed_key}")
+    lines = []
+    # 灶具: 取篮子中年代达标、权重最大的燃料商品
+    fuels = [g for g in goods
+             if (g.get("key") or "") in _FUEL_STOVES
+             and year >= _FUEL_STOVES[g["key"]][1]
+             and isinstance(g.get("weight"), (int, float))]
+    if fuels:
+        fuels.sort(key=lambda g: -(g.get("weight") or 0))
+        fkey = fuels[0]["key"]
+        if fkey == "coal" and year >= 1910:
+            stove = "蜂窝煤炉"
+        else:
+            stove = _FUEL_STOVES[fkey][0]
+        if fkey == "electricity":
+            lines.append(f"- 灶火：厨下用{stove}。")
+        else:
+            fname = (_consumption_goods_name(fuels[0].get("name"))
+                     or _FUEL_STOVES[fkey][2] or fkey)
+            lines.append(f"- 灶火：家用{stove}，以{fname}为火。")
+    # 饭食: 主食/荤腥/佐餐/嗜好 四槽, 只写篮子里实际出现的商品
+    present = sorted((g for g in goods
+                      if (g.get("key") or "") in _FOOD_BASKETS),
+                     key=lambda g: -(g.get("weight") or 0))
+    have = {g["key"] for g in present}
+    bits = []
+    if "grain" in have:
+        it = _food_basket_draw(rnd, "grain", year, religion)
+        if it:
+            bits.append(f"主食为{it}")
+    main_key = next((k for k in ("meat", "fish") if k in have), None)
+    if main_key:
+        it = _food_basket_draw(rnd, main_key, year, religion)
+        if it:
+            bits.append(f"荤腥是{it}")
+    side_key = next((k for k in ("groceries", "fruit") if k in have), None)
+    if side_key:
+        it = _food_basket_draw(rnd, side_key, year, religion)
+        if it:
+            bits.append(f"佐以{it}")
+    treat_key = next((k for k in ("tea", "coffee", "liquor", "wine")
+                      if k in have), None)
+    if treat_key:
+        it = _food_basket_draw(rnd, treat_key, year, religion)
+        if it:
+            bits.append(f"{_TREAT_VERB[treat_key]}{it}")
+    if bits:
+        lines.append("- 饭食：" + "，".join(bits) + "。")
+    return lines
+
+
 def render_family(data, style=None):
     """民生访谈: 记者跟踪采访一个随机选取的平民家庭 (存档直读)。"""
     fi = data.get("family_interview")
@@ -3580,6 +3736,11 @@ def render_family(data, style=None):
                 price_bits.append(t)
         if price_bits:
             L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
+        _ff = _food_flavor_lines(
+            cgoods, year=data.get("year"), religion=fi.get("religion"),
+            seed_key=f"{data.get('year')}|food|family|{region}")
+        if _ff:
+            L.extend(_ff)
     if fi.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = fi.get("engel_coefficient")
@@ -3734,6 +3895,11 @@ def render_peer(data, style=None):
                 price_bits.append(t)
         if price_bits:
             L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
+        _ff = _food_flavor_lines(
+            cgoods, year=data.get("year"), religion=peer.get("religion"),
+            seed_key=f"{data.get('year')}|food|peer|{region}")
+        if _ff:
+            L.extend(_ff)
     if peer.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = peer.get("engel_coefficient")
@@ -3862,6 +4028,11 @@ def render_unemployed(data, style=None):
                 price_bits.append(t)
         if price_bits:
             L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
+        _ff = _food_flavor_lines(
+            cgoods, year=data.get("year"), religion=uni.get("religion"),
+            seed_key=f"{data.get('year')}|food|unemployed|{region}")
+        if _ff:
+            L.extend(_ff)
     if uni.get("unemployed"):
         L.append("- 工作状况：失业")
     engel = uni.get("engel_coefficient")

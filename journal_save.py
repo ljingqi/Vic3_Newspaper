@@ -6102,13 +6102,14 @@ def _pool_pop_text(pid, obj, ctx, loc, unit=None, literacy_band=False,
 
 
 def _pool_consumption_basket_lines(snap, ctx, pop_obj, unit, seed_key,
-                                   prices=None, gm=None):
+                                   prices=None, gm=None, flavor=False):
     """杂志样本池消费篮子 (与报纸民生访谈同口径): 下层人群样本附每月消费量 +
     每显示单位市价 (「主要消费商品月消费：谷物每月约X千克…」), 供涉及日常生活的
     文章池 (餐桌上的账本/疫区人物样本/货架/服务/铁道/海外来信) 复用。
     数据不足 (无 pop_needs / 无消费画像) 返回 []。prices 为市价表 {gid: 价格},
     缺省从快照 stock_market.goods_prices 取 (与 price 池同源); seed_key 保证
-    同年同人群子女数可复现。"""
+    同年同人群子女数可复现。flavor=True 时在篮子行后附「舌尖上的风味」素材行
+    (灶火/饭食, 确定性种子, 与报纸采访同口径)。"""
     try:
         sid = pop_obj.get("location")
         sobj = ctx.state_object(sid) if sid is not None else None
@@ -6160,6 +6161,15 @@ def _pool_consumption_basket_lines(snap, ctx, pop_obj, unit, seed_key,
                 price_bits.append(_t)
         if price_bits:
             lines.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
+        if flavor:
+            try:
+                _ff = _journal._food_flavor_lines(
+                    basket["consumption_goods"], year=snap.get("year"),
+                    religion=pop_obj.get("religion"), seed_key=seed_key)
+                if _ff:
+                    lines.extend(_ff)
+            except Exception:
+                pass
         return lines
     except Exception:
         return []
@@ -6401,7 +6411,8 @@ def _pool_railway_data(melted, snap, ctx, rnd, country, cid, data):
             life_lines.append("- " + _pool_pop_text(pid, o, ctx, loc,
                                                     unit=unit, snap=snap))
             life_lines.extend(_pool_consumption_basket_lines(
-                snap, ctx, o, unit, f"{snap.get('year')}|{cid}|railway|life"))
+                snap, ctx, o, unit, f"{snap.get('year')}|{cid}|railway|life",
+                flavor=True))
         _lab = _labor_union_line(melted, cid, loc)
         if _lab:
             life_lines.append("- " + _lab)
@@ -7027,7 +7038,8 @@ def _pool_service_data(melted, snap, ctx, rnd, country, cid, data):
         pid, o = grassroots_pop[0]
         grassroots.append(_pool_pop_text(pid, o, ctx, loc, unit=unit, snap=snap))
         grassroots.extend(_pool_consumption_basket_lines(
-            snap, ctx, o, unit, f"{snap.get('year')}|{cid}|service|grassroots"))
+            snap, ctx, o, unit, f"{snap.get('year')}|{cid}|service|grassroots",
+            flavor=True))
         _lab = _labor_union_line(melted, cid, loc)
         if _lab:
             grassroots.append(_lab)
@@ -7404,7 +7416,7 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
             household.extend(_pool_consumption_basket_lines(
                 snap, ctx, o, unit,
                 f"{snap.get('year')}|{cid}|price|household",
-                prices=prices, gm=gm))
+                prices=prices, gm=gm, flavor=True))
         household.extend(_pool_investment_lines(snap, st_zh, o, "mag_price"))
     market = ["本刊关注的几件商品与市价："]
     for r in rows[:5]:
@@ -7495,7 +7507,8 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
             island.append("- " + _pool_pop_text(pid, o, ctx, loc,
                                                 unit=unit, snap=snap))
             island.extend(_pool_consumption_basket_lines(
-                snap, ctx, o, unit, f"{snap.get('year')}|{cid}|letters|island"))
+                snap, ctx, o, unit, f"{snap.get('year')}|{cid}|letters|island",
+                flavor=True))
         if sampled and sampled[0][1].get("culture") is not None:
             isl_ck = culture_id_to_key(sampled[0][1].get("culture"))
     else:
@@ -7515,7 +7528,7 @@ def _pool_letters_data(melted, snap, ctx, rnd, country, cid, data):
             cap_pops[0][0], cap_pops[0][1], ctx, loc, unit=unit, snap=snap))
         home.extend(_pool_consumption_basket_lines(
             snap, ctx, cap_pops[0][1], unit,
-            f"{snap.get('year')}|{cid}|letters|home"))
+            f"{snap.get('year')}|{cid}|letters|home", flavor=True))
         if cap_pops[0][1].get("culture") is not None:
             home_ck = culture_id_to_key(cap_pops[0][1].get("culture"))
     _blk = person_names_block(f"{snap.get('year')}|{cid}|letters",
