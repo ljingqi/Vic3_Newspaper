@@ -3882,7 +3882,7 @@ def _normalize_region_key(region_key=None, region_name=None):
 
 
 
-def _food_flavor_lines(goods, year=None, religion=None, seed_key="",
+def _food_flavor_lines_legacy(goods, year=None, religion=None, seed_key="",
                        *, sol=None, culture_key=None, region_key=None,
                        region_name=None, month=None):
     """人群采访「舌尖上的风味」素材行 (确定性, 以消费篮子为限)。
@@ -3965,6 +3965,335 @@ def _food_flavor_lines(goods, year=None, religion=None, seed_key="",
                 continue
             segs.append(_meal_seg(rnd, tag, parts[tag],
                                   treat_key if tag == "treat" else None))
+        lines.append("- 饭食：" + "，".join(segs) + "。")
+    return lines
+
+
+# ===========================================================================
+# 「区域×民系×档次×时令」菜品管线 (2026-09 核心): 候选池来自
+# data/food_cuisine.json (zone banks + culture/religion) 与 data/food_zones.json
+# (州→zone/半球/纬度带)。数据缺失/开关关闭 → 回退 _food_flavor_lines_legacy。
+# 确定性种子不变; 篮子纪律: 外购/甜点/茶酒/异域槽位永远以 consumption_goods 为准。
+# ===========================================================================
+
+_FOOD_JSON_CACHE = None
+
+
+def _load_food_json():
+    """读取 data/food_cuisine.json + data/food_zones.json (惰性缓存; 失败回退空)。"""
+    global _FOOD_JSON_CACHE
+    if _FOOD_JSON_CACHE is None:
+        data = {}
+        base = os.path.join(SCRIPT_DIR, "data")
+        for fn, key in (("food_cuisine.json", "cuisine"),
+                        ("food_zones.json", "zones")):
+            p = os.path.join(base, fn)
+            try:
+                with open(p, encoding="utf-8") as fp:
+                    data[key] = json.load(fp) or {}
+            except Exception:
+                data[key] = {}
+        _FOOD_JSON_CACHE = data
+    return _FOOD_JSON_CACHE
+
+
+def _tier_of(sol):
+    """生活水平 → 档位 1..5 (T1 果腹<5 / T2 糊口5-9 / T3 温饱10-14 /
+    T4 小康15-19 / T5 富足20-39; 40+ 并入 5)。"""
+    if not isinstance(sol, (int, float)):
+        return 2
+    if sol < 5:
+        return 1
+    if sol < 10:
+        return 2
+    if sol < 15:
+        return 3
+    if sol < 20:
+        return 4
+    return 5
+
+
+def _season_of(month, hemisphere):
+    """报告月 → 本半球季节 (北半球 12/1/2=冬…; 南半球取对侧; 月缺失回退 1 月)。"""
+    month = month if isinstance(month, (int, float)) else 1
+    if month in (12, 1, 2):
+        s = "winter"
+    elif 3 <= month <= 5:
+        s = "spring"
+    elif 6 <= month <= 8:
+        s = "summer"
+    else:
+        s = "autumn"
+    if hemisphere == "south":
+        s = {"winter": "summer", "summer": "winter",
+             "spring": "autumn", "autumn": "spring"}.get(s, s)
+    return s
+
+
+def _band_generic_zone(band):
+    """纬度带 → 泛型 zone (该 zone 无编目时的兜底带)。"""
+    return {"tropical": "generic_tropical",
+            "subtropical": "generic_temperate",
+            "temperate": "generic_temperate",
+            "cold": "generic_boreal",
+            "arctic": "generic_boreal"}.get(band, "generic_temperate")
+
+
+def _food_state_facts(region_key, region_name):
+    """样本州 → (zone, hemisphere, band) 或 None (无法定位)。"""
+    fd = _load_food_json()
+    zones_data = fd.get("zones") or {}
+    rk = _normalize_region_key(region_key, region_name)
+    if not rk:
+        return None
+    zid = (zones_data.get("zones") or {}).get(rk)
+    st = (zones_data.get("states") or {}).get(rk) or {}
+    if not zid:
+        zid = _band_generic_zone(st.get("lat_band") or "temperate")
+    return {"zone": zid, "hemisphere": st.get("hemisphere", "north"),
+            "band": st.get("lat_band")}
+
+
+def _food_zone_banks(cuisine, zid, band):
+    """取 zone banks; 目标 zone 无编目时按纬度带回退泛型 zone。"""
+    zones = (cuisine or {}).get("zones") or {}
+    banks = (zones.get(zid) or {}).get("banks")
+    if banks:
+        return banks
+    gz = _band_generic_zone(band)
+    if gz != zid:
+        banks = (zones.get(gz) or {}).get("banks")
+        if banks:
+            return banks
+    return None
+
+
+def _bank_entry_ok(e, year, tier, season, religion):
+    """zone bank 项过滤: 年代门槛/档位上限/时令/忌口。"""
+    since = e.get("since")
+    if since and year < since:
+        return False
+    if tier < (e.get("tier") or 1):
+        return False
+    seas = e.get("season") or "*"
+    if seas != "*" and seas != season:
+        return False
+    ban = e.get("ban")
+    if ban and (religion or "") in _RELIGION_BANS.get(ban, set()):
+        return False
+    return True
+
+
+def _bank_choose(rnd, entries):
+    """确定性按权重抽 1 项 (w>0 记权, 缺省等概率)。"""
+    pool = [e for e in entries if isinstance(e, dict) and e.get("d")]
+    if not pool:
+        return None
+    ws = []
+    for e in pool:
+        w = e.get("w")
+        ws.append(w if isinstance(w, (int, float)) and w > 0 else 1)
+    total = float(sum(ws))
+    x = rnd.random() * total
+    acc = 0.0
+    for e, w in zip(pool, ws):
+        acc += w
+        if x <= acc:
+            return e
+    return pool[-1]
+
+
+def _food_flavor_lines(goods, year=None, religion=None, seed_key="",
+                       *, sol=None, culture_key=None, region_key=None,
+                       region_name=None, month=None):
+    """区域×民系×档次×时令 确定性素材行 (2026-09 核心管线)。
+
+    候选池 = zone bank × 时令 × 档位 × 民系过滤 × 忌口; 篮子纪律保留;
+    数据缺失 / food_zone_enabled=false → 回退 _food_flavor_lines_legacy。
+    """
+    if not goods:
+        return []
+    try:
+        cfg = load_config()
+        if not bool(cfg.get("food_flavor_enabled", True)):
+            return []
+        salt = str(cfg.get("food_flavor_salt") or "")
+        zone_enabled = bool(cfg.get("food_zone_enabled", True))
+        self_layer = bool(cfg.get("food_self_layer_enabled", True))
+    except Exception:
+        salt = ""
+        zone_enabled = True
+        self_layer = True
+    year = year if isinstance(year, (int, float)) else 9999
+    rnd = random.Random(f"{year}|food|{salt}|{seed_key}")
+    facts = _food_state_facts(region_key, region_name) if zone_enabled else None
+    fd = _load_food_json()
+    cuisine = fd.get("cuisine") or {}
+    banks = None
+    if facts:
+        banks = _food_zone_banks(cuisine, facts["zone"], facts["band"])
+    if not banks:
+        return _food_flavor_lines_legacy(
+            goods, year=year, religion=religion, seed_key=seed_key,
+            sol=sol, culture_key=culture_key, region_key=region_key,
+            region_name=region_name, month=month)
+
+    cult = (cuisine.get("cultures") or {}).get(culture_key)
+    avoid = list((cult.get("avoid") or []) if isinstance(cult, dict) else ())
+    drink_dairy = ((cuisine.get("religions") or {}).get(religion or "", {})
+                   .get("drink_mode") == "dairy")
+    tier = _tier_of(sol)
+    season = _season_of(month, facts["hemisphere"])
+
+    present = sorted(
+        (g for g in goods if (g.get("key") or "") in
+         ("grain", "meat", "fish", "groceries", "fruit",
+          "tea", "coffee", "liquor", "wine", "sugar")),
+        key=lambda g: -(g.get("weight") or 0))
+    have = {g["key"] for g in present}
+    weights = {g.get("key"): (g.get("weight") or 0) for g in present}
+
+    def pool(slot):
+        out = []
+        for e in banks.get(slot) or []:
+            if not _bank_entry_ok(e, year, tier, season, religion):
+                continue
+            if any(tok in str(e.get("d") or "") for tok in avoid):
+                continue
+            out.append(e)
+        return out
+
+    lines = []
+    # ---- 灶火 (与 legacy 同逻辑: 篮内年代达标的燃料商品主导) ----
+    fuels = [g for g in goods
+             if (g.get("key") or "") in _FUEL_STOVES
+             and year >= _FUEL_STOVES[g["key"]][1]
+             and isinstance(g.get("weight"), (int, float))]
+    if fuels:
+        fuels.sort(key=lambda g: -(g.get("weight") or 0))
+        fkey = fuels[0]["key"]
+        stove = ("蜂窝煤炉" if fkey == "coal" and year >= 1910
+                 else _FUEL_STOVES[fkey][0])
+        if fkey == "electricity":
+            lines.append(f"- 灶火：厨下用{stove}。")
+        else:
+            fname = (_consumption_goods_name(fuels[0].get("name"))
+                     or _FUEL_STOVES[fkey][2] or fkey)
+            lines.append(f"- 灶火：家用{stove}，以{fname}为火。")
+
+    # ---- 饭食: 一餐结构随档位 ----
+    used = set()
+    segs = []
+
+    def take(entries):
+        if not entries:
+            return None
+        cand = [e for e in entries if e.get("b") not in used]
+        e = _bank_choose(rnd, cand or entries)
+        if e and e.get("b"):
+            used.add(e["b"])
+        return e
+
+    # 主食
+    if "grain" in have:
+        e = take(pool("grain"))
+        if e:
+            d = e["d"]
+            if tier <= 1:
+                segs.append(rnd.choice([f"主食为{d}", f"{d}作主食"]))
+            else:
+                segs.append(rnd.choice([f"主食为{d}", f"以{d}为主食",
+                                        f"{d}端上桌作主食"]))
+
+    # 主菜 (meat 优先; T4+ 且 meat+fish 并存时允双主菜, base 互异)
+    mains = []
+    if "meat" in have:
+        e = take(pool("meat"))
+        if e:
+            mains.append(e)
+    if "fish" in have and ("meat" not in have or tier >= 4):
+        e = take(pool("fish"))
+        if e and e.get("b") not in used:
+            mains.append(e)
+    freq_pre = "" if (weights.get("meat") or weights.get("fish") or 0) >= 0.25 \
+        else "间或"
+    for i, e in enumerate(mains):
+        d = e["d"]
+        if len(mains) == 1:
+            if tier >= 4 and ("汤" in d or "羹" in d):
+                segs.append(f"先以{d}暖胃")
+            elif freq_pre:
+                segs.append(f"{freq_pre}以{d}作主菜")
+            else:
+                segs.append(rnd.choice([f"主菜是{d}", f"{d}是这一餐的主菜"]))
+        else:
+            segs.append("另备" + d if i == 1 else rnd.choice(
+                [f"主菜是{d}", f"{d}是这一餐的主菜"]))
+
+    # 佐餐: groceries → 菜蔬渍物; 无则自给层园菜; fruit → 当季/干藏
+    side_e = None
+    if "groceries" in have:
+        side_e = take(pool("veg"))
+        if side_e:
+            segs.append(rnd.choice([f"佐以{side_e['d']}",
+                                    f"配以{side_e['d']}",
+                                    f"就着{side_e['d']}下饭"]))
+    if side_e is None and self_layer:
+        side_e = take(pool("veg"))
+        if side_e:
+            segs.append(rnd.choice([f"佐以自家园中{side_e['d']}",
+                                    f"配以自腌的{side_e['d']}",
+                                    f"就着{side_e['d']}下饭"]))
+    if side_e is None and "fruit" in have:
+        fe = take(pool("fruit"))
+        if fe:
+            side_e = fe
+            segs.append(f"以{fe['d']}佐餐")
+    elif side_e is None and self_layer:
+        fe = take(pool("fruit"))
+        if fe:
+            side_e = fe
+            segs.append(f"按自家果木所出，佐以{fe['d']}")
+
+    # 嗜好/茶点
+    treat_src = next((k for k in ("tea", "coffee", "liquor", "wine")
+                      if k in have), None)
+    if treat_src or tier >= 4:
+        if treat_src == "coffee":
+            if tier >= 3:
+                segs.append(rnd.choice(["饭后一杯咖啡", "以咖啡待客"]))
+        elif (drink_dairy or not treat_src):
+            cand = pool("dairy") or pool("tea")
+            te = take(cand) if cand else None
+            if te:
+                segs.append(rnd.choice([f"以{te['d']}待客",
+                                        f"平日饮{te['d']}",
+                                        f"茶点为{te['d']}"]))
+        elif treat_src == "tea":
+            cand = pool("tea") or pool("dairy")
+            te = take(cand) if cand else None
+            if te:
+                segs.append(rnd.choice([f"饭后以{te['d']}润口",
+                                        f"饭后饮{te['d']}",
+                                        f"以{te['d']}佐饭"]))
+        else:
+            cand = pool("drink_fest")
+            te = take(cand) if cand else None
+            if te:
+                tpl = _TREAT_PHRASES.get(treat_src) or ["待客饮{0}"]
+                segs.append(rnd.choice(tpl).format(te["d"]))
+
+    # 甜点 (T5+, 需 sugar/fruit/groceries 背书; 从果/蔬槽挑 kind=dessert)
+    if tier >= 5 and any(k in have for k in ("sugar", "fruit", "groceries")):
+        cand = [e for e in pool("fruit") + pool("veg")
+                if e.get("kind") == "dessert"]
+        if cand:
+            de = take(cand)
+            if de:
+                segs.append(rnd.choice([f"饭后以{de['d']}收尾",
+                                        f"末了奉上{de['d']}作甜食"]))
+
+    if segs:
         lines.append("- 饭食：" + "，".join(segs) + "。")
     return lines
 
