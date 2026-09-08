@@ -4030,6 +4030,17 @@ def _season_of(month, hemisphere):
     return s
 
 
+def _dish_display(raw):
+    """出文菜名: 取「（」前的主名 (括号内为维护者注释, 如 别什巴尔马克
+    （手抓肉拌面片） → 别什巴尔马克); 无括号原样。"""
+    if not raw:
+        return raw
+    idx = raw.find("（")
+    if idx > 0:
+        return raw[:idx].strip()
+    return raw.strip()
+
+
 def _band_generic_zone(band):
     """纬度带 → 泛型 zone (该 zone 无编目时的兜底带)。"""
     return {"tropical": "generic_tropical",
@@ -4158,9 +4169,13 @@ def _food_flavor_lines(goods, year=None, religion=None, seed_key="",
         for e in banks.get(slot) or []:
             if not _bank_entry_ok(e, year, tier, season, religion):
                 continue
-            if any(tok in str(e.get("d") or "") for tok in avoid):
+            raw = str(e.get("d") or "")
+            if any(tok in raw for tok in avoid):
                 continue
-            out.append(e)
+            e2 = dict(e)
+            e2["d_raw"] = raw
+            e2["d"] = _dish_display(raw)
+            out.append(e2)
         return out
 
     lines = []
@@ -4215,8 +4230,9 @@ def _food_flavor_lines(goods, year=None, religion=None, seed_key="",
         e = take(pool("fish"))
         if e and e.get("b") not in used:
             mains.append(e)
-    freq_pre = "" if (weights.get("meat") or weights.get("fish") or 0) >= 0.25 \
-        else "间或"
+    freq_pre = ""
+    if tier <= 2 and (weights.get("meat") or weights.get("fish") or 0) < 0.25:
+        freq_pre = "间或"
     for i, e in enumerate(mains):
         d = e["d"]
         if len(mains) == 1:
@@ -4230,30 +4246,40 @@ def _food_flavor_lines(goods, year=None, religion=None, seed_key="",
             segs.append("另备" + d if i == 1 else rnd.choice(
                 [f"主菜是{d}", f"{d}是这一餐的主菜"]))
 
-    # 佐餐: groceries → 菜蔬渍物; 无则自给层园菜; fruit → 当季/干藏
+    # 佐餐: groceries → 菜蔬渍物; 有果篮子 → 当季/干藏果; 其余走自给层园菜
     side_e = None
+
+    def _side_phrase(entry):
+        d = entry["d"]
+        if entry.get("from_self"):
+            if any(t in d for t in ("腌", "酸", "干", "酱", "储")):
+                return rnd.choice([f"配以自腌的{d}", f"就着冬储的{d}下饭"])
+            return rnd.choice([f"佐以自家园中的{d}", f"就着自家园里的{d}下饭"])
+        return rnd.choice([f"佐以{d}", f"配以{d}", f"就着{d}下饭"])
+
     if "groceries" in have:
         side_e = take(pool("veg"))
         if side_e:
-            segs.append(rnd.choice([f"佐以{side_e['d']}",
-                                    f"配以{side_e['d']}",
-                                    f"就着{side_e['d']}下饭"]))
-    if side_e is None and self_layer:
-        side_e = take(pool("veg"))
-        if side_e:
-            segs.append(rnd.choice([f"佐以自家园中{side_e['d']}",
-                                    f"配以自腌的{side_e['d']}",
-                                    f"就着{side_e['d']}下饭"]))
+            segs.append(_side_phrase(side_e))
     if side_e is None and "fruit" in have:
         fe = take(pool("fruit"))
         if fe:
             side_e = fe
-            segs.append(f"以{fe['d']}佐餐")
-    elif side_e is None and self_layer:
+            segs.append(rnd.choice([f"以{fe['d']}佐餐",
+                                    f"餐旁摆上一盘{fe['d']}",
+                                    f"就着{fe['d']}下饭"]))
+    if side_e is None and self_layer:
+        ve = take(pool("veg"))
+        if ve:
+            ve["from_self"] = True
+            side_e = ve
+            segs.append(_side_phrase(ve))
+    # 有荤有蔬时, 小康以上偶增一盘当令果 (篮内 fruit 背书)
+    if ("fruit" in have and tier >= 3 and side_e is not None
+            and rnd.random() < 0.4):
         fe = take(pool("fruit"))
         if fe:
-            side_e = fe
-            segs.append(f"按自家果木所出，佐以{fe['d']}")
+            segs.append(f"另以{fe['d']}佐餐")
 
     # 嗜好/茶点
     treat_src = next((k for k in ("tea", "coffee", "liquor", "wine")
