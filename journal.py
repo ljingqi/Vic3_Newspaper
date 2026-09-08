@@ -251,6 +251,11 @@ DEFAULT_CONFIG = {
     # 填任意串可整批换随机 (留空 = 同年同样本稳定复现)。
     "food_flavor_enabled": True,
     "food_flavor_salt": "",
+    # 食物风味「区域/民系/档次」管线开关 (2026-09): 州农产×民系×SoL 分档×
+    # 报告月时令。food_zone_enabled=False 关闭区域维度 (回退原全局池);
+    # food_self_layer_enabled=False 时禁止写篮子外的家常自给食材 (纯篮子纪律)。
+    "food_zone_enabled": True,
+    "food_self_layer_enabled": True,
     # 报纸「现行宪法要览」附刊 (2026-09): 政界动态正文后由程序端插入现行法度
     # 总览, 不经 LLM。constitution_annex_policy 可选值:
     #   change=仅宪法变动/政权更替年(旧行为) / opening=仅开局年 /
@@ -3833,14 +3838,62 @@ def _meal_seg(rnd, tag, dish, treat_key=None):
     return rnd.choice(tpl).format(dish)
 
 
+# ---------------------------------------------------------------------------
+# 「区域×民系×档次×时令」管线辅助 (2026-09 接线): 本期先把上游信号 (州键/
+# 报告月) 规整到新入参, 下一阶段由数据表驱动候选池。全部确定性, 不增 LLM。
+# ---------------------------------------------------------------------------
 
-def _food_flavor_lines(goods, year=None, religion=None, seed_key=""):
+def _report_month_of(date_val):
+    """报告月 (1-12): 从快照 date (如 '1837.1.1' / '1836.7.1') 取月份;
+    缺失/无法解析回退 1 月 (熔化存档惯例为 1.1 自动存档; 1836 手工年中档如实取)。"""
+    if isinstance(date_val, str):
+        m = re.match(r"\d{4}\.(\d{1,2})", date_val)
+        if m:
+            try:
+                return max(1, min(12, int(m.group(1))))
+            except ValueError:
+                pass
+    return 1
+
+
+_LOC_ALL_REV = None
+
+
+def _loc_rev():
+    """本地化 {中文州名: STATE_键} 反查表 (惰性缓存; 失败返回空表)。"""
+    global _LOC_ALL_REV
+    if _LOC_ALL_REV is None:
+        try:
+            from journal_save import _load_loc_all
+            _LOC_ALL_REV = {v: k for k, v in _load_loc_all().items()}
+        except Exception:
+            _LOC_ALL_REV = {}
+    return _LOC_ALL_REV
+
+
+def _normalize_region_key(region_key=None, region_name=None):
+    """样本州键规整为 STATE_*: 已有键原样返回; 旧快照只有中文州名时反查本地化表。
+    返回 None 表示无法定位 (风味层按无区域数据兜底)。"""
+    if isinstance(region_key, str) and region_key.startswith("STATE_"):
+        return region_key
+    if region_name:
+        return _loc_rev().get(region_name)
+    return region_key if region_key else None
+
+
+
+def _food_flavor_lines(goods, year=None, religion=None, seed_key="",
+                       *, sol=None, culture_key=None, region_key=None,
+                       region_name=None, month=None):
     """人群采访「舌尖上的风味」素材行 (确定性, 以消费篮子为限)。
     goods: [{key, name, weight}] (快照 consumption_goods 同构)。
     返回形如 "- 灶火：…" / "- 饭食：…" 的资料行, 无数据或功能关闭返回 []。
     改造后: 一餐各槽只出**单一菜品**, 槽间主料(base)互斥 (防「烤红薯又吃
     红薯粥」式同料两吃), 槽位句式与荤菜主次位置含变体 (期与期不单调);
-    seed_key 变化 → 同篮子抽不同组合, 同年同 key 恒定 (regen 稳定)。"""
+    seed_key 变化 → 同篮子抽不同组合, 同年同 key 恒定 (regen 稳定)。
+    2026-09 接线新增关键字参 (本期落位, 由后续区域/民系/档次数据表消费):
+    sol→SoL 档位、culture_key→民系风味、region_key/region_name→州农产画像、
+    month→报告月 (时令)。"""
     if not goods:
         return []
     try:
@@ -4009,6 +4062,9 @@ def render_family(data, style=None):
             L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
         _ff = _food_flavor_lines(
             cgoods, year=data.get("year"), religion=fi.get("religion"),
+            sol=fi.get("sol"), culture_key=fi.get("culture_key"),
+            region_key=fi.get("region_key"), region_name=fi.get("region_name"),
+            month=_report_month_of(data.get("date")),
             seed_key=f"{data.get('year')}|food|family|{region}")
         if _ff:
             L.extend(_ff)
@@ -4168,6 +4224,9 @@ def render_peer(data, style=None):
             L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
         _ff = _food_flavor_lines(
             cgoods, year=data.get("year"), religion=peer.get("religion"),
+            sol=peer.get("sol"), culture_key=peer.get("culture_key"),
+            region_key=peer.get("region_key"), region_name=peer.get("region_name"),
+            month=_report_month_of(data.get("date")),
             seed_key=f"{data.get('year')}|food|peer|{region}")
         if _ff:
             L.extend(_ff)
@@ -4301,6 +4360,9 @@ def render_unemployed(data, style=None):
             L.append("- 主要消费品市价：" + "、".join(price_bits) + "。")
         _ff = _food_flavor_lines(
             cgoods, year=data.get("year"), religion=uni.get("religion"),
+            sol=uni.get("sol"), culture_key=uni.get("culture_key"),
+            region_key=uni.get("region_key"), region_name=uni.get("region_name"),
+            month=_report_month_of(data.get("date")),
             seed_key=f"{data.get('year')}|food|unemployed|{region}")
         if _ff:
             L.extend(_ff)

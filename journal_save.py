@@ -712,6 +712,9 @@ def snapshot_from_country(country, meta):
         snap["date"] = meta.get("game_date", "")
         m = re.match(r"(\d{4})", str(meta.get("game_date", "")))
         snap["year"] = int(m.group(1)) if m else None
+        # 报告月 (1-12): 存档恒为 1.1 自动存档时=1; 年中手工存档如实取 (如 1836.7.1)
+        m2 = re.match(r"\d{4}\.(\d{1,2})", str(meta.get("game_date", "")))
+        snap["report_month"] = int(m2.group(1)) if m2 else 1
         snap["player"] = meta.get("name", "未知")
     if not country:
         return snap
@@ -3303,6 +3306,7 @@ def _family_from_pop(pop, region_name, region_key=None, ig_slots=None,
         "location": pop.get("location"),
         "workplace_id": pop.get("workplace"),
         "region_name": region_name,
+        "region_key": region_key,
         "hub_name": hub_name,
         "pop_type": pop.get("type"),
         "culture": culture,
@@ -6214,7 +6218,13 @@ def _pool_consumption_basket_lines(snap, ctx, pop_obj, unit, seed_key,
             try:
                 _ff = _journal._food_flavor_lines(
                     basket["consumption_goods"], year=snap.get("year"),
-                    religion=pop_obj.get("religion"), seed_key=seed_key)
+                    religion=pop_obj.get("religion"),
+                    sol=pop_obj.get("previous_quality_of_life"),
+                    culture_key=culture_id_to_key(pop_obj.get("culture")),
+                    region_key=(ctx.state_region_key(sid)
+                                if sid is not None else None),
+                    month=snap.get("report_month"),
+                    seed_key=seed_key)
                 if _ff:
                     lines.extend(_ff)
             except Exception:
