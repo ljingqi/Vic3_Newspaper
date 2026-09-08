@@ -1,0 +1,11590 @@
+{
+ "STATE_ABRUZZO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 36.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_ABU_DHABI": {
+  "farms": [
+   "livestock",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 13.7,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_ACEH": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -11.3,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_ACRE": {
+  "farms": [
+   "maize",
+   "livestock",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -25.1,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest"
+  ]
+ },
+ "STATE_ADANA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.6,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_euphrates_river"
+  ]
+ },
+ "STATE_ADRIATIC_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_AEGEAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_AGRA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "opium",
+   "tea",
+   "dye",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 18.0,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_ganges_river"
+  ]
+ },
+ "STATE_AKMOLINSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 49.9,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_AKTOBE": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 44.9,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_ALABAMA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 23.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_ALAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 63.4,
+  "lat_band": "cold",
+  "subsistence": "fishing_village",
+  "traits": []
+ },
+ "STATE_ALASKA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 69.0,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_yukon_river_salmon_run",
+   "state_trait_siberian_terrain"
+  ]
+ },
+ "STATE_ALBANIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.6,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_terra_rossa"
+  ]
+ },
+ "STATE_ALBERTA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 55.1,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rocky_mountains"
+  ]
+ },
+ "STATE_ALENTEJO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 30.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_tagus_river"
+  ]
+ },
+ "STATE_ALEPPO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "banana",
+   "cotton",
+   "silk",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.6,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_euphrates_river"
+  ]
+ },
+ "STATE_ALGIERS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 26.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mitidja_plain",
+   "state_trait_atlas_mountains"
+  ]
+ },
+ "STATE_ALSACE_LORRAINE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 44.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_saar_coalfield",
+   "state_trait_rhine_river"
+  ]
+ },
+ "STATE_ALTAI": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 48.9,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_ALTO_PARAGUAY": {
+  "farms": [
+   "rice",
+   "livestock",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -41.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_ALXA": {
+  "farms": [
+   "livestock",
+   "wheat"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 33.3,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_gobi_desert"
+  ]
+ },
+ "STATE_AL_RIF": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.0,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_AMAZONAS": {
+  "farms": [
+   "maize",
+   "livestock",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -17.5,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest"
+  ]
+ },
+ "STATE_AMAZON_DELTA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_AMHARA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -6.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_AMUR": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 49.9,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_ANHALT": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 50.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_elbe_river"
+  ]
+ },
+ "STATE_ANKARA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "vineyard",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 32.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_anatolian_plateau"
+  ]
+ },
+ "STATE_ANNAM": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "silk",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 5.2,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_indochinese_forest"
+  ]
+ },
+ "STATE_ANTIOQUIA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_ANTOFAGASTA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -41.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes",
+   "state_trait_atacama_desert"
+  ]
+ },
+ "STATE_APULIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_terra_rossa"
+  ]
+ },
+ "STATE_AQUITAINE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 38.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_ARABIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_ARAGON": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 35.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_ARAKAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "opium",
+   "tobacco",
+   "dye",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 7.8,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_ARAUCANIA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -72.8,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_andes",
+   "state_trait_canales_patagonicos"
+  ]
+ },
+ "STATE_AREQUIPA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -32.7,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_ARIZONA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 25.6,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_ARKANSAS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 26.1,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mississippi_river"
+  ]
+ },
+ "STATE_ARKHANGELSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 68.1,
+  "lat_band": "arctic",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_ARMENIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "silk",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 33.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_ASSAM": {
+  "farms": [
+   "rice",
+   "livestock",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana",
+   "silk",
+   "coffee",
+   "cotton"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 14.3,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_brahmaputra_river",
+   "state_trait_himalayan_foothills",
+   "state_trait_digboi"
+  ]
+ },
+ "STATE_ASTRAKHAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 44.7,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_volga_river",
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_ASTURIAS": {
+  "farms": [
+   "maize",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 37.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_cuencas_mineras"
+  ]
+ },
+ "STATE_ATTICA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 31.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_saronic_gulf"
+  ]
+ },
+ "STATE_AUSTRIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 44.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_AUVERGNE_LIMOUSIN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 41.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_AWADH": {
+  "farms": [
+   "silk",
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "sugar",
+   "tobacco",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 15.8,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_ganges_river"
+  ]
+ },
+ "STATE_AYDIN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 31.1,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_AZERBAIJAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 33.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_AZORES": {
+  "farms": [
+   "wheat",
+   "coffee",
+   "cotton",
+   "sugar",
+   "banana",
+   "tea",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 31.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_BADEN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rhine_river",
+   "state_trait_black_forest"
+  ]
+ },
+ "STATE_BAFFIN_BAY": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BAGHDAD": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 24.2,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_mesopotamian_floodplain",
+   "state_trait_tigris_river",
+   "state_trait_euphrates_river"
+  ]
+ },
+ "STATE_BAHAMAS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 9.5,
+  "lat_band": "tropical",
+  "subsistence": "fishing_village",
+  "traits": []
+ },
+ "STATE_BAHAMA_BANKS": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BAHIA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -30.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BAJA_CALIFORNIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 17.5,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_BAJIO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 10.8,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_BAJO_PARAGUAY": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -43.5,
+  "lat_band": "temperate",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_paraguay_river"
+  ]
+ },
+ "STATE_BALEARIC_ISLANDS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 32.7,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_port_mahon"
+  ]
+ },
+ "STATE_BALEARIC_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BALKH": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "tea",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 29.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BALTIC_ENTRANCES": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BALUCHISTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "dye",
+   "opium",
+   "tea"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 17.5,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BANAT": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 40.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_pannonian_plain",
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_BANGKOK": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "opium",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 1.6,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_chao_phraya_delta",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_BARENTS_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BASQUE_COUNTRY": {
+  "farms": [
+   "maize",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 36.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_somorrostro_valley",
+   "state_trait_great_terroir"
+  ]
+ },
+ "STATE_BASRA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 21.2,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_mesopotamian_floodplain",
+   "state_trait_tigris_river",
+   "state_trait_euphrates_river"
+  ]
+ },
+ "STATE_BAS_CONGO": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -20.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria",
+   "state_trait_congo_river",
+   "state_trait_congo_forest"
+  ]
+ },
+ "STATE_BAVARIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_BAY_OF_BENGAL": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BAY_OF_BISCAY": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BEAUFORT_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BEIJING": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 35.9,
+  "lat_band": "temperate",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_kaiping_coalfield"
+  ]
+ },
+ "STATE_BEIRA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.0,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_great_terroir"
+  ]
+ },
+ "STATE_BEKES": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_pannonian_plain"
+  ]
+ },
+ "STATE_BENGUELA_COAST": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BENIN": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -6.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_niger_river"
+  ]
+ },
+ "STATE_BERING_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_BERMUDA": {
+  "farms": [
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 23.6,
+  "lat_band": "subtropical",
+  "subsistence": "fishing_village",
+  "traits": []
+ },
+ "STATE_BESSARABIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 42.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BIHAR": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 13.9,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_ganges_river",
+   "state_trait_jharia_dhanbad_coalfield"
+  ]
+ },
+ "STATE_BLUE_NILE": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 0.3,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_nile_river"
+  ]
+ },
+ "STATE_BOHEMIA": {
+  "farms": [
+   "rye",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 46.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_elbe_river"
+  ]
+ },
+ "STATE_BOLIVAR": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -8.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BOMBAY": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "silk",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 5.9,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_natural_harbors",
+   "state_trait_western_ghats"
+  ]
+ },
+ "STATE_BORNU": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -1.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_BOSNIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 38.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BOTSWANA": {
+  "farms": [
+   "millet",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -40.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_BOUGAINVILLE": {
+  "farms": [
+   "rice",
+   "coffee",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -21.0,
+  "lat_band": "tropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_BRANDENBURG": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 51.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_oder_river"
+  ]
+ },
+ "STATE_BREST": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 52.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BRITISH_COLUMBIA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 54.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rocky_mountains",
+   "state_trait_columbia_river"
+  ]
+ },
+ "STATE_BRITTANY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 44.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_loire_river"
+  ]
+ },
+ "STATE_BRUNSWICK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 49.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BUENOS_AIRES": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -59.0,
+  "lat_band": "cold",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_pampas",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_BUKOVINA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BULGARIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 37.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_BUNDELKHAND": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "dye",
+   "sugar",
+   "silk"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 12.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_BURGUNDY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_loire_river",
+   "state_trait_great_terroir"
+  ]
+ },
+ "STATE_BURYATIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 52.9,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_BUSAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tea",
+   "silk",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.4,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_CAJAMARCA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -21.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_CALABRIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 32.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_CALIFORNIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_central_valley",
+   "state_trait_northern_california_coastal_forests"
+  ]
+ },
+ "STATE_CAMBODIA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -0.7,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_indochinese_forest",
+   "state_trait_mekong_river"
+  ]
+ },
+ "STATE_CAMPANIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_CANARY_ISLANDS": {
+  "farms": [
+   "wheat",
+   "coffee",
+   "cotton",
+   "dye",
+   "sugar",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 19.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_CAPE_COLONY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -51.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_CAPE_OF_GOOD_HOPE": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_CAPE_ST_ROQUE": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_CAPE_VERDE": {
+  "farms": [
+   "wheat",
+   "coffee",
+   "cotton",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 4.2,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_CAPE_VERDE_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_CATALONIA": {
+  "farms": [
+   "wheat",
+   "silk",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 35.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_CAUCA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -11.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_CEARA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -20.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_CELEBES": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -17.0,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_CELTIC_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_CENTRAL_CUBA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 10.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_tierra_roja",
+   "state_trait_camaguey_plains"
+  ]
+ },
+ "STATE_CENTRAL_HIGHLANDS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "opium",
+   "tea",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 25.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_CENTRAL_HUNGARY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river",
+   "state_trait_pannonian_plain"
+  ]
+ },
+ "STATE_CENTRAL_JAVA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -23.1,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_CENTRAL_MEDITERRANEAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_CENTRAL_PROVINCES": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "sugar",
+   "banana",
+   "silk"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 9.6,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_CENTROAMERICAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_CEYLON": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.8,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_galle_harbor"
+  ]
+ },
+ "STATE_CHACO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "dye",
+   "tobacco",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -46.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_gran_chaco"
+  ]
+ },
+ "STATE_CHAD": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 5.6,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_sahel"
+  ]
+ },
+ "STATE_CHAMPAGNE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_great_terroir"
+  ]
+ },
+ "STATE_CHELYABINSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 52.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ural_iron"
+  ]
+ },
+ "STATE_CHERNIHIV": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 50.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_dnieper_river"
+  ]
+ },
+ "STATE_CHERSON": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 43.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_black_soil",
+   "state_trait_dnieper_river",
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_CHIANG_MAI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "opium",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 6.1,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_CHIAPAS": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 3.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_central_american_cordilleras"
+  ]
+ },
+ "STATE_CHIHUAHUA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "dye"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 18.7,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sierra_madre_oriental",
+   "state_trait_rio_grande_river"
+  ]
+ },
+ "STATE_CHONGQING": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "tea",
+   "tobacco",
+   "vineyard",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 21.3,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river",
+   "state_trait_the_red_basin"
+  ]
+ },
+ "STATE_CHUCKCHI_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_CHUGOKU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "dye",
+   "tea",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 26.2,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_seto_inland_sea"
+  ]
+ },
+ "STATE_CHUKOTKA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 74.0,
+  "lat_band": "arctic",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_siberian_terrain"
+  ]
+ },
+ "STATE_CHUVASHIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 56.2,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volga_river"
+  ]
+ },
+ "STATE_CIRCARS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana",
+   "silk"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 4.6,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_COAST_OF_GUYANA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_COLORADO": {
+  "farms": [
+   "maize",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 31.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rocky_mountains"
+  ]
+ },
+ "STATE_CONGO": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -15.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria",
+   "state_trait_congo_river",
+   "state_trait_congo_forest"
+  ]
+ },
+ "STATE_CONGO_ORIENTALE": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -15.3,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria",
+   "state_trait_congo_river",
+   "state_trait_congo_forest"
+  ]
+ },
+ "STATE_CONNAUGHT": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 52.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_CONNECTICUT": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 35.1,
+  "lat_band": "temperate",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_new_england_whaling",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_CONSTANTINE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.1,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_mokta_el_hadid",
+   "state_trait_atlas_mountains"
+  ]
+ },
+ "STATE_CORAL_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_CORRIENTES": {
+  "farms": [
+   "maize",
+   "livestock",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -47.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_parana_river",
+   "state_trait_paraguay_river",
+   "state_trait_pampas"
+  ]
+ },
+ "STATE_CORSICA": {
+  "farms": [
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 36.2,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_COSTA_RICA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -3.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_central_american_cordilleras"
+  ]
+ },
+ "STATE_COURLAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 57.5,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_CRETE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.0,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_CRIMEA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 40.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_black_soil",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_CROATIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 40.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_drava_river",
+   "state_trait_terra_rossa"
+  ]
+ },
+ "STATE_CUNDINAMARCA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -9.0,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_CYPRUS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 26.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_DAGESTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 37.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_caucasus_mountains"
+  ]
+ },
+ "STATE_DAHOMEY": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -4.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_DALMATIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 37.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_krka_falls",
+   "state_trait_terra_rossa"
+  ]
+ },
+ "STATE_DARFUR": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 2.1,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahel"
+  ]
+ },
+ "STATE_DAVIS_STRAIT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_DEIR_EZ_ZOR": {
+  "farms": [
+   "millet",
+   "livestock",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 27.7,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_euphrates_river"
+  ]
+ },
+ "STATE_DELAWARE": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 32.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_DELHI": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "banana",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 19.3,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ganges_river"
+  ]
+ },
+ "STATE_DELVIDEK": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 40.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river",
+   "state_trait_pannonian_plain"
+  ]
+ },
+ "STATE_DISTRICT_OF_COLUMBIA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 31.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_DIYARBAKIR": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.5,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_tigris_river",
+   "state_trait_euphrates_river",
+   "state_trait_zagros_mountains"
+  ]
+ },
+ "STATE_DOBRUDJA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 39.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_DONGOLA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 7.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_nile_river"
+  ]
+ },
+ "STATE_DURANGO": {
+  "farms": [
+   "maize",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 14.2,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sierra_madre_occidental"
+  ]
+ },
+ "STATE_DZUNGARIA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 38.8,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_EASTERN_BLACK_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_EASTERN_CAPE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -52.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_EASTERN_CARIBBEAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_EASTERN_CUBA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 9.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_guantanamo_bay",
+   "state_trait_sierra_maestra"
+  ]
+ },
+ "STATE_EASTERN_HIMALAYAS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "opium",
+   "tea"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 17.9,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_himalayas_mountains"
+  ]
+ },
+ "STATE_EASTERN_HUBEI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 21.5,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river"
+  ]
+ },
+ "STATE_EASTERN_INDIAN_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_EASTERN_MALI": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "opium",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 0.4,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_niger_river"
+  ]
+ },
+ "STATE_EASTERN_MEDITERRANEAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_EASTERN_NEW_GUINEA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -22.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_EASTERN_NORWAY": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 64.4,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_christianiafjorden",
+   "state_trait_kongsberg_silver_mine"
+  ]
+ },
+ "STATE_EASTERN_POLYNESIA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_EASTERN_SERBIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 37.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_EASTERN_THRACE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "opium",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.6,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_bosporus"
+  ]
+ },
+ "STATE_EAST_AEGEAN_ISLANDS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 32.1,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": []
+ },
+ "STATE_EAST_ANGLIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 50.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_good_soils",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_EAST_ANGOLA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -29.0,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria",
+   "state_trait_zambezi_river"
+  ]
+ },
+ "STATE_EAST_BENGAL": {
+  "farms": [
+   "rice",
+   "livestock",
+   "banana",
+   "dye",
+   "tobacco",
+   "tea",
+   "sugar",
+   "silk"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 12.8,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_bengal_delta",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_EAST_BORNEO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -14.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_borneo_rainforest"
+  ]
+ },
+ "STATE_EAST_CHINA_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_EAST_GALICIA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 46.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_EAST_HAUSALAND": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -2.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_EAST_JAVA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -23.5,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_natural_harbors",
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_EAST_KARELIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 69.7,
+  "lat_band": "arctic",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_EAST_MICRONESIA": {
+  "farms": [
+   "rice",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -4.4,
+  "lat_band": "tropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_EAST_PRUSSIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 54.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_EAST_SAHARA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 16.4,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahara_desert"
+  ]
+ },
+ "STATE_EAST_SIBERIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_EAST_SWITZERLAND": {
+  "farms": [
+   "rye",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_alps_mountains",
+   "state_trait_rhine_river"
+  ]
+ },
+ "STATE_ECUADOR": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -16.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes",
+   "state_trait_la_costa"
+  ]
+ },
+ "STATE_EGYPTIAN_DESERT": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 14.9,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahara_desert"
+  ]
+ },
+ "STATE_ELBE": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 52.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_elbe_river",
+   "state_trait_hamburger_hafen"
+  ]
+ },
+ "STATE_ELIZAVETPOL": {
+  "farms": [
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 33.8,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_EMILIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 39.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_ENGLISH_CHANNEL": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_ENTRE_DOURO_E_MINHO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 35.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_douro_valley",
+   "state_trait_douro_river"
+  ]
+ },
+ "STATE_EQUATEUR": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -13.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria",
+   "state_trait_congo_river",
+   "state_trait_congo_forest"
+  ]
+ },
+ "STATE_EQUATORIA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -6.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_white_nile"
+  ]
+ },
+ "STATE_EQUATORIAL_ATLANTIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_EQUATORIAL_PACIFIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_ERITREA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 1.7,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": []
+ },
+ "STATE_ERZURUM": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 32.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_zagros_mountains"
+  ]
+ },
+ "STATE_ESTREMADURA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 31.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_tagus_river",
+   "state_trait_tagus_estuary"
+  ]
+ },
+ "STATE_EXTREMADURA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 32.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_tagus_river"
+  ]
+ },
+ "STATE_FARS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "opium",
+   "vineyard",
+   "tobacco",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 19.4,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_zagros_mountains"
+  ]
+ },
+ "STATE_FERGANA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tea",
+   "cotton"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 34.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_FEZ": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 25.1,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_FIJI": {
+  "farms": [
+   "rice",
+   "coffee",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -35.1,
+  "lat_band": "temperate",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_FLANDERS": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 48.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_FLORIDA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "sugar",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 18.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_floridian_wetlands",
+   "state_trait_bone_valley"
+  ]
+ },
+ "STATE_FORMOSA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 12.6,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_FRANCHE_COMTE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_FRANCONIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 46.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_FRENCH_LOW_COUNTRIES": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 48.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_good_soils",
+   "state_trait_nord_pas_de_calais_coalfield"
+  ]
+ },
+ "STATE_FRIESLAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 51.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_FUJIAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "dye",
+   "tea",
+   "tobacco",
+   "opium"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 15.4,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_GABON": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -15.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_GALAPAGOS_RISE": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GALICH": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 65.5,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_GALICIA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 37.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ria_of_ferrol"
+  ]
+ },
+ "STATE_GANSU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 31.9,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_GELRE": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 49.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rhine_river"
+  ]
+ },
+ "STATE_GEORGIA": {
+  "farms": [
+   "rice",
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 23.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_GOIAS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "tobacco",
+   "sugar",
+   "banana",
+   "coffee"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -28.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest"
+  ]
+ },
+ "STATE_GOLD_COAST": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_GONDER": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -0.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_GOTALAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 59.1,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_GOTLAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 58.7,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_good_soils"
+  ]
+ },
+ "STATE_GRAND_BANKS": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GREATER_CAUCASUS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 36.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_caucasus_mountains"
+  ]
+ },
+ "STATE_GREATER_POLAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 49.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_GREAT_AUSTRALIAN_BIGHT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GREENLAND": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 76.4,
+  "lat_band": "arctic",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_arctic_whaling"
+  ]
+ },
+ "STATE_GREENLAND_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GUANGDONG": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 10.9,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_pearl_river",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_GUANGXI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 13.7,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_pearl_river"
+  ]
+ },
+ "STATE_GUATEMALA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 3.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_central_american_cordilleras"
+  ]
+ },
+ "STATE_GUAVIARE": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -13.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest"
+  ]
+ },
+ "STATE_GUAYANA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -9.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest"
+  ]
+ },
+ "STATE_GUERRERO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 5.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sierra_madre_oriental"
+  ]
+ },
+ "STATE_GUINEA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -3.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_niger_river"
+  ]
+ },
+ "STATE_GUINEA_CURRENT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GUIZHOU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "dye",
+   "opium",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 16.6,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_pearl_river"
+  ]
+ },
+ "STATE_GUJARAT": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "tobacco",
+   "sugar",
+   "banana",
+   "silk"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 10.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_GULF_OF_ALASKA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GULF_OF_FINLAND": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GULF_OF_GUINEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GULF_OF_MEXICO": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GULF_OF_SAINT_LAWRENCE": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_GUYENNE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 39.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_HAIL": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 20.0,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_arabian_desert"
+  ]
+ },
+ "STATE_HAITI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 7.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_HANNOVER": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 51.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_HAUSALAND": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -2.3,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_niger_river"
+  ]
+ },
+ "STATE_HAWAIIAN_ISLANDS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 7.6,
+  "lat_band": "tropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_hawaii_sandalwood_forests",
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_HEDJAZ": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 12.2,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_tihamah"
+  ]
+ },
+ "STATE_HENAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 25.8,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yellow_river"
+  ]
+ },
+ "STATE_HERAT": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "opium",
+   "tea",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 24.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_HEREROLAND": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -38.4,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_HESSE": {
+  "farms": [
+   "rye",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 47.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_HIGHLANDS": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 58.1,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scottish_highlands",
+   "state_trait_north_sea_fishing"
+  ]
+ },
+ "STATE_HILL_PUNJAB": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "tea",
+   "tobacco",
+   "sugar",
+   "silk"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 22.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_indus_river",
+   "state_trait_himalayan_foothills"
+  ]
+ },
+ "STATE_HIMALAYAS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "opium",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 18.4,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_himalayas_mountains"
+  ]
+ },
+ "STATE_HINGGAN": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 36.5,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_yellow_river",
+   "state_trait_eastern_steppe"
+  ]
+ },
+ "STATE_HOKKAIDO": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 37.9,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_ishikari_coalfield",
+   "state_trait_ishikari_wetlands_1"
+  ]
+ },
+ "STATE_HOKUSHINETSU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.1,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_HOLLAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 50.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rhine_river",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_HOME_COUNTIES": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 49.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_good_soils",
+   "state_trait_london_docklands"
+  ]
+ },
+ "STATE_HONDURAS": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 1.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_central_american_cordilleras"
+  ]
+ },
+ "STATE_HORN_OF_AFRICA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_HUDAVENDIGAR": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 33.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_HUDSON_BAY": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_HUNAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 18.0,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river"
+  ]
+ },
+ "STATE_HYDERABAD": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "tobacco",
+   "sugar",
+   "banana",
+   "silk"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 5.7,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_ICA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -29.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_ICELAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 71.8,
+  "lat_band": "arctic",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_arctic_whaling"
+  ]
+ },
+ "STATE_IDAHO": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 40.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rocky_mountains"
+  ]
+ },
+ "STATE_ILE_DE_FRANCE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_seine_river",
+   "state_trait_good_soils"
+  ]
+ },
+ "STATE_ILLINOIS": {
+  "farms": [
+   "maize",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 32.6,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mississippi_river"
+  ]
+ },
+ "STATE_INDIANA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "vineyard",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 33.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ohio_river"
+  ]
+ },
+ "STATE_INDIAN_OCEAN_TERRITORY": {
+  "farms": [
+   "rice",
+   "sugar",
+   "coffee",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -39.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mascarene_plateau",
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_INGRIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 61.7,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest",
+   "state_trait_kronstadt_island"
+  ]
+ },
+ "STATE_INNER_MAURITANIA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 9.7,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_sahara_desert"
+  ]
+ },
+ "STATE_INNER_MOROCCO": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 22.1,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_atlas_mountains"
+  ]
+ },
+ "STATE_INSIDE_PASSAGE": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_IONIAN_ISLANDS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 30.9,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": []
+ },
+ "STATE_IOWA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 35.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mississippi_river"
+  ]
+ },
+ "STATE_IRAKAJEMI": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "opium",
+   "dye",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 26.6,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_IRISH_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_IRKUTSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 59.7,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_angara_river"
+  ]
+ },
+ "STATE_ISFAHAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "opium",
+   "dye",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 22.4,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_turqoise_deposits"
+  ]
+ },
+ "STATE_ISTRIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 40.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_terra_rossa",
+   "state_trait_gulf_of_trieste"
+  ]
+ },
+ "STATE_IVORY_COAST": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_JALISCO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 8.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sierra_madre_occidental",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_JAMAICA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 6.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_kingston_harbour",
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_JAPAN_CURRENT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_JAVA_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_JETISY": {
+  "farms": [
+   "livestock",
+   "wheat"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.4,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_JIANGSU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 25.1,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_JIANGXI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 17.1,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river"
+  ]
+ },
+ "STATE_JUJUY": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -42.6,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_JUTLAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 57.2,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_good_soils"
+  ]
+ },
+ "STATE_KABUL": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "tea",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 25.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_KACHIN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "opium",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 14.2,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_burmese_teak"
+  ]
+ },
+ "STATE_KALMYKIA": {
+  "farms": [
+   "livestock",
+   "wheat"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.0,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_KAMCHATKA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 60.5,
+  "lat_band": "cold",
+  "subsistence": "fishing_village",
+  "traits": []
+ },
+ "STATE_KANAK": {
+  "farms": [
+   "rice",
+   "coffee",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -39.4,
+  "lat_band": "temperate",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_new_caledonian_nickel",
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_KANDAHAR": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "tea",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 22.5,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_KANSAI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "opium",
+   "silk",
+   "tea",
+   "vineyard",
+   "tobacco",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 25.8,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_nara_basin",
+   "state_trait_seto_inland_sea"
+  ]
+ },
+ "STATE_KANSAS": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_the_great_plains"
+  ]
+ },
+ "STATE_KANTO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.9,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_edo_bay",
+   "state_trait_kanto_plain"
+  ]
+ },
+ "STATE_KARA_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_KARS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_KASAI": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -20.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria",
+   "state_trait_congo_forest"
+  ]
+ },
+ "STATE_KASHMIR": {
+  "farms": [
+   "rice",
+   "livestock",
+   "dye",
+   "opium",
+   "tea",
+   "vineyard",
+   "silk"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 26.4,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_indus_river"
+  ]
+ },
+ "STATE_KASTAMONU": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "opium",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_pontus",
+   "state_trait_zonguldak_basin"
+  ]
+ },
+ "STATE_KATANGA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -25.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_KAUNAS": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 55.1,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_KAZAN": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 55.5,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volga_river"
+  ]
+ },
+ "STATE_KAZEMBE": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -28.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_KENTUCKY": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.1,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_appalachian_coal",
+   "state_trait_ohio_river",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_KENYA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -15.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_KERMAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "opium",
+   "dye",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 20.0,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_bam_narmashir"
+  ]
+ },
+ "STATE_KHARKOV": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 47.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_black_soil",
+   "state_trait_dnieper_river"
+  ]
+ },
+ "STATE_KHIVA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "opium",
+   "cotton"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 37.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_KHORASAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "dye",
+   "opium",
+   "tobacco",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 26.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_KHUZESTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "tobacco",
+   "dye",
+   "sugar",
+   "silk"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 22.0,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": []
+ },
+ "STATE_KIEV": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 46.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_black_soil",
+   "state_trait_dnieper_river"
+  ]
+ },
+ "STATE_KIRGHIZIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tea"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 34.8,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_KOLA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 77.5,
+  "lat_band": "arctic",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_KOLYMA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 74.5,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_siberian_terrain"
+  ]
+ },
+ "STATE_KONYA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "opium",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 30.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_anatolian_plateau"
+  ]
+ },
+ "STATE_KORDOFAN": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 0.0,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahel"
+  ]
+ },
+ "STATE_KOSOVO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 36.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_KRASNOYARSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 55.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_yenisei_river"
+  ]
+ },
+ "STATE_KUBAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 40.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_western_steppe",
+   "state_trait_black_soil"
+  ]
+ },
+ "STATE_KUOPIO": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 67.4,
+  "lat_band": "arctic",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_KURNOOL": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "dye",
+   "banana",
+   "silk"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 2.1,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_KURSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 49.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_don_river",
+   "state_trait_black_soil"
+  ]
+ },
+ "STATE_KYOTO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.0,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_KYUSHU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 23.4,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_chikuho_coalfield",
+   "state_trait_nagasaki_bay"
+  ]
+ },
+ "STATE_LABRADOR_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_LACCADIVE_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_LANCASHIRE": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 53.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_lancashire_coalfield",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_LANGUEDOC": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 38.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_LAOS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "silk",
+   "dye",
+   "opium",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 6.0,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_indochinese_forest",
+   "state_trait_mekong_river"
+  ]
+ },
+ "STATE_LAPTEV_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_LARISTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "opium",
+   "dye",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 17.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_LAZIO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 35.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_LA_PAMPA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "dye",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -53.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_LA_PAZ": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -30.9,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_LEBANON": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "banana",
+   "vineyard",
+   "silk"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 25.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mount_lebanon"
+  ]
+ },
+ "STATE_LEINSTER": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 52.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_LEON": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 35.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_douro_river"
+  ]
+ },
+ "STATE_LESSER_POLAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 49.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_LHASA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 20.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_himalayas_mountains"
+  ]
+ },
+ "STATE_LIBERIA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -7.5,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_LIBYA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 14.5,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahara_desert"
+  ]
+ },
+ "STATE_LIBYAN_DESERT": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 15.1,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahara_desert"
+  ]
+ },
+ "STATE_LIMA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -27.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes",
+   "state_trait_chincha_islands"
+  ]
+ },
+ "STATE_LINDI": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -23.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_LOMBARDY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 41.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_po_river"
+  ]
+ },
+ "STATE_LORRAINE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_LOS_RIOS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -59.3,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes",
+   "state_trait_cordillera_de_la_costa",
+   "state_trait_longitudinal_valley"
+  ]
+ },
+ "STATE_LOUISIANA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 21.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mississippi_river"
+  ]
+ },
+ "STATE_LOURENCO_MARQUES": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -41.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_LOWER_ANDALUSIA": {
+  "farms": [
+   "wheat",
+   "silk",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.7,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_guadalquivir",
+   "state_trait_bay_of_cadiz",
+   "state_trait_riotinto_basin"
+  ]
+ },
+ "STATE_LOWER_EGYPT": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 20.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_nile_river"
+  ]
+ },
+ "STATE_LOWER_SILESIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 48.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_oder_river"
+  ]
+ },
+ "STATE_LOWLANDS": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 56.8,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_central_belt_coalfield",
+   "state_trait_north_sea_fishing"
+  ]
+ },
+ "STATE_LURISTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "dye",
+   "silk",
+   "vineyard",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 24.0,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_zagros_mountains"
+  ]
+ },
+ "STATE_LUSITANIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_LUZON": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 3.1,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_manila_bay"
+  ]
+ },
+ "STATE_MACEDONIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.0,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MADEIRA": {
+  "farms": [
+   "wheat",
+   "coffee",
+   "cotton",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 23.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_MADRAS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana",
+   "silk"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -2.3,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_cauvery_delta",
+   "state_trait_natural_harbors",
+   "state_trait_western_ghats"
+  ]
+ },
+ "STATE_MAINE": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 40.5,
+  "lat_band": "temperate",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_new_england_whaling",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_MAINE_ANJOU": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_loire_river"
+  ]
+ },
+ "STATE_MAIN_EQUATORIAL_CRURRENT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_MALACCA_STRAIT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_MALAYA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -10.5,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_MALAY_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_MALTA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.7,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_MALWA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "sugar",
+   "tobacco",
+   "silk"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 13.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_good_soils"
+  ]
+ },
+ "STATE_MANDALAY": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tea",
+   "sugar",
+   "dye",
+   "banana",
+   "silk"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 9.5,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_burmese_teak",
+   "state_trait_yenangyaung"
+  ]
+ },
+ "STATE_MANITOBA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 54.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_canadian_prairies",
+   "state_trait_hudson_bay"
+  ]
+ },
+ "STATE_MARANHAO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -21.3,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_amazon_rainforest"
+  ]
+ },
+ "STATE_MARRAKECH": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 22.9,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_khouribga_basin"
+  ]
+ },
+ "STATE_MARYLAND": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 31.0,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MASSACHUSETTS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 36.1,
+  "lat_band": "temperate",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_new_england_whaling",
+   "state_trait_american_chestnuts",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_MATO_GROSSO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -33.0,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest",
+   "state_trait_pantanal"
+  ]
+ },
+ "STATE_MATRUH": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 19.1,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahara_desert"
+  ]
+ },
+ "STATE_MAURITANIA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 6.0,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_sahel"
+  ]
+ },
+ "STATE_MAZANDARAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "opium",
+   "tea",
+   "sugar",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 29.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_hyrcanian_forests",
+   "state_trait_alborz_mountains"
+  ]
+ },
+ "STATE_MAZOVIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 52.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MECKLENBURG": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 52.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MEKONG": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "silk",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -1.3,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_mekong_delta",
+   "state_trait_indochinese_forest"
+  ]
+ },
+ "STATE_MERZ": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tea"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MEXICO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 7.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sierra_madre_oriental"
+  ]
+ },
+ "STATE_MICHIGAN": {
+  "farms": [
+   "maize",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_great_lakes"
+  ]
+ },
+ "STATE_MICRONESIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_MIDDLE_EGYPT": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 17.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_nile_river"
+  ]
+ },
+ "STATE_MIDLANDS": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 51.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MID_ATLANTIC_COAST": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_MINAS_GERAIS": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -36.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MINDANAO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MINNESOTA": {
+  "farms": [
+   "maize",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mississippi_river"
+  ]
+ },
+ "STATE_MINSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 51.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MIRANDA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MISSISSIPPI": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 23.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mississippi_river",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_MISSOURI": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mississippi_river"
+  ]
+ },
+ "STATE_MOCAMBIQUE": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -30.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_MOGILEV": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 52.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_MOLDAVIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "silk",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MOLUCCAS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -18.7,
+  "lat_band": "tropical",
+  "subsistence": "fishing_village",
+  "traits": []
+ },
+ "STATE_MOLUCCA_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_MONTANA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rocky_mountains"
+  ]
+ },
+ "STATE_MONTENEGRO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 36.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_terra_rossa"
+  ]
+ },
+ "STATE_MORAVIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 46.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_MOSCOW": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 56.4,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volga_river",
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_MOSUL": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 28.2,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_tigris_river"
+  ]
+ },
+ "STATE_MOZAMBIQUE_CHANNEL": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_MUNSTER": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 50.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_the_golden_vale",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_MURCIA": {
+  "farms": [
+   "wheat",
+   "silk",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 31.0,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sierra_minera_de_cartagena",
+   "state_trait_bay_of_cartagena"
+  ]
+ },
+ "STATE_MYSORE": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana",
+   "silk"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 0.0,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_western_ghats"
+  ]
+ },
+ "STATE_NAKHON_RATCHASIMA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "opium",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 2.6,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_indochinese_forest"
+  ]
+ },
+ "STATE_NAMAQUALAND": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -44.6,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_NANJING": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 23.1,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river"
+  ]
+ },
+ "STATE_NAURU": {
+  "farms": [
+   "rice",
+   "coffee",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -15.3,
+  "lat_band": "tropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_NEBRASKA": {
+  "farms": [
+   "maize",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 35.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_the_great_plains"
+  ]
+ },
+ "STATE_NEJD": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 10.5,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_arabian_desert"
+  ]
+ },
+ "STATE_NENETSIA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 74.8,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_siberian_terrain"
+  ]
+ },
+ "STATE_NEVADA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 31.1,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_the_great_basin_desert"
+  ]
+ },
+ "STATE_NEWFOUNDLAND": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 45.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_grand_banks_fisheries"
+  ]
+ },
+ "STATE_NEW_BRUNSWICK": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 41.0,
+  "lat_band": "temperate",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_halifax_harbor"
+  ]
+ },
+ "STATE_NEW_CASTILE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 32.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_tagus_river"
+  ]
+ },
+ "STATE_NEW_HAMPSHIRE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 38.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_new_england_whaling",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_NEW_JERSEY": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 33.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_newark_harbor"
+  ]
+ },
+ "STATE_NEW_MEXICO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 24.2,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_rio_grande_river"
+  ]
+ },
+ "STATE_NEW_SOUTH_WALES": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -53.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_great_dividing_range",
+   "state_trait_murray_darling_basin",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_NEW_YORK": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 36.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_niagara_falls",
+   "state_trait_american_chestnuts",
+   "state_trait_new_york_harbor"
+  ]
+ },
+ "STATE_NGARI": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 22.9,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_himalayas_mountains"
+  ]
+ },
+ "STATE_NICARAGUA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -0.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_central_american_cordilleras"
+  ]
+ },
+ "STATE_NIGER": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 7.0,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_sahel"
+  ]
+ },
+ "STATE_NIGERIA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -4.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_NIGER_DELTA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -8.5,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_niger_river"
+  ]
+ },
+ "STATE_NINGXIA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "tea",
+   "tobacco",
+   "vineyard",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 27.9,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yellow_river"
+  ]
+ },
+ "STATE_NIZHNY_NOVGOROD": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 57.0,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volga_river",
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_NORMANDY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 45.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_seine_river",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_NORRLAND": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 71.5,
+  "lat_band": "arctic",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malmberget",
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_NORTHEAST_ATLANTIC_COAST": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTHEAST_PACIFIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTHERN_ANHUI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 24.8,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_NORTHERN_BALTIC_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTHERN_BALUCHISTAN": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 21.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_NORTHERN_CAPE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -48.7,
+  "lat_band": "temperate",
+  "subsistence": "orchard",
+  "traits": []
+ },
+ "STATE_NORTHERN_MANCHURIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_eastern_steppe"
+  ]
+ },
+ "STATE_NORTHERN_NORTH_ATLANTIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTHERN_NORWAY": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 75.1,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_north_sea_fishing",
+   "state_trait_arctic_whaling",
+   "state_trait_trondhjemsfjorden"
+  ]
+ },
+ "STATE_NORTHERN_POLYNESIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTHERN_TERRITORY": {
+  "farms": [
+   "livestock",
+   "cotton"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -36.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_australian_desert"
+  ]
+ },
+ "STATE_NORTHERN_THRACE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 36.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_NORTHERN_TRANSYLVANIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_NORTHWEST_PACIFIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTHWEST_PASSAGE": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTHWEST_TERRITORIES": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 73.0,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_northern_canadian_terrain"
+  ]
+ },
+ "STATE_NORTH_ANGOLA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "sugar",
+   "dye",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -24.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_NORTH_ATLANTIC_CURRENT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTH_ATLANTIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTH_BORNEO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -10.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sarawak_river",
+   "state_trait_borneo_rainforest"
+  ]
+ },
+ "STATE_NORTH_CAMEROON": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -6.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_NORTH_CAROLINA": {
+  "farms": [
+   "rice",
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 26.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_appalachian_coal"
+  ]
+ },
+ "STATE_NORTH_CAUCASUS": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 37.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_caucasus_mountains"
+  ]
+ },
+ "STATE_NORTH_DAKOTA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_the_great_plains"
+  ]
+ },
+ "STATE_NORTH_ISLAND": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -60.1,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_NORTH_MADAGASCAR": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -33.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_NORTH_PACIFIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTH_RHINE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 48.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rhine_river",
+   "state_trait_ruhr_coalfield"
+  ]
+ },
+ "STATE_NORTH_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NORTH_SUMATRA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -14.5,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_NORWEGIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_NOVGOROD": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 61.9,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_NUNAVUT": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 76.5,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_northern_canadian_terrain",
+   "state_trait_hudson_bay"
+  ]
+ },
+ "STATE_OAXACA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 4.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sierra_madre_oriental"
+  ]
+ },
+ "STATE_OB": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 77.1,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_siberian_terrain",
+   "state_trait_ob_river"
+  ]
+ },
+ "STATE_OHIO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 33.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ohio_river"
+  ]
+ },
+ "STATE_OKHOTSK": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 63.3,
+  "lat_band": "cold",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_siberian_terrain"
+  ]
+ },
+ "STATE_OKLAHOMA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 26.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_OLD_CASTILE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 35.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_good_soils",
+   "state_trait_douro_river"
+  ]
+ },
+ "STATE_OMAN": {
+  "farms": [
+   "livestock",
+   "coffee",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 9.2,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_ONTARIO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 46.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_great_lakes",
+   "state_trait_niagara_falls",
+   "state_trait_hudson_bay"
+  ]
+ },
+ "STATE_ORAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 26.1,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_atlas_mountains"
+  ]
+ },
+ "STATE_OREGON": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 38.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_columbia_river",
+   "state_trait_cascades"
+  ]
+ },
+ "STATE_ORISSA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana",
+   "silk"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 9.1,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_ORLEANS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_loire_river",
+   "state_trait_good_soils"
+  ]
+ },
+ "STATE_OROMIA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -6.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_ORYOL": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 52.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_OSTROBOTHNIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 68.3,
+  "lat_band": "arctic",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_OULU": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 75.3,
+  "lat_band": "arctic",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_OUTER_HAUSALAND": {
+  "farms": [
+   "millet",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 1.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_niger_river",
+   "state_trait_sahel"
+  ]
+ },
+ "STATE_OUTER_MANCHURIA": {
+  "farms": [
+   "livestock",
+   "rye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 44.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_golden_horn_bay"
+  ]
+ },
+ "STATE_PACIFIC_SEABOARD": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_PALESTINE": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 22.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_PANAMA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_PARA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -17.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest",
+   "state_trait_serra_dos_carajas"
+  ]
+ },
+ "STATE_PARAIBA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -22.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_PARANA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -43.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_parana_river"
+  ]
+ },
+ "STATE_PASHTUNISTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "opium",
+   "tea",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 25.7,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_indus_river"
+  ]
+ },
+ "STATE_PASTAZA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "sugar",
+   "banana",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -19.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest"
+  ]
+ },
+ "STATE_PATAGONIA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -68.9,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_PATAGONIAN_CHANNELS": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_PATAGONIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_PEGU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "opium",
+   "tobacco",
+   "sugar",
+   "banana",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 5.5,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_irrwaddy_delta",
+   "state_trait_burmese_teak"
+  ]
+ },
+ "STATE_PELOPONNESE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.6,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_PENNSYLVANIA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 34.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ohio_river",
+   "state_trait_appalachian_coal",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_PERM": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 61.9,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest",
+   "state_trait_ural_iron"
+  ]
+ },
+ "STATE_PERNAMBUCO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -25.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_PERSIAN_GULF": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_PERSIAN_KURDISTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "opium",
+   "dye",
+   "silk",
+   "vineyard",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 26.9,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_zagros_mountains"
+  ]
+ },
+ "STATE_PERUVIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_PHILIPPINES_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_PIAUI": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -22.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_PICARDY": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 46.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_good_soils"
+  ]
+ },
+ "STATE_PIEDMONT": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 40.2,
+  "lat_band": "temperate",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_po_river"
+  ]
+ },
+ "STATE_POITOU": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 41.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_POMERANIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 52.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_oder_river"
+  ]
+ },
+ "STATE_POSEN": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 50.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_POTOSI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -38.0,
+  "lat_band": "temperate",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_PROVENCE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 38.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rhone_river",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_PSKOV": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 57.5,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_PUERTO_RICO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 6.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_PUNJAB": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "coffee",
+   "cotton",
+   "silk",
+   "dye",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 21.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_indus_river",
+   "state_trait_indus_valley"
+  ]
+ },
+ "STATE_PYONGYANG": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "opium"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 32.8,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_QINGHAI": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 27.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_yellow_river"
+  ]
+ },
+ "STATE_QUEBEC": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 53.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_st_lawrence_river"
+  ]
+ },
+ "STATE_QUEENSLAND": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -37.9,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_great_dividing_range"
+  ]
+ },
+ "STATE_QUETTA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "dye",
+   "opium",
+   "tea"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 21.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_RAJPUTANA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 16.3,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_RED_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_RHINELAND": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 46.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rhine_river",
+   "state_trait_great_terroir"
+  ]
+ },
+ "STATE_RHODE_ISLAND": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 35.3,
+  "lat_band": "temperate",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_new_england_whaling",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_RHONE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 40.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rhone_river",
+   "state_trait_loire_coalfield"
+  ]
+ },
+ "STATE_RIFT_VALLEY": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -13.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_lake_victoria"
+  ]
+ },
+ "STATE_RIGA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 57.9,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_RIO_DE_JANEIRO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -38.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_RIO_GRANDE": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 15.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rio_grande_river"
+  ]
+ },
+ "STATE_RIO_GRANDE_DO_NORTE": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -21.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_RIO_GRANDE_DO_SUL": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -50.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_uruguay_river",
+   "state_trait_pampas"
+  ]
+ },
+ "STATE_RIO_NEGRO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "dye",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -58.0,
+  "lat_band": "cold",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_RIVER_PLATE": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_ROMAGNA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 39.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_ROSTOV": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_don_river",
+   "state_trait_western_steppe",
+   "state_trait_black_soil"
+  ]
+ },
+ "STATE_RUHR": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 48.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rhine_river",
+   "state_trait_ruhr_coalfield"
+  ]
+ },
+ "STATE_RUTHENIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_RYAZAN": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 53.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_RYUKYU_ISLANDS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 18.2,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_naha_cane_fields"
+  ]
+ },
+ "STATE_SAHARA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 18.6,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahara_desert"
+  ]
+ },
+ "STATE_SAKHALIN": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 47.7,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_SAMARA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 50.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volga_river",
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_SANTA_CATARINA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -46.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SANTA_CRUZ": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -35.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_amazon_rainforest"
+  ]
+ },
+ "STATE_SANTA_FE": {
+  "farms": [
+   "maize",
+   "livestock",
+   "dye",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -51.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_parana_river",
+   "state_trait_pampas"
+  ]
+ },
+ "STATE_SANTIAGO": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -50.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_andes",
+   "state_trait_cordillera_de_la_costa",
+   "state_trait_longitudinal_valley"
+  ]
+ },
+ "STATE_SANTO_DOMINGO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 6.8,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_SAN_SALVADOR": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 0.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_central_american_cordilleras"
+  ]
+ },
+ "STATE_SAO_PAULO": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -40.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_parana_river"
+  ]
+ },
+ "STATE_SARDINIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 33.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SARGASSO_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SARIWON": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "opium"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.2,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_SASKATCHEWAN": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 53.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_canadian_prairies"
+  ]
+ },
+ "STATE_SAVOY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 40.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_alps_mountains"
+  ]
+ },
+ "STATE_SAXONY": {
+  "farms": [
+   "rye",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 48.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_elbe_river"
+  ]
+ },
+ "STATE_SCANIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 57.1,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scanian_soils",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_SCHLESWIG_HOLSTEIN": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 53.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SEA_OF_JAPAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SEA_OF_MARMARA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SEA_OF_OKHOTSK": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SEMIRECHE": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 47.8,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_western_steppe",
+   "state_trait_irtysh_river"
+  ]
+ },
+ "STATE_SEMNAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 26.3,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_SENEGAL": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 1.8,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_sahel",
+   "state_trait_cap_vert"
+  ]
+ },
+ "STATE_SEOUL": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 30.4,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_SHANDONG": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 28.6,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yellow_river"
+  ]
+ },
+ "STATE_SHANXI": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.5,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_the_loess_plateau",
+   "state_trait_yellow_river"
+  ]
+ },
+ "STATE_SHAN_STATES": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "opium",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 9.6,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_burmese_teak"
+  ]
+ },
+ "STATE_SHAOZHOU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 12.8,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_SHENGJING": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.4,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_dalian_bay"
+  ]
+ },
+ "STATE_SHIKOKU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "dye",
+   "tea",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 24.8,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_seto_inland_sea"
+  ]
+ },
+ "STATE_SICHUAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "opium",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 20.7,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river",
+   "state_trait_the_red_basin"
+  ]
+ },
+ "STATE_SICILY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sicilian_sulfur_mines"
+  ]
+ },
+ "STATE_SIERRA_LEONE": {
+  "farms": [
+   "rice",
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_SINAI": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 19.9,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": []
+ },
+ "STATE_SINALOA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "opium"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 14.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sierra_madre_occidental"
+  ]
+ },
+ "STATE_SINDH": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "coffee",
+   "cotton",
+   "opium",
+   "sugar",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 15.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_indus_river",
+   "state_trait_indus_valley"
+  ]
+ },
+ "STATE_SISTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "dye",
+   "tobacco",
+   "opium",
+   "cotton"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 18.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SKOPIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 35.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SLAVONIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 40.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_SLOVAKIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_SLOVENIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 41.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_drava_river"
+  ]
+ },
+ "STATE_SMOLENSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 55.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_SOLOMON_ISLANDS": {
+  "farms": [
+   "rice",
+   "coffee",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -25.5,
+  "lat_band": "subtropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_SOMALILAND": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "tea",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -8.9,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_SONORA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 19.4,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sierra_madre_occidental"
+  ]
+ },
+ "STATE_SOUTHERN_ANHUI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 21.5,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river"
+  ]
+ },
+ "STATE_SOUTHERN_ATLANTIC_CRURRENT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTHERN_BALTIC_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTHERN_BIGHT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTHERN_MANCHURIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "opium",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 39.6,
+  "lat_band": "temperate",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_SOUTHERN_OCEAN_01": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTHERN_OCEAN_02": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTHERN_TRANSYLVANIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "silk",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 41.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SOUTH_ANGOLA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "sugar",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -31.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_SOUTH_ATLANTIC_COAST": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTH_ATLANTIC_ISLANDS": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -79.4,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_antarctic_whaling"
+  ]
+ },
+ "STATE_SOUTH_ATLANTIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTH_AUSTRALIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -52.8,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_australian_desert",
+   "state_trait_copper_coast"
+  ]
+ },
+ "STATE_SOUTH_BRAZIL_BIGHT": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTH_CAMEROON": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -10.5,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_SOUTH_CAROLINA": {
+  "farms": [
+   "rice",
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "dye"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 24.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SOUTH_CHINA_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTH_DAKOTA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 39.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_the_great_plains"
+  ]
+ },
+ "STATE_SOUTH_INDIAN_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTH_ISLAND": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -67.6,
+  "lat_band": "arctic",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SOUTH_MADAGASCAR": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -38.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_SOUTH_PACIFIC_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_SOUTH_SUMATRA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -19.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_SOUTH_TYROL": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 41.9,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_alps_mountains"
+  ]
+ },
+ "STATE_STAVROPOL": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 40.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_western_steppe",
+   "state_trait_black_soil"
+  ]
+ },
+ "STATE_STYRIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_drava_river"
+  ]
+ },
+ "STATE_SUNDA_ISLANDS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -24.4,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_SURGUT": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 66.9,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_ob_river"
+  ]
+ },
+ "STATE_SUZHOU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 22.5,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_SVEALAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 62.6,
+  "lat_band": "cold",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_bergslagen",
+   "state_trait_scandinavian_forests",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_SYRDARYA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 40.5,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_SYRIA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 25.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_euphrates_river"
+  ]
+ },
+ "STATE_TABRIZ": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "vineyard",
+   "tobacco",
+   "opium",
+   "dye"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.1,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_TAHITI": {
+  "farms": [
+   "rice",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -46.5,
+  "lat_band": "temperate",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_TAJIKISTAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tea",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_TALINN": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 61.4,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_TAMBOV": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 52.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_black_soil"
+  ]
+ },
+ "STATE_TANGANYIKA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -20.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_lake_victoria"
+  ]
+ },
+ "STATE_TARAPACA": {
+  "farms": [
+   "livestock",
+   "dye",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -37.2,
+  "lat_band": "temperate",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_andes",
+   "state_trait_atacama_desert",
+   "state_trait_cordillera_de_la_costa"
+  ]
+ },
+ "STATE_TARTARIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 50.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volga_river",
+   "state_trait_western_steppe",
+   "state_trait_black_soil"
+  ]
+ },
+ "STATE_TARTU": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 60.2,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_TASMANIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "sugar",
+   "opium"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -65.6,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_tasmanian_rainforest"
+  ]
+ },
+ "STATE_TASMAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_TAURIDA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 43.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_black_soil",
+   "state_trait_dnieper_river",
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_TENASSERIM": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -1.6,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_TENNESSEE": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 27.5,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_mississippi_river",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_TEXAS": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 21.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rio_grande_river"
+  ]
+ },
+ "STATE_THESSALIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 32.7,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_TIANSHAN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 31.4,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_taklamakan_desert"
+  ]
+ },
+ "STATE_TIMBUKTU": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 8.2,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_sahel",
+   "state_trait_niger_river"
+  ]
+ },
+ "STATE_TOBOLSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 57.5,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_western_steppe",
+   "state_trait_irtysh_river"
+  ]
+ },
+ "STATE_TOGO": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -5.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_TOHOKU": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 32.2,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_TOKAI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.0,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_TOMSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 56.2,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_TONGA": {
+  "farms": [
+   "rice",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -29.4,
+  "lat_band": "subtropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_TONKIN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "silk",
+   "dye",
+   "opium",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 10.1,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_indochinese_forest",
+   "state_trait_quang_yen_coalfield"
+  ]
+ },
+ "STATE_TRABZON": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.4,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_pontus"
+  ]
+ },
+ "STATE_TRANSDANUBIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river",
+   "state_trait_pannonian_plain"
+  ]
+ },
+ "STATE_TRANSJORDAN": {
+  "farms": [
+   "millet",
+   "livestock",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 21.8,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": []
+ },
+ "STATE_TRANSVAAL": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "tea",
+   "banana",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -44.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_waterberg_coalfield"
+  ]
+ },
+ "STATE_TRANS_BAIKAL": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 53.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_TRAVANCORE": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -3.2,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_western_ghats"
+  ]
+ },
+ "STATE_TRIPOLI": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 21.4,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": []
+ },
+ "STATE_TUCUMAN": {
+  "farms": [
+   "maize",
+   "livestock",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -48.2,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_andes"
+  ]
+ },
+ "STATE_TUNISIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 25.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_TURKMENIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "silk",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 32.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_TUSCANY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 37.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_great_terroir"
+  ]
+ },
+ "STATE_TUVA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 49.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_eastern_steppe"
+  ]
+ },
+ "STATE_TVER": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 58.5,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest",
+   "state_trait_volga_river"
+  ]
+ },
+ "STATE_TYROL": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_alps_mountains"
+  ]
+ },
+ "STATE_TYRRHENIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_UBANGI_SHARI": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -7.4,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_UFA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 53.1,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ural_iron"
+  ]
+ },
+ "STATE_UGANDA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -13.3,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_lake_victoria"
+  ]
+ },
+ "STATE_ULIASTAI": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 43.5,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_eastern_steppe"
+  ]
+ },
+ "STATE_ULSTER": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 54.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_UMBRIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 37.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_UPPER_ANDALUSIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.6,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_guadalquivir"
+  ]
+ },
+ "STATE_UPPER_EGYPT": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "dye",
+   "opium",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 14.3,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_nile_river"
+  ]
+ },
+ "STATE_UPPER_SILESIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 47.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_oder_river",
+   "state_trait_upper_silesia_coalfield"
+  ]
+ },
+ "STATE_UPPER_YENISEYSK": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 74.1,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_siberian_terrain",
+   "state_trait_yenisei_river"
+  ]
+ },
+ "STATE_URAL": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 59.7,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ural_iron"
+  ]
+ },
+ "STATE_URALSK": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.4,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_western_steppe"
+  ]
+ },
+ "STATE_URGA": {
+  "farms": [
+   "livestock",
+   "wheat"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.0,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_eastern_steppe"
+  ]
+ },
+ "STATE_URMIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "vineyard",
+   "tobacco",
+   "opium",
+   "dye"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 30.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_zagros_mountains"
+  ]
+ },
+ "STATE_URUGUAY": {
+  "farms": [
+   "maize",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -53.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_uruguay_river",
+   "state_trait_pampas",
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_UTAH": {
+  "farms": [
+   "maize",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 31.4,
+  "lat_band": "subtropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_wasatch_range"
+  ]
+ },
+ "STATE_UUSIMAA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 64.8,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_UZBEKIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "silk",
+   "opium",
+   "cotton",
+   "tea"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 33.8,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_VALENCIA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 32.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_VANUATU": {
+  "farms": [
+   "rice",
+   "coffee",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -32.4,
+  "lat_band": "subtropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_VENETIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "silk",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 41.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_po_river",
+   "state_trait_venetian_lagoon"
+  ]
+ },
+ "STATE_VERACRUZ": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 7.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_sierra_madre_oriental"
+  ]
+ },
+ "STATE_VERMONT": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 38.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_VICTORIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tea",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -58.3,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_VILNIUS": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 54.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_VIRGINIA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 30.2,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_appalachian_coal",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_VISAYAS": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -1.9,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_VITEBSK": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 55.5,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_VOLHYNIA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 48.4,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_VOLTA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -0.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_VRYSTAAT": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "tea",
+   "banana",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -48.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_VYATKA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 60.1,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_WADDAI": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "dye",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -2.9,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_WALES": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 50.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_south_wales_valleys"
+  ]
+ },
+ "STATE_WALLACHIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "silk",
+   "cotton",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 39.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_WALLONIA": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 47.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_borinage_coalfield"
+  ]
+ },
+ "STATE_WASHINGTON": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 43.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_columbia_river",
+   "state_trait_cascades"
+  ]
+ },
+ "STATE_WESTERN_AUSTRALIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -43.5,
+  "lat_band": "temperate",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_australian_desert"
+  ]
+ },
+ "STATE_WESTERN_BLACK_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_WESTERN_CARIBBEAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_WESTERN_CUBA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 11.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_havana_harbor",
+   "state_trait_tierra_roja"
+  ]
+ },
+ "STATE_WESTERN_HUBEI": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 22.0,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river"
+  ]
+ },
+ "STATE_WESTERN_INDIAN_OCEAN": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_WESTERN_MALI": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "opium",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 0.8,
+  "lat_band": "tropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_niger_river"
+  ]
+ },
+ "STATE_WESTERN_MEDITERRANEAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_WESTERN_NEW_GUINEA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -20.1,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_WESTERN_NORWAY": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 63.3,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_north_sea_fishing",
+   "state_trait_hardangerfjorden"
+  ]
+ },
+ "STATE_WESTERN_POLYNESIAN_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_WESTERN_SERBIA": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 38.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_danube_river"
+  ]
+ },
+ "STATE_WESTERN_THRACE": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 34.9,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_WESTPHALIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 49.5,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_ruhr_coalfield"
+  ]
+ },
+ "STATE_WEST_AEGEAN_ISLANDS": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.3,
+  "lat_band": "subtropical",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_hermoupolis"
+  ]
+ },
+ "STATE_WEST_BENGAL": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "dye",
+   "opium",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 13.4,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_bengal_delta",
+   "state_trait_natural_harbors",
+   "state_trait_raniganj_coalfield"
+  ]
+ },
+ "STATE_WEST_BORNEO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "dye",
+   "tea",
+   "tobacco",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -15.7,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_kapuas_river",
+   "state_trait_borneo_rainforest"
+  ]
+ },
+ "STATE_WEST_COUNTRY": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 48.8,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_WEST_GALICIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 47.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_WEST_INDIES": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -2.2,
+  "lat_band": "tropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_WEST_JAVA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -22.5,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_volcanic_soil"
+  ]
+ },
+ "STATE_WEST_KARELIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 65.6,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_scandinavian_forests"
+  ]
+ },
+ "STATE_WEST_MICRONESIA": {
+  "farms": [
+   "rice",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -6.2,
+  "lat_band": "tropical",
+  "subsistence": "fishing_village",
+  "traits": [
+   "state_trait_severe_malaria"
+  ]
+ },
+ "STATE_WEST_PRUSSIA": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 53.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_WEST_SAHARA": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 13.7,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sahara_desert"
+  ]
+ },
+ "STATE_WEST_SWITZERLAND": {
+  "farms": [
+   "rye",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 42.3,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_alps_mountains",
+   "state_trait_rhine_river"
+  ]
+ },
+ "STATE_WEST_VIRGINIA": {
+  "farms": [
+   "maize",
+   "livestock",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 31.7,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_appalachian_coal",
+   "state_trait_american_chestnuts"
+  ]
+ },
+ "STATE_WINDWARD_COAST": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -6.3,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_WISCONSIN": {
+  "farms": [
+   "maize",
+   "livestock",
+   "tobacco"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 39.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_great_lakes"
+  ]
+ },
+ "STATE_WURTTEMBERG": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 45.0,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_black_forest"
+  ]
+ },
+ "STATE_WYOMING": {
+  "farms": [
+   "wheat",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 37.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_rocky_mountains"
+  ]
+ },
+ "STATE_XIAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "silk",
+   "tea",
+   "tobacco",
+   "vineyard",
+   "opium"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 27.6,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_the_loess_plateau"
+  ]
+ },
+ "STATE_YAKUTSK": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 72.9,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_siberian_terrain"
+  ]
+ },
+ "STATE_YANGHO": {
+  "farms": [
+   "rice",
+   "livestock",
+   "cotton",
+   "tea",
+   "silk",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 27.6,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_honam_plain"
+  ]
+ },
+ "STATE_YAROSLAVL": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 57.8,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_volga_river",
+   "state_trait_russian_forest"
+  ]
+ },
+ "STATE_YELLOW_SEA": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_YEMEN": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "coffee",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 3.3,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_natural_harbors",
+   "state_trait_yemeni_highlands"
+  ]
+ },
+ "STATE_YORKSHIRE": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 54.2,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_south_yorkshire_coalfield"
+  ]
+ },
+ "STATE_YORUBA_STATES": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -6.2,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ },
+ "STATE_YUCATAN": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 7.6,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": []
+ },
+ "STATE_YUKON_TERRITORY": {
+  "farms": [
+   "livestock"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 75.0,
+  "lat_band": "arctic",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_northern_canadian_terrain"
+  ]
+ },
+ "STATE_YUNNAN": {
+  "farms": [
+   "rice",
+   "livestock",
+   "opium",
+   "tea",
+   "tobacco",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 14.5,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yangtze_river"
+  ]
+ },
+ "STATE_ZACATECAS": {
+  "farms": [
+   "maize",
+   "livestock",
+   "coffee",
+   "dye",
+   "tobacco",
+   "sugar",
+   "banana",
+   "vineyard"
+  ],
+  "fish": false,
+  "hemisphere": "north",
+  "lat": 11.8,
+  "lat_band": "tropical",
+  "subsistence": "pasture",
+  "traits": [
+   "state_trait_sierra_madre_oriental"
+  ]
+ },
+ "STATE_ZAMBEZI": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -36.7,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria",
+   "state_trait_zambezi_river"
+  ]
+ },
+ "STATE_ZAMBEZIA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -35.1,
+  "lat_band": "temperate",
+  "subsistence": "orchard",
+  "traits": [
+   "state_trait_malaria",
+   "state_trait_zambezi_river"
+  ]
+ },
+ "STATE_ZAMBIA": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "tobacco",
+   "sugar"
+  ],
+  "fish": false,
+  "hemisphere": "south",
+  "lat": -31.3,
+  "lat_band": "subtropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_severe_malaria",
+   "state_trait_zambezi_river"
+  ]
+ },
+ "STATE_ZANZIBAR": {
+  "farms": [
+   "millet",
+   "livestock",
+   "coffee",
+   "cotton",
+   "dye",
+   "tea",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -23.0,
+  "lat_band": "tropical",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_natural_harbors"
+  ]
+ },
+ "STATE_ZANZIBAR_COAST": {
+  "farms": [],
+  "fish": false,
+  "traits": []
+ },
+ "STATE_ZEALAND": {
+  "farms": [
+   "rye",
+   "livestock"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 55.4,
+  "lat_band": "cold",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_oresund",
+   "state_trait_odensefjorden"
+  ]
+ },
+ "STATE_ZHEJIANG": {
+  "farms": [
+   "rice",
+   "livestock",
+   "silk",
+   "tea",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 19.3,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": []
+ },
+ "STATE_ZHILI": {
+  "farms": [
+   "wheat",
+   "livestock",
+   "cotton",
+   "silk",
+   "tobacco"
+  ],
+  "fish": true,
+  "hemisphere": "north",
+  "lat": 29.8,
+  "lat_band": "subtropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_yellow_river"
+  ]
+ },
+ "STATE_ZULIA": {
+  "farms": [
+   "rice",
+   "livestock",
+   "coffee",
+   "tobacco",
+   "sugar",
+   "banana"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -3.7,
+  "lat_band": "tropical",
+  "subsistence": "rice_farm",
+  "traits": [
+   "state_trait_lake_maracaibo"
+  ]
+ },
+ "STATE_ZULULAND": {
+  "farms": [
+   "millet",
+   "livestock",
+   "cotton",
+   "tea",
+   "banana",
+   "vineyard"
+  ],
+  "fish": true,
+  "hemisphere": "south",
+  "lat": -48.6,
+  "lat_band": "temperate",
+  "subsistence": "farm",
+  "traits": [
+   "state_trait_malaria"
+  ]
+ }
+}

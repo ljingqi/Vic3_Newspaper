@@ -1,0 +1,2831 @@
+{
+ "zones": {
+  "steppe_central_asia": {
+   "label": "中亚草原带（哈萨克草原/乌拉尔斯克范式）",
+   "note": "基准：1836–1860 乌拉尔斯克/西哈萨克（哈萨克牧人 + 哥萨克/驻军/俄移民双线食俗；乌拉尔河渔、河滩种瓜、驼路砖茶与杏干葡萄干）。黑麦面包多为市购/军粮，黍为牧人冬粮；砖茶奶茶写'奶味浓'不写'加盐'；马奶子仅夏季；烈酒项仅供俄人/哥萨克/俄化军官样本。鲜杏在乌城的普及度、库尔达克/别什巴尔马克在 1830 年代的具体形态为年代外推 [低可信待补]。费尔干纳/希瓦等绿洲州的稻米、石榴等未收入本池，待精修。",
+   "banks": {
+    "grain": [
+     {
+      "d": "黑麦面包（酸面包，市购/军粮）",
+      "b": "麦",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "黍米粥（тары 黍，牧人冬粮）",
+      "b": "黍",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "小麦面馕（烤发面饼）",
+      "b": "麦",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "荞麦粥（俄式卡莎）",
+      "b": "荞麦",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "包尔萨克（油炸面块，佐茶待客）",
+      "b": "麦",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "精白面馕（白面，富户/军官）",
+      "b": "麦",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "meat": [
+     {
+      "d": "羊肉汤（сорпа）",
+      "b": "羊",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "手抓羊肉（白煮大块，待客正菜）",
+      "b": "羊",
+      "w": 4,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "别什巴尔马克（手抓肉拌面片）",
+      "b": "羊",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "库尔达克（羊油煎炒肉块）",
+      "b": "羊",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "马肠（卡兹，熏马肠）",
+      "b": "马",
+      "w": 2,
+      "tier": 4,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "风干马肉（сүр ет，冬储干肉）",
+      "b": "马",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fish": [
+     {
+      "d": "鲜鱼汤（уха，河鲜）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "河鲤（煎/炖，渔家日常）",
+      "b": "鱼",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鲟鱼（乌拉尔河「红鱼」，清炖/烤）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "盐渍鲟鱼子（鱼子，市井珍味/外销）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "盐腌鱼（冬储/渔汛储）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "veg": [
+     {
+      "d": "炖圆白菜（园菜）",
+      "b": "菜",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "酸卷心菜（酸白菜，俄式冬储）",
+      "b": "菜",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "腌酸黄瓜（盐渍黄瓜）",
+      "b": "菜",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "芜菁（焖/蒸，冬储根菜）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "洋葱（生食佐肉/入汤）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "土豆（园中新菜，炖煮佐餐）",
+      "b": "菜",
+      "w": 1,
+      "tier": 2,
+      "season": "*",
+      "since": 1845,
+      "kind": null
+     }
+    ],
+    "fruit": [
+     {
+      "d": "甜瓜（夏，河滩瓜田）",
+      "b": "甜瓜",
+      "w": 5,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "西瓜（夏，佐面包吃）",
+      "b": "西瓜",
+      "w": 4,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "苹果（园栽，秋储/窖藏过冬）",
+      "b": "苹果",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鲜杏（夏，园栽/商货）",
+      "b": "杏",
+      "w": 2,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "杏干（晒制/驼路商货）",
+      "b": "杏干",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "葡萄干（驼路商货）",
+      "b": "葡萄干",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "dairy": [
+     {
+      "d": "酸奶（卡提克）",
+      "b": "奶",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "艾兰（酸乳稀饮）",
+      "b": "奶",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "奶疙瘩（库尔特，干酸奶球）",
+      "b": "奶",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "酸奶油（斯美塔那）",
+      "b": "奶",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鲜奶（牛/羊奶，煮饮）",
+      "b": "奶",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "tea": [
+     {
+      "d": "奶茶（砖茶兑奶，日常/待客）",
+      "b": "茶",
+      "w": 6,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "清茶（砖茶粗泡，市井/驻军）",
+      "b": "茶",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "甜茶（砖茶加蜜或糖，富户）",
+      "b": "茶",
+      "w": 1,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "drink_fest": [
+     {
+      "d": "马奶子（库米斯，微醉发酵马奶）",
+      "b": "乳酒",
+      "w": 6,
+      "tier": 2,
+      "season": "summer",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "待客奶茶（浓煮砖茶兑奶）",
+      "b": "茶",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "烧酒（伏特加式烈酒）",
+      "b": "酒",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ]
+   },
+   "dairy_ok": true
+  },
+  "volga_rye_wheat": {
+   "label": "伏尔加黑麦-小麦粮带（萨马拉范式）",
+   "note": "基准：1836–1860 萨马拉（1851 前属辛比尔斯克省）伏尔加粮带俄农/商人/驻军。黑麦自食、小麦主销外运，白面为小康标尺；冬储=酸卷心菜/腌黄瓜/腌蘑菇/根菜/窖藏苹果；格瓦斯家家自酿，清茶走萨摩瓦尔为中产以上；蜂蜜与果酱(варенье)为小康以上甜味。土豆仅菜园菜（since=1845，低权重）。米粥不入池 [低可信待补：杏/梨在萨马拉园果占比，сбитень 在 1830s 城镇仍存续]。",
+   "banks": {
+    "grain": [
+     {
+      "d": "黑麦酸面包（自食主粮）",
+      "b": "麦",
+      "w": 6,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "荞麦粥（гречневая каша）",
+      "b": "荞麦",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "黍米粥（пшённая каша）",
+      "b": "黍",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "燕麦粥（овсяная каша）",
+      "b": "燕麦",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "白面小麦面包（精白，富户/节庆）",
+      "b": "麦",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "油煎薄饼（блины，谢肉节/待客）",
+      "b": "麦",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     }
+    ],
+    "meat": [
+     {
+      "d": "盐渍肥膘肉（сало，佐黑麦面包）",
+      "b": "猪",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖牛肉（逢节待客）",
+      "b": "牛",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖羊肉（集市/秋宰）",
+      "b": "羊",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖鸡（家养禽，平日荤）",
+      "b": "禽",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烤鹅（秋宰肥鹅，待客/年节）",
+      "b": "禽",
+      "w": 2,
+      "tier": 3,
+      "season": "autumn",
+      "since": null,
+      "kind": "feast"
+     }
+    ],
+    "fish": [
+     {
+      "d": "鲜鱼汤（уха，河鲜）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "河鲤（煎/炖）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "梭鲈（судак，煎/炖）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "小体鲟（стерлядь，清炖，珍味）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "盐腌鱼（咸鱼，斋日/冬储）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "veg": [
+     {
+      "d": "酸卷心菜（酸白菜，冬储当家菜）",
+      "b": "菜",
+      "w": 6,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "腌酸黄瓜（盐渍黄瓜）",
+      "b": "菜",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "盐渍蘑菇（腌/晒，秋采）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "蒸芜菁（репа，冬粮菜）",
+      "b": "菜",
+      "w": 2,
+      "tier": 1,
+      "season": "winter",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "洋葱（佐餐/汤底）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "土豆（菜园新菜，炖煮佐餐）",
+      "b": "菜",
+      "w": 1,
+      "tier": 2,
+      "season": "*",
+      "since": 1845,
+      "kind": null
+     }
+    ],
+    "fruit": [
+     {
+      "d": "苹果（园栽，秋鲜/窖藏过冬）",
+      "b": "苹果",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "梨（秋鲜/窖藏）",
+      "b": "梨",
+      "w": 2,
+      "tier": 1,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "甜瓜（夏，瓜田）",
+      "b": "甜瓜",
+      "w": 3,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "浆果（夏，覆盆子/黑加仑）",
+      "b": "浆果",
+      "w": 2,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "杏（夏，果园）",
+      "b": "杏",
+      "w": 1,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "蜜饯果酱（варенье，糖渍苹果/浆果）",
+      "b": "果",
+      "w": 1,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": "dessert"
+     }
+    ],
+    "dairy": [
+     {
+      "d": "鲜牛奶（煮奶）",
+      "b": "奶",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "酸奶油（сметана）",
+      "b": "奶",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "酸奶（простокваша）",
+      "b": "奶",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "奶渣（творог，拌粥/做馅）",
+      "b": "奶",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "黄油（自打）",
+      "b": "奶",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "tea": [
+     {
+      "d": "清茶（砖茶泡煮，萨摩瓦尔，逢客/城镇）",
+      "b": "茶",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "花草茶（自采野花/浆果叶）",
+      "b": "茶",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "甜茶（加蜜或糖，富户/节庆）",
+      "b": "茶",
+      "w": 1,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "drink_fest": [
+     {
+      "d": "格瓦斯（黑麦自酿低度饮，家家）",
+      "b": "格瓦斯",
+      "w": 6,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烧酒（伏特加式粮食酒）",
+      "b": "酒",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "蜂蜜热饮（сбитень，冬令集市）",
+      "b": "蜜",
+      "w": 2,
+      "tier": 1,
+      "season": "winter",
+      "since": null,
+      "kind": null
+     }
+    ]
+   },
+   "dairy_ok": true
+  },
+  "generic_temperate": {
+   "label": "温带泛用兜底带（未精修温带州）",
+   "note": "泛用兜底池，宁平勿奇：只写各地通行的麦面主食、牛羊猪禽、园蔬腌菜、当季果与干果、粗茶；不引入大米/玉米/热带果/柑橘/任何异域名与地方专名菜。dairy_ok=false：泛用带不预设奶业（避免与无乳文化的温带民系错配），确需奶点的州应由精修 zone 或 culture 特例补充。",
+   "banks": {
+    "grain": [
+     {
+      "d": "黑面包（粗麦面包）",
+      "b": "麦",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "白面包（细面，富户/节庆）",
+      "b": "麦",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烤面饼（烙饼）",
+      "b": "麦",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "麦粥（碎麦粒熬）",
+      "b": "麦",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "燕麦粥",
+      "b": "燕麦",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "大麦粥",
+      "b": "大麦",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "meat": [
+     {
+      "d": "炖牛肉（逢节待客）",
+      "b": "牛",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖羊肉（集市/牧区）",
+      "b": "羊",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖猪肉（家常荤）",
+      "b": "猪",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烤鸡（家禽，逢节）",
+      "b": "禽",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "盐腌肉（咸肉/腊肉，冬储）",
+      "b": "猪",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fish": [
+     {
+      "d": "鲜鱼（河/海，煎炖）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鱼汤（鲜鱼汤）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "咸鱼（盐渍/风干，冬储）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "veg": [
+     {
+      "d": "炖卷心菜（园菜）",
+      "b": "菜",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "腌卷心菜（酸菜，冬储）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "腌黄瓜",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "根菜（芜菁/萝卜，蒸炖冬储）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "洋葱（佐餐/汤底）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fruit": [
+     {
+      "d": "苹果（秋收/窖藏过冬）",
+      "b": "苹果",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "梨（秋收）",
+      "b": "梨",
+      "w": 3,
+      "tier": 1,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "甜瓜（夏）",
+      "b": "甜瓜",
+      "w": 2,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "浆果（夏，野采/园植）",
+      "b": "浆果",
+      "w": 2,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "桃李（夏，园果）",
+      "b": "桃李",
+      "w": 1,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "果干（苹果干/梨干，冬储）",
+      "b": "果干",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "dairy": [],
+    "tea": [
+     {
+      "d": "粗茶（粗叶煮泡）",
+      "b": "茶",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "花草茶（自采野花叶）",
+      "b": "茶",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "待客清茶（稍细的茶）",
+      "b": "茶",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "drink_fest": [
+     {
+      "d": "家酿啤酒（麦芽淡酒，节庆）",
+      "b": "酒",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "果酒（苹果/梨酿，秋酿冬饮）",
+      "b": "酒",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "蜂蜜酒（蜜酿低度）",
+      "b": "蜜",
+      "w": 1,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ]
+   },
+   "dairy_ok": false
+  },
+  "east_asia_rice": {
+   "label": "东亚稻作圈（江户日本，1836）",
+   "note": "1836=德川后期（天保七年）。米为税粮本位：农家日常以麦饭/杂谷饭（稗、粟掺饭）与粥为主，精白米饭属上层与节庆；荞麦面/乌冬为市镇平民日常。渔村与海岸海产丰富，穷人吃盐渍/盐干/杂鱼干，刺身仅城镇与富余者（tier>=3），鲷为祝膳名鱼、夏有蒲烧鳗。德川肉食忌口语境：普通人不写牛/猪肉日常，故本池无牛/猪项；鸡/山鸟/兔 tier>=2，山地猎获鹿/熊以 tier>=3 且 kind=feast 出现。味噌汤+渍物+当季根菜佐餐，豆腐/味噌（大豆加工）tier>=2。乳食文化缺席（dairy_ok=false，无乳/酪项）。粗茶（番茶）为百姓日常（tier1-2），玉露/抹茶为上层细茶（tier>=4）。季节按北半球本地季：1月仅 * 与 winter（渍物/盐鱼/炖萝卜/蜜柑/柿饼/甘酒/屠苏），7月可写 summer/autumn（桃/西瓜/蒲烧鳗/梨/柿/秋收浊酒）。个别地方物产（蜜柑多偏南国、苹果明治后才普及故不入池）[低可信待补]。",
+   "banks": {
+    "grain": [
+     {
+      "d": "白米饭（精白米炊饭）",
+      "b": "米",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "大米粥（水饭/稀粥）",
+      "b": "米",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "麦饭（麦米掺饭）",
+      "b": "麦",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "杂谷饭（稗粟掺饭）",
+      "b": "杂谷",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "荞麦面（荞麦切）",
+      "b": "荞麦",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "乌冬面（小麦切面）",
+      "b": "麦",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "meat": [
+     {
+      "d": "鸡肉（家养 炖/烧）",
+      "b": "禽",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "山鸟（雉/野鸭 猎获）",
+      "b": "禽",
+      "w": 2,
+      "tier": 3,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "兔肉（山地猎获）",
+      "b": "兔",
+      "w": 2,
+      "tier": 2,
+      "season": "winter",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鹿肉（山地猎获 腌/炖）",
+      "b": "鹿",
+      "w": 2,
+      "tier": 3,
+      "season": "winter",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "熊肉（深山猎获 野味席）",
+      "b": "熊",
+      "w": 1,
+      "tier": 4,
+      "season": "winter",
+      "since": null,
+      "kind": "feast"
+     }
+    ],
+    "fish": [
+     {
+      "d": "盐渍鱼（沙丁/青花 盐藏）",
+      "b": "鱼",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "小鱼干/杂鱼干（佐粥）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "盐烤鲜鱼（当季近海鱼）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "刺身（生鱼片 城镇鲜鱼铺）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鲷（祝膳名鱼）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 4,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "蒲烧鳗（夏 炙烤鳗）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 3,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "veg": [
+     {
+      "d": "味噌汤（酱汤 配豆腐海藻）",
+      "b": "豆",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "渍物（萝卜糠渍/酱瓜 佐餐）",
+      "b": "菜",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "豆腐（冷奴/汤豆腐）",
+      "b": "豆",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖里芋（芋头 煮物）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖萝卜（大根 煮物）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "winter",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烤海苔与盐渍海带（藻类佐饭）",
+      "b": "海藻",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fruit": [
+     {
+      "d": "蜜柑（柑橘 冬）",
+      "b": "果",
+      "w": 4,
+      "tier": 2,
+      "season": "winter",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "柿子（秋实）",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "柿饼（干柿 冬储）",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "梨（秋实）",
+      "b": "果",
+      "w": 3,
+      "tier": 2,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "桃（夏实）",
+      "b": "果",
+      "w": 3,
+      "tier": 2,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "西瓜（夏 当令）",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "tea": [
+     {
+      "d": "粗茶（番茶/梗茶 日常自斟）",
+      "b": "茶",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "煎茶（日常稍佳 待客亦可）",
+      "b": "茶",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "玉露/上煎茶（细茶 待客）",
+      "b": "茶",
+      "w": 2,
+      "tier": 4,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "抹茶（点茶 茶道/上层）",
+      "b": "茶",
+      "w": 1,
+      "tier": 4,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "drink_fest": [
+     {
+      "d": "清酒（斟饮/小酌）",
+      "b": "酒",
+      "w": 4,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "浊酒（村祭/秋收 自家酿）",
+      "b": "酒",
+      "w": 3,
+      "tier": 2,
+      "season": "autumn",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "屠苏酒（正月 药香年酒）",
+      "b": "酒",
+      "w": 2,
+      "tier": 3,
+      "season": "winter",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "甘酒（冬祭 甜米饮）",
+      "b": "米",
+      "w": 2,
+      "tier": 1,
+      "season": "winter",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "dairy": []
+   },
+   "dairy_ok": false
+  },
+  "caribbean_tropical": {
+   "label": "加勒比热带（海地/圣多明各，1836）",
+   "note": "1836 年波耶（Boyer）治下伊斯帕尼奥拉全岛统一（含圣多明各测试样本州）。平民主食=玉米粥/玉米粉、木薯卡萨贝饼、烤煮大蕉、甘薯、山药；白米多为进口市售（tier>=3，城镇/富户），豆（黑豆/赤豆/木豆）日常佐主食。穷人蛋白以咸鱼与沿岸鲜鱼为主；肉=鸡家常、猪（腌腊与节庆烤猪）、山羊、牛（富/节庆）。园蔬=芋叶卡拉卢汤、秋葵、洋葱番茄辣椒炖、鸟椒调味。热带果常年有（香蕉/木瓜/柑橘/椰子），芒果（夏）与番石榴（秋）有时令；甜以蔗区蜜糖/糖浆为上层 t3+。咖啡为殖民地产：乡民日常饮粗煮清咖（tier1-2，入 tea 槽），加糖浓咖啡待客/富户 tier>=3（入 drink_fest）；tafia/朗姆为节庆与船岸饮（tier>=2）。乳品罕见：庄园城镇有鲜奶黄油、奶酪多为进口（dairy_ok=false）；1836 年岛内无冷藏链 [低可信待补]。",
+   "banks": {
+    "grain": [
+     {
+      "d": "玉米粥/玉米粉糊（maïmoulen）",
+      "b": "玉米",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "卡萨贝饼（木薯薄饼）",
+      "b": "木薯",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烤煮大蕉（当主食）",
+      "b": "蕉",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烤甘薯（地瓜 当主食）",
+      "b": "薯",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "煮山药（捣泥/块煮）",
+      "b": "薯",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "白米饭（进口米 城镇市售）",
+      "b": "米",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "meat": [
+     {
+      "d": "鸡（炖酱汁/烤 家常与待客）",
+      "b": "禽",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "腌猪/腊肉（佐豆饭）",
+      "b": "猪",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烤猪/炸猪肉（节庆 griot）",
+      "b": "猪",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "山羊（炖 cabrit）",
+      "b": "羊",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "牛肉（炖/烤 富户与节庆）",
+      "b": "牛",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fish": [
+     {
+      "d": "咸鱼（盐渍/晒干 家常蛋白）",
+      "b": "鱼",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "沿岸鲜鱼（笛鲷/石斑/鲻）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "盐鳕鱼（北来咸鱼 城镇）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "海螺/贝（朗比 沿海拾获）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "虾蟹（渔获 市集）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "veg": [
+     {
+      "d": "炖豆（黑豆/赤豆/木豆 佐主食）",
+      "b": "豆",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "卡拉卢汤（芋叶绿汤）",
+      "b": "叶",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "秋葵炖（浓汁 配咸鱼/饭）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "园蔬烩（洋葱/番茄/甜椒 炖）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鸟椒/辣椒（新鲜与干 调味）",
+      "b": "辣",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fruit": [
+     {
+      "d": "香蕉（熟食 当果）",
+      "b": "蕉",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "芒果（夏熟 时令）",
+      "b": "果",
+      "w": 4,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "木瓜（全年）",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "番石榴（秋 当季）",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "柑橘（甜橙/酸橙）",
+      "b": "果",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "椰子（椰肉/青椰）",
+      "b": "椰",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "tea": [
+     {
+      "d": "粗煮黑咖啡（自产 农人晨饮）",
+      "b": "咖",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "加糖咖啡（街市 小贩饮）",
+      "b": "咖",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "青椰子水（解渴）",
+      "b": "椰",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鲜榨甘蔗汁（蔗区）",
+      "b": "甘",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "drink_fest": [
+     {
+      "d": "塔菲亚（甘蔗烈酒 节庆/船岸）",
+      "b": "酒",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "加糖浓咖啡（待客/富户）",
+      "b": "咖",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "陈年朗姆酒（宴席 富户）",
+      "b": "酒",
+      "w": 2,
+      "tier": 4,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "蜜糖/糖浆甜水（蔗区 甜饮）",
+      "b": "糖",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "dairy": []
+   },
+   "dairy_ok": false
+  },
+  "mesoamerica_maize": {
+   "label": "中美洲玉米带（墨西哥高原内陆，1836）",
+   "note": "1836 墨西哥（中央集权共和国时期）；以高原内陆州为主（墨西哥谷/巴希奥/瓦哈卡/哈利斯科/萨卡特卡斯等，含美墨边境高原州）。日常骨架=玉米饼+炖豆+辣椒，配南瓜/番茄/仙人掌/豆角；atole 为玉米饮粥，tamales 蒸糕节庆亦可日常，烤玉米穗为夏收街食；frijoles 按本地习惯入 grain 槽作次主食，可与玉米饼同上一餐。小麦白面包仅城镇/富裕（tier>=3；恰帕斯与北方有小麦区）。肉集中于节庆与城镇：猪肉（carnitas/腊肠）、火鸡（节庆）、鸡、牛、羊（北方/炖）。龙舌兰饮品：pulque（高原平民发酵饮，tier1-2）、mezcal（瓦哈卡等产区 蒸馏 节庆 tier3）、甘蔗烧酒 aguardiente（市镇 t2）。可可饮品为上层/城市传统（tier>=3，入 tea 槽）。默认池按高原内陆设：香蕉/芒果/菠萝等热带低地果只属沿海低地（韦拉克鲁斯/格雷罗海岸等），内陆不写；fish 内陆少，仅湖鱼/河鱼/咸干鱼 3 项低权重。乳品为庄园-城镇货（dairy_ok=true，穷人日常基本无乳）。果=高原当季：桃（夏）、黑樱桃、仙人掌果（夏）、梨/番石榴（秋）、窖藏苹果（*）。",
+   "banks": {
+    "grain": [
+     {
+      "d": "玉米饼（tortilla）",
+      "b": "玉米",
+      "w": 6,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "玉米粥（atole 玉米饮）",
+      "b": "玉米",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖豆（frijoles 黑豆 次主食）",
+      "b": "豆",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "玉米蒸糕（tamales）",
+      "b": "玉米",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烤玉米穗（elote 夏收街食）",
+      "b": "玉米",
+      "w": 2,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "白面包（小麦 城镇/富户）",
+      "b": "麦",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "meat": [
+     {
+      "d": "鸡（炖/烤 家常）",
+      "b": "禽",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "猪肉（节庆 carnitas/腊肠）",
+      "b": "猪",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "火鸡（guajolote 节庆烤）",
+      "b": "禽",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     },
+     {
+      "d": "牛肉（庄园/城镇 炖烤）",
+      "b": "牛",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "羊肉（北方/牧区 炖烤）",
+      "b": "羊",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fish": [
+     {
+      "d": "高原湖鱼（白鱼等 湖沼）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "咸干鱼（内地贩运 佐餐）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "河鱼（暖谷溪河 鲜煮）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "veg": [
+     {
+      "d": "辣椒（鲜青椒/干椒 佐餐一切）",
+      "b": "辣",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "番茄绿茄（鲜辣酱 salsa）",
+      "b": "茄",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "仙人掌叶（nopales 煮/拌）",
+      "b": "仙人掌",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "南瓜/西葫芦（炖 当菜）",
+      "b": "瓜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "嫩豆角（青豆角 炖）",
+      "b": "豆角",
+      "w": 2,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "洋葱蒜与香草（香菜 调味）",
+      "b": "菜",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fruit": [
+     {
+      "d": "桃（高原 夏）",
+      "b": "果",
+      "w": 3,
+      "tier": 2,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "苹果（窖藏 冬储）",
+      "b": "果",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "梨（秋）",
+      "b": "果",
+      "w": 3,
+      "tier": 2,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "仙人掌果（tuna 刺梨果 夏）",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "番石榴（高原 秋）",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "autumn",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "黑樱桃（capulín 高原野/园 夏）",
+      "b": "果",
+      "w": 2,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "tea": [
+     {
+      "d": "热可可（磨可可+糖 城镇晨饮）",
+      "b": "可可",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "浓巧克力浆（上层传统 宴饮）",
+      "b": "可可",
+      "w": 2,
+      "tier": 4,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "药草热饮（薄荷/洋甘菊 家常）",
+      "b": "草",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "drink_fest": [
+     {
+      "d": "龙舌兰发酵酒（pulque 平民酒馆）",
+      "b": "酒",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "甘蔗烧酒（aguardiente 市镇兑饮）",
+      "b": "酒",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "梅斯卡尔（mezcal 蒸馏 产区/节庆）",
+      "b": "酒",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     }
+    ],
+    "dairy": [
+     {
+      "d": "鲜奶酪（queso fresco 佐饼/豆）",
+      "b": "奶",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "牛奶（庄园/城镇奶商）",
+      "b": "奶",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "黄油（城镇 佐白面包 上层）",
+      "b": "奶",
+      "w": 1,
+      "tier": 4,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ]
+   },
+   "dairy_ok": true
+  },
+  "generic_tropical": {
+   "label": "热带泛用（未精修热带州）",
+   "note": "未精修的泛热带/近赤道州通用池（南美、非洲、东南亚、加勒比外围热带州等）。宁平勿奇、不写具体国菜：主食以玉米/木薯/薯芋/芭蕉/当地杂粮为通用词，进口米为城镇富户（tier3）；肉=禽/猪/羊/牛/咸肉腊肉通用词；鱼=沿岸鲜鱼/咸鱼/河湖鱼；菜蔬=炖叶菜/炖豆/园蔬/辣椒/酸渍小菜/南瓜葫芦；果=当地当季热带果（香蕉/木瓜/芒果夏/番石榴/柑橘/椰子，以通用词入池）；饮=粗茶/椰子水/甘蔗汁/香草热茶（tea 槽），酒=蔗酒（朗姆式）、棕榈酒、土酿发酵酒（drink_fest）。无冷藏乳品文化（dairy_ok=false）。成熟季节南北半球相反由调用方换算；本池 season 一律按本地季写、热带弱化季节多标 *。待具体州精修时替换更精确物产 [低可信待补]。",
+   "banks": {
+    "grain": [
+     {
+      "d": "玉米（糊/粥/饼 主食）",
+      "b": "玉米",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "木薯（煮/烤/饼）",
+      "b": "木薯",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "薯芋（甘薯/芋头 烤煮）",
+      "b": "薯",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "芭蕉/大蕉（烤煮 当主食）",
+      "b": "蕉",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "白米饭（进口米 城镇市售）",
+      "b": "米",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "当地杂粮（粟/高粱 粥饼）",
+      "b": "粟",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "meat": [
+     {
+      "d": "鸡（炖/烤 家常）",
+      "b": "禽",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鸭/水禽（湖沼 炖烤）",
+      "b": "禽",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "猪（节庆烧/腌腊）",
+      "b": "猪",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "山羊/绵羊（炖 烤）",
+      "b": "羊",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "牛（城镇/富户 炖烤）",
+      "b": "牛",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "咸肉/腊肉（盐腌熏制）",
+      "b": "猪",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fish": [
+     {
+      "d": "咸鱼（盐渍/晒干）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "沿岸鲜鱼（市集当季）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "河湖鱼（内陆水域 煮/烤）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "小虾/干虾（渔产 佐粥饭）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "veg": [
+     {
+      "d": "炖叶菜（薯叶/芋叶/瓜蔓嫩梢）",
+      "b": "菜",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "炖豆（黑豆/赤豆/木豆）",
+      "b": "豆",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "园蔬烩（洋葱/番茄/茄子 炖）",
+      "b": "菜",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "辣椒（新鲜/干 调味）",
+      "b": "辣",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "酸渍小菜（柠檬汁渍蔬 佐餐）",
+      "b": "菜",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "南瓜/葫芦（炖 当菜）",
+      "b": "瓜",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fruit": [
+     {
+      "d": "香蕉（熟食 当果）",
+      "b": "蕉",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "木瓜",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "芒果（时令）",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "番石榴",
+      "b": "果",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "柑橘（甜橙/青柠）",
+      "b": "果",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "椰子（椰肉/青椰水）",
+      "b": "椰",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "tea": [
+     {
+      "d": "粗茶/土茶（家常热饮）",
+      "b": "茶",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "青椰子水（解渴）",
+      "b": "椰",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鲜榨甘蔗汁",
+      "b": "甘",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "香草热茶（薄荷/姜）",
+      "b": "茶",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "drink_fest": [
+     {
+      "d": "甘蔗烈酒（朗姆式/土酿烧酒）",
+      "b": "酒",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "棕榈酒（椰花/棕榈汁发酵）",
+      "b": "酒",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "土酿甜酒（米/杂粮 村酿）",
+      "b": "酒",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "dairy": []
+   },
+   "dairy_ok": false
+  },
+  "generic_boreal": {
+   "label": "寒带针叶林/北方（北俄、北欧、西伯利亚未精修）",
+   "note": "未精修的北方针叶林与副极地带（北俄、北欧、西伯利亚、北美北方州）。主食=黑麦/燕麦/大麦的面包与粥（酸面包、卡莎、硬干饼），冬储腌渍过冬；肉=咸熏猪肉/咸牛肉（冬储 主荤）、驯鹿（北部/游牧）、鹿/驼鹿（猎获）、羊、禽（鸡与松鸡等猎禽）；fish=咸鲱/风干鱼/盐渍鲑/河湖鲜鱼/熏鱼；veg=芜菁/洋葱等窖根菜、酸卷心菜、干蘑菇、盐渍小菜；fruit=浆果（越橘/蔓越橘窖存全年、云莓/树莓/醋栗为夏果）与窖藏苹果，无热带果；tea 槽兼作日常饮：清茶（砖茶/茶炊）与格瓦斯（黑麦家酿 低度）及北欧城镇咖啡（tier3）[低可信待补]；drink_fest=家酿麦酒、烈酒（伏特加式）、蜂蜜酒（节庆）。乳业家常（dairy_ok=true）：酸奶油、凝乳奶渣、黄油、奶粥、发酵酸奶。土豆在北俄 1836 尚非主食，不入池 [低可信待补]；南半球无此带（本 zone 仅北半球）。",
+   "banks": {
+    "grain": [
+     {
+      "d": "黑麦面包（酸面包）",
+      "b": "黑麦",
+      "w": 6,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "燕麦粥（糊）",
+      "b": "燕麦",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "大麦面包/大麦粥",
+      "b": "大麦",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "燕麦扁饼（烤）",
+      "b": "燕麦",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "黑麦硬干饼（存粮/旅途）",
+      "b": "黑麦",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "精白小麦面包（城镇/上层）",
+      "b": "麦",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "meat": [
+     {
+      "d": "咸猪肉（盐渍/熏 冬储主荤）",
+      "b": "猪",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "咸牛肉（腌渍）",
+      "b": "牛",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "驯鹿肉（北部/游牧 炖或风干）",
+      "b": "驯鹿",
+      "w": 3,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "鹿/驼鹿肉（猎获 熏制）",
+      "b": "鹿",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "羊肉（农区/牧区）",
+      "b": "羊",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "禽（鸡/松鸡 雷鸟 猎与圈养）",
+      "b": "禽",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fish": [
+     {
+      "d": "咸鲱鱼（桶装盐渍 沿海）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "风干鱼（鳕/白鱼 存粮）",
+      "b": "鱼",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "河湖鲜鱼（鳟/鲈/白鲑 煮或盐渍）",
+      "b": "鱼",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "盐渍鲑鱼",
+      "b": "鱼",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烟熏鱼（熏白鱼/鲑）",
+      "b": "鱼",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "veg": [
+     {
+      "d": "芜菁/大头菜（窖藏 烤炖）",
+      "b": "根",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "酸卷心菜（酸渍 冬储）",
+      "b": "菜",
+      "w": 5,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "洋葱（炖/佐）",
+      "b": "菜",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "干蘑菇（秋采晒干 汤用）",
+      "b": "菌",
+      "w": 2,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "盐渍小菜（腌黄瓜/腌芜菁）",
+      "b": "菜",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "fruit": [
+     {
+      "d": "越橘（林果 冬储存用）",
+      "b": "莓",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "蔓越橘（沼泽果 冬储）",
+      "b": "莓",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "云莓（沼泽夏果）",
+      "b": "莓",
+      "w": 3,
+      "tier": 2,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "树莓（林夏果）",
+      "b": "莓",
+      "w": 3,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "醋栗/红醋栗（灌木夏果）",
+      "b": "莓",
+      "w": 2,
+      "tier": 1,
+      "season": "summer",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "窖藏苹果（南方林缘/园）",
+      "b": "果",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "tea": [
+     {
+      "d": "清茶（砖茶/粗茶 茶炊）",
+      "b": "茶",
+      "w": 4,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "格瓦斯（黑麦家酿 低度冷饮）",
+      "b": "饮",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "咖啡（北欧城镇）",
+      "b": "咖",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ],
+    "drink_fest": [
+     {
+      "d": "家酿麦酒（淡啤酒/艾尔）",
+      "b": "酒",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "烈酒（伏特加式烧酒）",
+      "b": "酒",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "蜂蜜酒（节庆/待客）",
+      "b": "酒",
+      "w": 2,
+      "tier": 3,
+      "season": "*",
+      "since": null,
+      "kind": "feast"
+     }
+    ],
+    "dairy": [
+     {
+      "d": "酸奶油（佐粥/汤）",
+      "b": "奶",
+      "w": 4,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "凝乳/奶渣（配面包）",
+      "b": "奶",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "黄油（抹面包/烹）",
+      "b": "奶",
+      "w": 3,
+      "tier": 2,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "奶粥（牛奶燕麦/大麦粥）",
+      "b": "奶",
+      "w": 3,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     },
+     {
+      "d": "发酵酸奶（存用）",
+      "b": "奶",
+      "w": 2,
+      "tier": 1,
+      "season": "*",
+      "since": null,
+      "kind": null
+     }
+    ]
+   },
+   "dairy_ok": true
+  }
+ },
+ "cultures": {
+  "kazak": {
+   "label": "哈萨克",
+   "avoid": [
+    "伏特加",
+    "格瓦斯",
+    "酸黄瓜"
+   ]
+  },
+  "russian": {
+   "label": "俄罗斯（东斯拉夫）",
+   "avoid": [
+    "馕",
+    "马奶子",
+    "马肠"
+   ]
+  },
+  "default": {
+   "label": "通用",
+   "avoid": []
+  }
+ },
+ "religions": {
+  "sunni": {
+   "drink_mode": "dairy",
+   "note": "嗜好槽写奶点/奶茶, 烈酒仅俄化军官语境可选项"
+  }
+ }
+}

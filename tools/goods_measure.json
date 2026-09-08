@@ -1,0 +1,623 @@
+{
+  "_meta": {
+    "note": "动态商品量词系统 v4 (2026, 方案B 全局金额放大): per = base÷目标史实单价 (物理量, 生产/条约数量读数), 价格显示与消费数量用 ppu = per×currency_base_scale (代码内计算, 价格公式中 S 相消 → 显示史实单价); prod = 生产数量放大系数 (gold=3 → 金矿年产量 3~5 吨); kcal = 每显示单位(千克/升)热量 (主食热量锚定用)。重标定: python tools/calibrate_measures.py --write",
+    "anchor": "游戏 1 单位商品 ≈ 基准价 1£ 的抽象价值量; v4 起 per 按史实单价重标定 (谷物 20£→2500千克、煤炭 30£→37.5吨、黄金 100£→800克), 单价/数量/收入三端自洽。",
+    "targets": {
+      "grain": [
+        0.008,
+        "小麦 ~26先令/夸特(~217kg), 1890s"
+      ],
+      "fish": [
+        0.02,
+        "咸鱼批发价"
+      ],
+      "groceries": [
+        0.02,
+        "加工食品(面粉/豆类)"
+      ],
+      "meat": [
+        0.07,
+        "牛肉 ~6-8便士/磅"
+      ],
+      "fruit": [
+        0.04,
+        "鲜果/干果"
+      ],
+      "food": [
+        0.01,
+        "粗粮口粮"
+      ],
+      "livestock": [
+        7.0,
+        "牛 ~5-8镑/头, 羊 ~1-2镑"
+      ],
+      "fabric": [
+        0.05,
+        "平布 ~6便士/码"
+      ],
+      "cloth": [
+        0.05,
+        "棉布"
+      ],
+      "clothes": [
+        0.6,
+        "衬衣 3-5先令"
+      ],
+      "luxury_clothes": [
+        2.0,
+        "呢绒大衣/礼服"
+      ],
+      "furniture": [
+        2.0,
+        "桌椅等粗家具"
+      ],
+      "luxury_furniture": [
+        5.0,
+        "雕花/细木家具"
+      ],
+      "porcelain": [
+        3.0,
+        "瓷器"
+      ],
+      "wood": [
+        1.0,
+        "木材 ~1镑/立方米"
+      ],
+      "hardwood": [
+        2.0,
+        "硬木"
+      ],
+      "glass": [
+        0.4,
+        "窗玻璃 ~每平方米"
+      ],
+      "paper": [
+        0.02,
+        "新闻纸 ~每张"
+      ],
+      "coal": [
+        0.8,
+        "煤 ~15-20先令/吨"
+      ],
+      "iron": [
+        3.0,
+        "生铁 ~3-4镑/吨"
+      ],
+      "lead": [
+        12.0,
+        "铅"
+      ],
+      "steel": [
+        8.0,
+        "钢 ~8-12镑/吨"
+      ],
+      "tools": [
+        0.2,
+        "手工工具"
+      ],
+      "fertilizer": [
+        0.04,
+        "肥料"
+      ],
+      "oil": [
+        0.015,
+        "煤油 ~1先令/加仑"
+      ],
+      "rubber": [
+        0.5,
+        "生胶"
+      ],
+      "dye": [
+        1.0,
+        "染料"
+      ],
+      "sulfur": [
+        2.0,
+        "硫磺"
+      ],
+      "cotton": [
+        0.09,
+        "原棉 ~6-8便士/磅"
+      ],
+      "wool": [
+        0.15,
+        "原毛"
+      ],
+      "silk": [
+        1.5,
+        "生丝"
+      ],
+      "tea": [
+        0.4,
+        "茶叶 ~2-4先令/磅"
+      ],
+      "coffee": [
+        0.25,
+        "咖啡 ~1先令/磅"
+      ],
+      "sugar": [
+        0.04,
+        "糖 ~2-4便士/磅"
+      ],
+      "tobacco": [
+        0.4,
+        "烟叶"
+      ],
+      "opium": [
+        8.0,
+        "鸦片"
+      ],
+      "liquor": [
+        0.3,
+        "烈酒"
+      ],
+      "wine": [
+        0.6,
+        "葡萄酒"
+      ],
+      "ammunition": [
+        0.5,
+        "弹药/火药 ~每千克"
+      ],
+      "explosives": [
+        0.5,
+        "炸药"
+      ],
+      "small_arms": [
+        3.5,
+        "步枪 ~3-5镑/支"
+      ],
+      "gold": [
+        0.125,
+        "金本位 £3 17先令10.5便士/盎司 ≈125镑/千克 = 0.125镑/克"
+      ]
+    }
+  },
+  "ammunition": {
+    "unit": "千克",
+    "per": 100.0,
+    "dec": 0,
+    "base": 50,
+    "need": "军事"
+  },
+  "small_arms": {
+    "unit": "支",
+    "per": 17.1429,
+    "dec": 0,
+    "base": 60,
+    "need": "军火/休闲"
+  },
+  "artillery": {
+    "unit": "门",
+    "per": 1,
+    "dec": 0,
+    "base": 70,
+    "need": "军事"
+  },
+  "tanks": {
+    "unit": "辆",
+    "per": 1,
+    "dec": 0,
+    "base": 80,
+    "need": "军事"
+  },
+  "aeroplanes": {
+    "unit": "架",
+    "per": 1,
+    "dec": 0,
+    "base": 80,
+    "need": "休闲"
+  },
+  "manowars": {
+    "unit": "艘",
+    "per": 1,
+    "dec": 0,
+    "base": 70,
+    "need": "军事"
+  },
+  "ironclads": {
+    "unit": "艘",
+    "per": 1,
+    "dec": 0,
+    "base": 80,
+    "need": "军事"
+  },
+  "grain": {
+    "unit": "千克",
+    "per": 2500.0,
+    "dec": 0,
+    "base": 20,
+    "need": "基本食物",
+    "kcal": 3500
+  },
+  "fish": {
+    "unit": "千克",
+    "per": 1000.0,
+    "dec": 0,
+    "base": 20,
+    "need": "基本食物",
+    "kcal": 1200
+  },
+  "fabric": {
+    "unit": "米",
+    "per": 400.0,
+    "dec": 0,
+    "base": 20,
+    "need": "简朴衣物/供暖"
+  },
+  "wood": {
+    "unit": "立方米",
+    "per": 20.0,
+    "dec": 1,
+    "base": 20,
+    "need": "粗木器具/供暖"
+  },
+  "groceries": {
+    "unit": "千克",
+    "per": 1500.0,
+    "dec": 0,
+    "base": 30,
+    "need": "基本食物/奢侈食物",
+    "kcal": 2500
+  },
+  "clothes": {
+    "unit": "件",
+    "per": 50.0,
+    "dec": 0,
+    "base": 30,
+    "need": "简朴衣物/成衣"
+  },
+  "furniture": {
+    "unit": "件",
+    "per": 15.0,
+    "dec": 0,
+    "base": 30,
+    "need": "粗木器具/家庭用品"
+  },
+  "paper": {
+    "unit": "张",
+    "per": 1500.0,
+    "dec": 0,
+    "base": 30,
+    "need": "家庭用品"
+  },
+  "services": {
+    "unit": "单位",
+    "per": 1,
+    "dec": 0,
+    "base": 30,
+    "need": "服务/休闲"
+  },
+  "transportation": {
+    "unit": "车次",
+    "per": 1,
+    "dec": 0,
+    "base": 30,
+    "need": "出行/通讯"
+  },
+  "electricity": {
+    "unit": "度",
+    "per": 1,
+    "dec": 1,
+    "base": 30,
+    "need": "供暖"
+  },
+  "merchant_marine": {
+    "unit": "艘",
+    "per": 1,
+    "dec": 0,
+    "base": 50,
+    "need": "军事/航运"
+  },
+  "clippers": {
+    "unit": "艘",
+    "per": 1,
+    "dec": 0,
+    "base": 60,
+    "need": "休闲"
+  },
+  "steamers": {
+    "unit": "艘",
+    "per": 1,
+    "dec": 0,
+    "base": 70,
+    "need": "休闲"
+  },
+  "silk": {
+    "unit": "米",
+    "per": 26.6667,
+    "dec": 0,
+    "base": 40,
+    "need": "奢侈品"
+  },
+  "dye": {
+    "unit": "千克",
+    "per": 40.0,
+    "dec": 0,
+    "base": 40,
+    "need": "工业原料"
+  },
+  "sulfur": {
+    "unit": "千克",
+    "per": 25.0,
+    "dec": 0,
+    "base": 50,
+    "need": "工业原料"
+  },
+  "coal": {
+    "unit": "吨",
+    "per": 37.5,
+    "dec": 1,
+    "base": 30,
+    "need": "供暖/工业燃料"
+  },
+  "iron": {
+    "unit": "吨",
+    "per": 13.3333,
+    "dec": 1,
+    "base": 40,
+    "need": "工业原料"
+  },
+  "lead": {
+    "unit": "吨",
+    "per": 3.3333,
+    "dec": 1,
+    "base": 40,
+    "need": "工业原料"
+  },
+  "hardwood": {
+    "unit": "立方米",
+    "per": 20.0,
+    "dec": 1,
+    "base": 40,
+    "need": "工业原料"
+  },
+  "rubber": {
+    "unit": "千克",
+    "per": 80.0,
+    "dec": 0,
+    "base": 40,
+    "need": "工业原料"
+  },
+  "oil": {
+    "unit": "升",
+    "per": 2666.6667,
+    "dec": 0,
+    "base": 40,
+    "need": "供暖/工业燃料",
+    "max_month": 20
+  },
+  "engines": {
+    "unit": "台",
+    "per": 1,
+    "dec": 0,
+    "base": 60,
+    "need": "工业制品"
+  },
+  "steel": {
+    "unit": "吨",
+    "per": 6.25,
+    "dec": 1,
+    "base": 50,
+    "need": "工业原料"
+  },
+  "glass": {
+    "unit": "平方米",
+    "per": 100.0,
+    "dec": 0,
+    "base": 40,
+    "need": "家庭用品"
+  },
+  "fertilizer": {
+    "unit": "千克",
+    "per": 750.0,
+    "dec": 0,
+    "base": 30,
+    "need": "工业原料"
+  },
+  "tools": {
+    "unit": "件",
+    "per": 200.0,
+    "dec": 0,
+    "base": 40,
+    "need": "工业制品"
+  },
+  "explosives": {
+    "unit": "千克",
+    "per": 100.0,
+    "dec": 0,
+    "base": 50,
+    "need": "军事/工业"
+  },
+  "porcelain": {
+    "unit": "件",
+    "per": 23.3333,
+    "dec": 0,
+    "base": 70,
+    "need": "奢侈品"
+  },
+  "meat": {
+    "unit": "千克",
+    "per": 428.5714,
+    "dec": 0,
+    "base": 30,
+    "need": "基本食物/奢侈食物",
+    "kcal": 2500
+  },
+  "fruit": {
+    "unit": "千克",
+    "per": 750.0,
+    "dec": 0,
+    "base": 30,
+    "need": "基本食物/奢侈食物",
+    "kcal": 500
+  },
+  "liquor": {
+    "unit": "升",
+    "per": 100.0,
+    "dec": 0,
+    "base": 30,
+    "need": "嗜好品"
+  },
+  "wine": {
+    "unit": "升",
+    "per": 83.3333,
+    "dec": 0,
+    "base": 50,
+    "need": "嗜好品/奢侈饮品"
+  },
+  "tea": {
+    "unit": "千克",
+    "per": 125.0,
+    "dec": 0,
+    "base": 50,
+    "need": "刺激品/奢侈饮品"
+  },
+  "coffee": {
+    "unit": "千克",
+    "per": 200.0,
+    "dec": 0,
+    "base": 50,
+    "need": "刺激品/奢侈饮品"
+  },
+  "sugar": {
+    "unit": "千克",
+    "per": 750.0,
+    "dec": 0,
+    "base": 30,
+    "need": "刺激品/奢侈食物"
+  },
+  "tobacco": {
+    "unit": "千克",
+    "per": 100.0,
+    "dec": 0,
+    "base": 40,
+    "need": "嗜好品/刺激品"
+  },
+  "opium": {
+    "unit": "千克",
+    "per": 6.25,
+    "dec": 0,
+    "base": 50,
+    "need": "嗜好品/休闲"
+  },
+  "automobiles": {
+    "unit": "辆",
+    "per": 1,
+    "dec": 0,
+    "base": 100,
+    "need": "出行/休闲"
+  },
+  "telephones": {
+    "unit": "部",
+    "per": 1,
+    "dec": 0,
+    "base": 70,
+    "need": "通讯"
+  },
+  "radios": {
+    "unit": "台",
+    "per": 1,
+    "dec": 0,
+    "base": 80,
+    "need": "奢侈品/休闲"
+  },
+  "luxury_clothes": {
+    "unit": "件",
+    "per": 30.0,
+    "dec": 0,
+    "base": 60,
+    "need": "奢侈品"
+  },
+  "luxury_furniture": {
+    "unit": "件",
+    "per": 12.0,
+    "dec": 0,
+    "base": 60,
+    "need": "奢侈品"
+  },
+  "gold": {
+    "unit": "克",
+    "per": 800.0,
+    "dec": 1,
+    "base": 100,
+    "need": "奢侈品",
+    "prod": 3.0
+  },
+  "fine_art": {
+    "unit": "件",
+    "per": 1,
+    "dec": 0,
+    "base": 200,
+    "need": "休闲"
+  },
+  "livestock": {
+    "unit": "头",
+    "per": 2.8571,
+    "dec": 0,
+    "base": 20,
+    "need": "基本食物/畜牧"
+  },
+  "food": {
+    "unit": "千克",
+    "per": 2000.0,
+    "dec": 0,
+    "base": 20,
+    "need": "基本食物",
+    "kcal": 3000
+  },
+  "cotton": {
+    "unit": "千克",
+    "per": 222.2222,
+    "dec": 0,
+    "base": 20,
+    "need": "工业原料"
+  },
+  "wool": {
+    "unit": "千克",
+    "per": 133.3333,
+    "dec": 0,
+    "base": 20,
+    "need": "工业原料"
+  },
+  "cloth": {
+    "unit": "米",
+    "per": 600.0,
+    "dec": 0,
+    "base": 30,
+    "need": "简朴衣物"
+  },
+  "ships": {
+    "unit": "艘",
+    "per": 1,
+    "dec": 0,
+    "base": 60,
+    "need": "军事/航运"
+  },
+  "_category_fallback": {
+    "military": {
+      "unit": "件",
+      "per": 1,
+      "dec": 0,
+      "base": 60
+    },
+    "staple": {
+      "unit": "千克",
+      "per": 40,
+      "dec": 0,
+      "base": 30
+    },
+    "industrial": {
+      "unit": "吨",
+      "per": 1,
+      "dec": 1,
+      "base": 40
+    },
+    "luxury": {
+      "unit": "件",
+      "per": 1,
+      "dec": 0,
+      "base": 60
+    }
+  }
+}

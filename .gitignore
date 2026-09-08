@@ -1,25 +1,28 @@
 # 配置文件（含 DeepSeek API Key，切勿上传）
 config.json
 
-# 依赖工具：需自行下载，见 README「工具与环境准备」
-tools/
-Source/
-
 # 日志与 Python 缓存
 logs/
 __pycache__/
 *.pyc
 
-# 测试集与生成输出（报纸 Markdown 与原始 JSON 数据）
-data/
-**/data/
+# tools/ 大部分为缓存/测试夹具，不入库；仅放行“克隆即玩”所需资产：
+#   goods_measure.json     （运行时量词表）
+#   rakaly.exe             （熔 .v3 存档，免去另装）
+#   build_state_food_palette.py / build_food_zones.py （升级游戏后重建 zone 数据）
+tools/*
+!tools/goods_measure.json
+!tools/rakaly.exe
+!tools/build_state_food_palette.py
+!tools/build_food_zones.py
+Source/
+
+# 会话生成输出统一输出到 output/（报纸/杂志/原始 JSON 一律不入库）
+output/
 **/报纸_*.md
 
 # 开发文档（仅本机使用，不上传 GitHub）
 docs/
-
-# 所有存档开局会话统一输出到 output/
-output/
 
 # 编辑器 / 系统文件
 .idea/

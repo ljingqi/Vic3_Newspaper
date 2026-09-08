@@ -53,9 +53,17 @@
 
 > 注意：GitHub 仓库**不包含**以下内容（已在 `.gitignore` 中排除），使用前需自行准备：
 > - `config.json`（含你的 DeepSeek API Key，切勿上传；仓库提供 `config.example.json` 模板，复制改名即可）
-> - `tools\`（rakaly 等二进制工具，下载方式见下文「工具与环境准备」）
 > - `output\`（各测试集/存档开局文件夹，含 `<国名>\报纸\报纸_*.md`、`<国名>\杂志\杂志_*.md` 与 `<国名>\data\raw_*.json`，由程序自动生成）
 > - `docs\`（开发用内部文档，不随仓库发布）
+
+> 其余运行时资产已**预载随仓库发布**（克隆即用，无需额外下载）：
+> - `data\`：宪法条文语料 `constitution_clauses.json`、东亚人名表 `ck3_ea_names.json`、
+>   食物风味圈数据 `food_cuisine.json` / `food_zones.json` / `state_food_palette.json`
+>   （州→食物圈归属与半球纬度，首次生成报纸/杂志即可按当地饮食与时令取材）；
+> - `tools\rakaly.exe`：熔 `.v3` 存档用（rakaly-cli，若报版本不符可在下文链接自行替换）；
+> - `tools\goods_measure.json`：19 世纪中文语境量词/单位表；
+> - `tools\build_food_zones.py` / `tools\build_state_food_palette.py`：游戏升级后重建上述
+>   州食物数据（需本机装有游戏并配置好 `config.json` 的 `game_dir`）。
 
 > 每次开始一个新存档并运行 `watch`/`continue`，都会在 **`output\` 内新建一个以国名命名的
 > 文件夹**（如 `output\法兰西`）；若同名文件夹已存在（再次用同一国家开新档），自动在名字后
@@ -65,12 +73,12 @@
 
 ## 工具与环境准备
 
-克隆仓库后，还需要准备三样东西（仓库里都没有）：
+克隆仓库后，按下面三步准备（`tools\rakaly.exe` 与 `data\` 已随仓库预载，通常无需再下载）：
 
-1. **下载 Rakaly**：到 [rakaly/cli Releases](https://github.com/rakaly/cli/releases)
-   下载 Windows 版（如 `rakaly-cli-windows-*.zip`，内含 `rakaly.exe`），解压后把
-   **`rakaly.exe`** 放到 **`<项目目录>\tools\rakaly.exe`**（`tools` 目录需自行创建）。
-   `journal_save.py` 会从这里调用它来熔化 `.v3` 存档。
+1. **检查 Rakaly**：`tools\rakaly.exe` 已在仓库内（`journal_save.py` 会从
+   `<项目目录>\tools\rakaly.exe` 调用它熔化 `.v3` 存档）。若你的运行环境需要更新版本，
+   到 [rakaly/cli Releases](https://github.com/rakaly/cli/releases) 下载 Windows 版
+   （如 `rakaly-cli-windows-*.zip`，内含 `rakaly.exe`）解压后替换即可。
 2. **安装 Python 依赖**：
    ```bat
    python -m pip install -r requirements.txt
@@ -93,7 +101,11 @@
      `prompt_log_enabled` 控制是否把请求原文写入 `logs\prompts.log`；`llm_thinking_disabled`
      控制是否发送 `thinking: disabled` 关闭模型思考模式；`food_flavor_enabled` 控制采访板块
      「舌尖上的风味」素材行（灶火/饭食，报纸民生访谈/邻里富户/失业民生与杂志人群样本池共用），
-     `food_flavor_salt` 填任意串可整批换随机（留空 = 同年同样本稳定复现）。
+     `food_flavor_salt` 填任意串可整批换随机（留空 = 同年同样本稳定复现）；
+     `food_zone_enabled`（食物按州食物圈取材，默认开，关闭则回退全局菜池）、
+     `food_self_layer_enabled`（允许写篮子外的家常自给食材：自留地菜蔬/自产奶点，默认开）；
+     `constitution_annex_enabled` / `constitution_annex_policy`（报纸政界动态后程序端附
+     《现行宪法要览》，policy 取 `annual`/`change`/`opening`/`opening_and_change`/`interval:N`）。
    - `deepseek_model` 可选 `deepseek-chat`（默认）或 `deepseek-reasoner`（推理模式，更慢）；
      `newspaper_style` 取 1~4 切换报纸风格（见下文「报纸风格」）。
 
