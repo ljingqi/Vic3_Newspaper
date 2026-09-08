@@ -251,6 +251,13 @@ DEFAULT_CONFIG = {
     # 填任意串可整批换随机 (留空 = 同年同样本稳定复现)。
     "food_flavor_enabled": True,
     "food_flavor_salt": "",
+    # 报纸「现行宪法要览」附刊 (2026-09): 政界动态正文后由程序端插入现行法度
+    # 总览, 不经 LLM。constitution_annex_policy 可选值:
+    #   change=仅宪法变动/政权更替年(旧行为) / opening=仅开局年 /
+    #   opening_and_change=开局年+变动/更替年 / interval:N=开局年+变动/更替年
+    #   +每N年 / annual=每年(默认)。
+    "constitution_annex_enabled": True,
+    "constitution_annex_policy": "annual",
 }
 
 def default_v3_user_dir():
@@ -2413,6 +2420,40 @@ def should_attach_constitution(data, history=None):
             and prev.get("govt_law") != data.get("govt_law"):
         return True
     return False
+
+
+def _wants_constitution_annex(data, cfg=None, history=None):
+    """现行宪法要览附刊策略判定 (2026-09): 是否在政界动态后插《现行宪法要览》。
+
+    cfg 提供 constitution_annex_enabled / constitution_annex_policy (缺省与
+    DEFAULT_CONFIG 一致); data.active_laws 为空时不插 (constitution_annex_text
+    全空时调用方本就跳过)。开局年判定: history 为空 (load_history 只读本会话
+    前序 raw, 无上年档案即创刊/开局年)。
+    """
+    if not bool((cfg or {}).get("constitution_annex_enabled", True)):
+        return False
+    if not (data.get("active_laws") or []):
+        return False
+    policy = str((cfg or {}).get("constitution_annex_policy") or "annual")
+    if policy == "annual":
+        return True
+    if policy == "change":                       # 旧行为, 完全不变
+        return should_attach_constitution(data, history)
+    if policy == "opening":                      # 仅开局年 (无上年档案)
+        return not history
+    if policy == "opening_and_change":           # 开局年 + 变动/更替年
+        return (not history) or should_attach_constitution(data, history)
+    m = re.fullmatch(r"interval:(\d+)", policy)  # 开局年 + 变动/更替年 + 每N年
+    if m:
+        n = max(1, int(m.group(1)))
+        if not history:
+            return True
+        first = (history[0].get("year") if isinstance(history, list)
+                 and history and isinstance(history[0], dict)
+                 else data.get("year"))
+        year = data.get("year") or 0
+        return should_attach_constitution(data, history) or (year - first) % n == 0
+    return should_attach_constitution(data, history)
 
 
 def render_politics(data, history=None):
@@ -4874,7 +4915,7 @@ def generate_newspaper(data, cfg, history=None):
             ph = _SECTION_CHART_PLACEHOLDERS.get(key)
             if ph:
                 body = body.rstrip() + "\n\n" + ph
-            if key == "politics" and should_attach_constitution(data, history):
+            if key == "politics" and _wants_constitution_annex(data, cfg, history):
                 # 宪法要览: 仅宪法变动/新政权年份, 程序端拼装插在政界动态之后,
                 # 不经 LLM
                 annex = constitution_annex_text(data)

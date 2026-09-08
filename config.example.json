@@ -75,5 +75,7 @@
   "interview_consumption_goods_max": 10,
   "interview_consumption_goods_min_weight": 0.05,
   "food_flavor_enabled": true,
-  "food_flavor_salt": ""
+  "food_flavor_salt": "",
+  "constitution_annex_enabled": true,
+  "constitution_annex_policy": "annual"
 }
