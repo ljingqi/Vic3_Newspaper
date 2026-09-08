@@ -1395,6 +1395,40 @@ def _hub_name_bad(v):
             or v.startswith(("HUB_NAME_", "STATE_"))
             or re.fullmatch(r"[A-Z][A-Z0-9_]*", v))
 
+
+def _state_naming_key(sobj):
+    """州对象命名数据 → 当前显示名的本地化 key (如 STATE_SANTO_DOMINGO_french_haiti_whole);
+    无命名数据 / 键无效返回 None。
+
+    Victoria 3 1.13+ 开启动态命名 (allow_dynamic_naming) 时, 存档每个州对象
+    在 naming_data.localized_name 写入当前显示的州名 key (随所有者文化/命名组变化,
+    如海地占有东部时 = 东海地); 旧存档无此字段 → None, 由调用方回退州域静态名。"""
+    if not isinstance(sobj, dict):
+        return None
+    nd = sobj.get("naming_data")
+    if not isinstance(nd, dict):
+        return None
+    k = nd.get("localized_name")
+    return k if isinstance(k, str) and k else None
+
+
+def _resolve_dyn_state_zh(key, loc=None):
+    """本地化 key → 动态州名中文; 解析不出 / 仍是键 → None (回退静态名)。"""
+    if not key:
+        return None
+    if loc is None:
+        loc = _load_loc_all()
+    v = _resolve_loc_template(loc.get(key, key), loc)
+    if _hub_name_bad(v):
+        return None
+    return v
+
+
+def _state_naming_zh(sobj, loc=None):
+    """州对象 → 动态州名中文 (naming_data.localized_name); 无/无效返回 None。"""
+    return _resolve_dyn_state_zh(_state_naming_key(sobj), loc)
+
+
 def _hub_names(state_obj):
     """州对象 → 5 个 hub 名 (city/port/farm/mine/wood 顺序); 缺失项为 None。
     优先 custom_hub_names(玩家改名), 其次 localized_hub_names(动态命名州, 带后缀),
@@ -3417,7 +3451,10 @@ def _extract_player_states(data, state_ids, ctx=None):
             rk = ctx.state_region_key(sid)
         else:
             rk = (sobj or {}).get("region") if sobj else _state_region_key(data, sid)
-        name = loc.get(rk) if rk else None
+        # 州显示名: 动态命名 (naming_data.localized_name) 优先, 回退州域静态名
+        name = _state_naming_zh(sobj)
+        if not name and rk:
+            name = loc.get(rk)
         counts = cult_by_state.get(sid) or {}
         top = None
         empty = True
@@ -3600,12 +3637,13 @@ _WORKFORCE_SELF_OWNED_TYPES = frozenset((
 ))
 _WORKFORCE_SELF_OWNED_PREFIXES = ("building_subsistence_",)
 
-_STATE_FIELDS_CACHE = {}   # id(data) -> (data, {sid: {"country","region"}})
+_STATE_FIELDS_CACHE = {}   # id(data) -> (data, {sid: {"country","region","dyn_key"}})
 _STATE_ZH_CACHE = {}       # id(data) -> (data, {sid: 中文州名})
 
 
 def _state_fields(data, sid):
-    """州 id → 轻量字段 {country, region} (按熔化 bytes 惰性缓存, 只存所需字段)。"""
+    """州 id → 轻量字段 {country, region, dyn_key} (按熔化 bytes 惰性缓存)。
+    dyn_key = 州对象 naming_data.localized_name (动态州名 key), 无则 None。"""
     key = id(data)
     m = _STATE_FIELDS_CACHE.get(key)
     if m is None or m[0] is not data:
@@ -3615,7 +3653,8 @@ def _state_fields(data, sid):
         return hit
     obj = _state_object(data, sid)
     hit = {"country": (obj or {}).get("country"),
-           "region": (obj or {}).get("region")}
+           "region": (obj or {}).get("region"),
+           "dyn_key": _state_naming_key(obj)}
     m[1][sid] = hit
     return hit
 
@@ -3629,11 +3668,12 @@ def _state_fields_seed(data, sid, obj):
     if m is None or m[0] is not data:
         m = _STATE_FIELDS_CACHE[key] = (data, {})
     m[1].setdefault(sid, {"country": obj.get("country"),
-                          "region": obj.get("region")})
+                          "region": obj.get("region"),
+                          "dyn_key": _state_naming_key(obj)})
 
 
 def _state_zh_cached(data, sid):
-    """州 id → 中文州名 (本地化, 按熔化 bytes 惰性缓存)。"""
+    """州 id → 中文州名 (动态命名优先, 回退州域静态名; 按熔化 bytes 惰性缓存)。"""
     key = id(data)
     m = _STATE_ZH_CACHE.get(key)
     if m is None or m[0] is not data:
@@ -3641,8 +3681,11 @@ def _state_zh_cached(data, sid):
     hit = m[1].get(sid)
     if hit is not None:
         return hit
-    rk = _state_fields(data, sid).get("region")
-    zh = _load_loc_all().get(rk) if rk else None
+    f = _state_fields(data, sid)
+    zh = _resolve_dyn_state_zh(f.get("dyn_key"))
+    if not zh:
+        rk = f.get("region")
+        zh = _load_loc_all().get(rk) if rk else None
     m[1][sid] = zh
     return zh
 
@@ -4240,8 +4283,11 @@ def _pick_interview_set(data, state_ids, ig_slots=None, building_map=None, price
         return result
     # 州级上下文
     region_key = _state_region_key(data, sid)
-    region_name = _load_loc_all().get(region_key) if region_key else None
     state_obj = _state_object(data, sid)
+    # 州显示名: 动态命名 (naming_data.localized_name) 优先, 回退州域静态名
+    region_name = _state_naming_zh(state_obj)
+    if not region_name and region_key:
+        region_name = _load_loc_all().get(region_key)
     incorporation = state_obj.get("incorporation") if state_obj else None
     if incorporation is None and state_obj:
         # 未合并殖民地: 存档不写 incorporation, 以 colony_progress 等字段标记 → 记作 0
@@ -4741,15 +4787,15 @@ POP_FP_TYPES = {
 
 
 def _state_zh(data, state_id):
-    """州 id → 中文名 (本地化失败回退 STATE_ key, 再失败 None)。"""
-    rk = _state_region_key(data, state_id)
-    if not rk:
-        return None
-    return _load_loc_all().get(rk) or rk
+    """州 id → 中文名 (动态命名优先, 回退州域静态名; 均失败 None)。"""
+    return _state_zh_cached(data, state_id)
 
 
 def _state_zh_from_sobj(sobj):
-    """已解析州对象 → 中文名。"""
+    """已解析州对象 → 中文名 (动态命名优先, 回退州域静态名)。"""
+    zh = _state_naming_zh(sobj)
+    if zh:
+        return zh
     rk = (sobj or {}).get("region")
     if not rk:
         return None
@@ -5814,11 +5860,14 @@ class SaveContext:
         return obj.get("region") if obj else None
 
     def state_zh(self, sid):
-        """州 id → 中文名 (按州缓存)。"""
+        """州 id → 中文名 (动态命名优先, 回退州域静态名; 按州缓存)。"""
         if sid not in self._state_zh_cache:
-            rk = self.state_region_key(sid)
-            self._state_zh_cache[sid] = (_load_loc_all().get(rk) or rk
-                                         if rk else None)
+            obj = self.state_object(sid)
+            zh = _state_naming_zh(obj)
+            if not zh:
+                rk = obj.get("region") if obj else None
+                zh = (_load_loc_all().get(rk) or rk) if rk else None
+            self._state_zh_cache[sid] = zh
         return self._state_zh_cache[sid]
 
     def player_states(self, state_ids):
@@ -13309,6 +13358,153 @@ def query_laws_in_progress(data, country_id):
     return out
 
 
+def _law_instance_map(data):
+    """laws.database → {实例id: (law_key, country_id)} (含未生效候选实例)。"""
+    out = {}
+    if data is None:
+        return out
+    idx = data.find(b'"laws"')
+    if idx < 0:
+        return out
+    end = _object_end(data, data.find(b'{', idx))
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return out
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, e2 = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = e2
+            continue
+        if isinstance(obj, dict) and obj.get("law"):
+            out[int(m.group(1))] = (obj.get("law"), obj.get("country"))
+        j = e2
+    return out
+
+
+def _ig_instances_of(data, country_id):
+    """interest_groups.database → 该国 {实例id: (name, definition)}。"""
+    out = {}
+    if data is None or not country_id:
+        return out
+    idx = data.find(b'"interest_groups"')
+    if idx < 0:
+        return out
+    end = _object_end(data, data.find(b'{', idx))
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return out
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, e2 = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = e2
+            continue
+        if (isinstance(obj, dict) and obj.get("country") == country_id
+                and (obj.get("name") or obj.get("definition"))):
+            out[int(m.group(1))] = (obj.get("name") or obj.get("definition"),
+                                    obj.get("definition"))
+        j = e2
+    return out
+
+
+def query_amendments(data, country_id):
+    """从 amendment_manager.database 提取该国修正案条目 (含赞助方解析)。
+
+    条目形如 {type: amendment_*, law: <laws.database 实例id>, sponsor: <IG id>}。
+    归属: amendment.law → laws 实例的 country/law; sponsor → 该国利益集团。
+    返回 [{type, law_key, sponsor_name, sponsor_definition}]。"""
+    out = []
+    if data is None or not country_id:
+        return out
+    law_map = _law_instance_map(data)
+    ig_map = _ig_instances_of(data, country_id)
+    idx = data.find(b'"amendment_manager"')
+    if idx < 0:
+        return out
+    end = _object_end(data, data.find(b'{', idx))
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return out
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    j = data.find(b'{', db)
+    while True:
+        m = _IDOBJ.search(data, j, end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, e2 = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = e2
+            continue
+        if isinstance(obj, dict) and obj.get("type"):
+            lid = obj.get("law")
+            if isinstance(lid, int) and lid in law_map:
+                law_key, cid = law_map[lid]
+                if cid == country_id and law_key:
+                    item = {"type": str(obj["type"]), "law_key": law_key}
+                    sp = obj.get("sponsor")
+                    if isinstance(sp, int) and sp in ig_map:
+                        ig_name, ig_def = ig_map[sp]
+                        item["sponsor_name"] = ig_name
+                        item["sponsor_definition"] = ig_def
+                    out.append(item)
+        j = e2
+    return out
+
+
+def _amendments_snapshot_items(data, country_id):
+    """query_amendments → 快照 active_amendments 条目 (中文名/被修正法律中文/
+    官方描述或政治让步效果句已烘焙, 供报纸与杂志渲染直接使用)。"""
+    from journal import (POLITICAL_CONCESSION_KEYS,
+                         POLITICAL_CONCESSION_TEXT, ig_zh, law_zh)
+    loc = _load_loc_all()
+    items = []
+    for am in query_amendments(data, country_id):
+        typ = am.get("type") or ""
+        lzh = law_zh(am.get("law_key"))
+        sp_name = am.get("sponsor_name")
+        sp_def = am.get("sponsor_definition")
+        ig = None
+        if sp_name or sp_def:
+            ig = ig_zh(sp_name, sp_def)
+        if typ in POLITICAL_CONCESSION_KEYS:
+            tpl = POLITICAL_CONCESSION_TEXT.get(typ) or ""
+            desc = tpl.format(ig=ig or "赞助该法的利益集团")
+            items.append({
+                "type": typ, "kind": "concession",
+                "name": loc.get(typ, "政治让步"),
+                "law_zh": lzh, "desc": desc,
+            })
+            continue
+        name = loc.get(typ) or typ.replace("amendment_", "")
+        desc = (loc.get(typ + "_desc") or "").strip()
+        items.append({"type": typ, "name": name, "law_zh": lzh, "desc": desc})
+    return items
+
+
 def _v3_date_tuple(s):
     """'Y.M.D' → (y, m, d) 元组, 用于日期比较; 无法解析返回 None。"""
     try:
@@ -13579,6 +13775,13 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
     states = snap.get("states") or []
     capital = snap.get("capital") or ""
     igs = snap.get("interest_groups") or []
+    # 行政区划后缀 (省/州, 随政体): 引用州名时拼在州名后, 如「走访了西海地省…」
+    div = _pool_division_label(snap)
+
+    def _place(state_name, is_state):
+        """州名 + 行政区划后缀 (如 西海地省); 首都等非州名原样返回。"""
+        return f"{state_name}{div}" if (is_state and div) else state_name
+
     pool = list(_RULER_ACTIVITY_POOL)
     tried = set()
     while pool:
@@ -13594,7 +13797,8 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
                                       building_type_map=building_type_map,
                                       building_objs=building_objs)
             if bld:
-                where = st.get("name") or capital or "某地"
+                where = _place(st.get("name"), bool(st.get("name"))) \
+                    if st.get("name") else (capital or "某地")
                 own = ""
                 if bid is not None:
                     bobj = (building_objs or {}).get(bid)
@@ -13619,7 +13823,8 @@ def _assemble_ruler_activity(melted, snap, country_id, buildings_index=None,
                 continue
             sid = visit_pop_obj.get("location")
             st = next((s for s in states if s.get("id") == sid), {})
-            stname = st.get("name") or capital or "某地"
+            stname = _place(st.get("name"), bool(st.get("name"))) \
+                if st.get("name") else (capital or "某地")
             culture = culture_id_to_name(visit_pop_obj.get("culture")) or ""
             rel_zh = _religion_zh(visit_pop_obj.get("religion"))
             try:
@@ -13999,6 +14204,9 @@ def build_journal_data(snap):
     data["laws_enacted"] = snap.get("laws_enacted") or []
     data["laws_repealed"] = snap.get("laws_repealed") or []
     data["laws_in_progress"] = snap.get("laws_in_progress") or []
+    # 现行全部法律 + 现行修正案 (程序端宪法要览 / 报纸与杂志修正案素材行用)
+    data["active_laws"] = snap.get("active_laws") or []
+    data["active_amendments"] = snap.get("active_amendments") or []
     data["free_speech_law"] = snap.get("free_speech_law")
     data["dop_law"] = snap.get("dop_law")
     data["govt_law"] = snap.get("govt_law")
@@ -14114,6 +14322,10 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
         if len(cands) == 1:
             item["replace_law"] = cands[0]
     snap["laws_in_progress"] = laws_ip
+    # 现行全部法律 (供程序端拼宪法要览等): 随 raw 持久化
+    snap["active_laws"] = active_laws
+    # 现行宪法修正案 (含政治让步), 中文已烘焙; 报纸政界动态与杂志法律相关池共用
+    snap["active_amendments"] = _amendments_snapshot_items(melted, cid)
     snap["player_country_id"] = cid
     index, gp_ids, dp_index = ctx.index()
     names = load_current_country_names(melted, index)
@@ -15092,8 +15304,13 @@ def _extract_treaties(data, names, index=None, gp_ids=None, player_id=None):
                       hubs[0] if hubs else None):
                 if h:
                     return h
-        if sobj and sobj.get("region"):
-            return _load_loc_all().get(sobj["region"]) or sobj["region"]
+        # 州显示名: 动态命名 (naming_data.localized_name) 优先, 回退州域静态名
+        if sobj:
+            zh = _state_naming_zh(sobj)
+            if zh:
+                return zh
+            if sobj.get("region"):
+                return _load_loc_all().get(sobj["region"]) or sobj["region"]
         rk = _state_region_key(data, sid)
         if rk:
             return _load_loc_all().get(rk) or rk

@@ -1,19 +1,20 @@
 ---
 name: utf8-gbk-encoding
-description: Use whenever reading, writing, or editing text files in this project or session — choose UTF-8 for Python sources, JSON data files, logs, output artifacts, and CK3 save envelopes; choose GBK (ANSI/cp936) for .bat batch files and legacy ANSI text from Chinese Windows; specify the encoding explicitly on both the read and write sides (PowerShell -Encoding UTF8 / -Encoding Default, Python encoding="utf-8" / encoding="gbk").
+description: Use whenever reading, writing, or editing text files in this project or session — choose UTF-8 for Python sources, JSON data files, logs, output artifacts, and Victoria 3 .v3 save envelope text; choose GBK (ANSI/cp936) for .bat batch files and legacy ANSI text from Chinese Windows; specify the encoding explicitly on both the read and write sides (PowerShell -Encoding UTF8 / -Encoding Default, Python encoding="utf-8" / encoding="gbk").
 ---
 
 # UTF-8 与 GBK 编码使用规则（utf8-gbk-encoding）
 
-本技能用于本项目（CK3 记忆素材库）及本会话中所有文本文件的读写。核心规则：**每个文件的编码由文件类型决定，读取与写入两侧都显式指定同一编码。**
+本技能用于本项目及本会话中所有文本文件的读写。核心规则：**每个文件的编码由文件类型决定，读取与写入两侧都显式指定同一编码。**
 
 ## 一律使用 UTF-8 的对象
 
 - Python 源文件（`.py`）：中文注释与字符串按 UTF-8 书写与读取。
-- JSON 数据文件：`config.json`、缓存 `output/<家族>/data/player_*.json`、熔件 `melt_*.json`、`data/` 下临时熔件。
-- 日志与产物：`logs/journal.log`、`logs/prompts.log`、`output/<家族>/` 下的 `.md` 传记与 `index.html`。
-- CK3 存档（`.ck3`）信封头：`meta_player_name` 等字段按 UTF-8 解码（`read_save_envelope` 的做法）。
-- rakaly 熔出的 JSON 输出。
+- JSON 数据文件：`config.json`、缓存 `output/<国名>/data/*.json`（`raw_*.json`、`snapshot_*.json`、`pops_*.json`、`magazine_*.json` 等）、熔件缓存 `tools/melt.json`、数据表 `tools/goods_measure.json`、`data/` 下临时文件。
+- 日志与产物：`logs/journal.log`、`logs/prompts.log`、`output/<国名>/` 下的 `.md`（报纸/杂志/电影剧本）与 `index.html`。
+- 游戏本地化与数据 yml（含 mod 覆盖）：按 `encoding="utf-8-sig"` 读取（`journal_save.py _load_loc_all` 的做法，文件头带 BOM 也能解析）。
+- `.v3` 存档（`SAV01033` 信封）头部的版本号、国家名等元数据文本：按 UTF-8 解码（`saveparse.py parse_envelope`、`journal.py` 中 `decode("utf-8", "replace")` 的做法）。
+- rakaly 熔出的 JSON 输出（`tools/melt.json`，gamestate 二进制经 `rakaly.exe` 熔化为 UTF-8 JSON）。
 
 Python 侧统一写法：读取用 `open(path, encoding="utf-8")`，写入用 `open(path, "w", encoding="utf-8")`；`json.dump(..., ensure_ascii=False)` 保留中文原文。
 
@@ -40,5 +41,6 @@ Python 侧读 GBK：`open(path, encoding="gbk")`（别名 `cp936`）。写入 `.
 | 文件 | 编码 | PowerShell 读取 | Python 打开参数 |
 | --- | --- | --- | --- |
 | Python 源码 / JSON 数据 / 日志 / output 产物 | UTF-8 | `Get-Content -Encoding UTF8` | `encoding="utf-8"` |
-| CK3 存档信封头 | UTF-8 | — | `decode("utf-8", "replace")` |
+| .v3 存档信封头文本（版本号/国家名等） | UTF-8 | — | `decode("utf-8", "replace")` |
+| 游戏本地化/数据 yml（含 mod） | UTF-8 (可含 BOM) | `Get-Content -Encoding UTF8` | `encoding="utf-8-sig"` |
 | `.bat` 批处理 / ANSI 旧文本 | GBK (cp936) | `Get-Content -Encoding Default` | `encoding="gbk"` |

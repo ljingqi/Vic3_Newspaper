@@ -1261,19 +1261,13 @@ def _facts_decrees(m, data):
     if data.get("laws_enacted"):
         lines.append("本年新施行法律：" + "、".join(
             journal.law_zh(str(x)) for x in data["laws_enacted"]))
-    else:
-        lines.append("本年无新施行法律。")
     if data.get("laws_repealed"):
         lines.append("本年废除法律：" + "、".join(
             journal.law_zh(str(x)) for x in data["laws_repealed"]))
-    else:
-        lines.append("本年无废除法律。")
     if data.get("laws_in_progress"):
         lines.append("立法进行中：" + "、".join(
             f"{journal.law_zh(str(x.get('law')))}（{x.get('phase_zh') or '进行中'}）"
             for x in data["laws_in_progress"][:4]))
-    else:
-        lines.append("今年无正在制定的法律。")
     ruler = m.get("ruler") or {}
     if ruler.get("activity"):
         lines.append(f"统治者活动：{ruler['activity']}")
@@ -1287,7 +1281,9 @@ def _facts_decrees(m, data):
             else:
                 ig_bits.append(nm)
         lines.append("利益集团力量格局：" + "、".join(ig_bits) + "。")
-    return "\n".join(lines) or "本年无法律变化记录。"
+    # 现行修正案素材: 有则附 (报纸政界动态同口径), 无则省
+    lines.extend(journal.amendment_fact_lines(data))
+    return "\n".join(lines)
 
 
 def _facts_household(m, data):
@@ -1551,9 +1547,9 @@ def _currency_rule(data, article_key=None):
     for u in extra:
         if u and u != base and u not in units:
             units.append(u)
-    segs = [f"{u}按「{journal.currency_system_text(u)}」书写" for u in units]
-    return ("货币金额一律按资料给出的币种书写：" + "；".join(segs)
-            + "。金额以资料给出者为限。")
+    segs = "、".join(units)
+    return (f"货币金额一律按资料给出的币种（{segs}）书写，金额以资料给出者为限。"
+            if units else "货币金额一律以资料给出者为限。")
 
 
 def _article_has_flavor(data, article_key):
@@ -1670,6 +1666,11 @@ def _intro_framework(data):
         lines.append("本年立法进行中：" + "、".join(
             journal.law_zh(str(x.get("law")))
             for x in data["laws_in_progress"][:3]) + "。")
+    ams = journal.amendment_fact_lines(data)
+    if ams:
+        # 现行修正案素材 (与报纸政界动态同口径), 杂志卷首一并可见
+        lines.append("现行宪法修正案：" + "；".join(
+            a.replace("- ", "", 1) for a in ams))
     ruler = m.get("ruler") or {}
     if ruler.get("name") and ruler.get("activity"):
         lines.append(f"统治者{ruler['name']}的活动：{ruler['activity']}。")
@@ -1954,10 +1955,22 @@ def _investment_req_append(req, facts):
     return req
 
 
+def _strip_law_change_clause(req, data):
+    """本年度无法律变化时, 从 req 中去掉「报道本年法律变化」类指令
+    (数据层已不再下发占位行, 指令残留会诱导模型硬写法律段落)。
+    保留句首「报道」动词, 使剩余句 "报道统治者活动、执政集团格局…" 通顺。"""
+    if not (data.get("laws_enacted") or data.get("laws_repealed")
+            or data.get("laws_in_progress")):
+        req = req.replace(
+            "报道本年法律变化(数据给出新施行/废除的法律)、", "报道")
+    return req
+
+
+
 def build_lead_messages(article, data, intro):
     sec = article["sections"][0]
     facts = render_facts(article["key"], sec["key"], data)
-    req = _investment_req_append(sec["req"], facts)
+    req = _strip_law_change_clause(_investment_req_append(sec["req"], facts), data)
     title = _article_display_title(article)
     # 缓存友好 (2026-08-27): system 以静态基调与通用规则开头, 文章标题/
     # 板块要求/篇幅/导言/数据全部移入 user (标题不再占据 system 首句)。
@@ -1988,7 +2001,7 @@ def build_lead_messages(article, data, intro):
 def build_section_messages(article, section, data, intro, lead_text,
                            article_title=None, crime_card=None):
     facts = render_facts(article["key"], section["key"], data)
-    req = _investment_req_append(section["req"], facts)
+    req = _strip_law_change_clause(_investment_req_append(section["req"], facts), data)
     title = _article_display_title(article, article_title)
     # 缓存友好 (2026-08-27): 同上, system 静态开头, 动态内容移入 user。
     sys_msg = (

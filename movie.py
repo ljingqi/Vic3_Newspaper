@@ -43,8 +43,7 @@ SCREENPLAY_RULE = (
 
 def _currency_rule(data):
     base = data.get("currency") or journal.DEFAULT_CURRENCY
-    return (f"货币金额一律按资料给出的币种书写：{base}按「{journal.currency_system_text(base)}」"
-            "书写。金额以资料给出者为限。")
+    return (f"货币金额一律按资料给出的币种（{base}）书写。金额以资料给出者为限。")
 
 
 # 分幕结构: 每幕只发相关槽位资料 (分板块思路, 让每幕聚焦自己的数据)
@@ -339,9 +338,12 @@ def _check_names(movie, acts):
 
 
 def generate_movie(data, cfg, force=True):
+    year = data.get("year")
+    if not cfg.get("movie_script_enabled", True):
+        journal.log(f"[{year}年] 电影剧本已按配置禁用 (movie_script_enabled=false)，跳过生成")
+        return
     m = data.get("magazine") or {}
     movie = m.get("movie") or data.get("movie") or {}
-    year = data.get("year")
     if not movie or movie.get("error"):
         journal.log(f"[{year}年] 电影剧本数据缺失, 已跳过")
         return

@@ -1087,7 +1087,8 @@ def _division_label(govt_key):
             "bishopric", "lama", "khalsa", "chiefdom", "colony", "colonial",
             "dominion", "chartered", "crown", "captaincy", "territory",
             "frontier", "guberniya", "vilayet", "wilayah", "governor",
-            "hm_gov", "zhuz", "ras", "hakim", "junta")):
+            "hm_gov", "zhuz", "ras", "hakim", "junta",
+            "dictatorship", "dictator", "autocracy", "authoritarian", "despotism")):
         return "省"
     return None
 
@@ -2247,6 +2248,173 @@ def _price_index_base_note(data):
         return f"{base_year}年"
     return "基准年"
 
+def _has_law_activity(data):
+    """本年度是否有法律动态 (新施行/废除/立法中)。"""
+    return bool((data.get("laws_enacted") or []) or (data.get("laws_repealed") or [])
+                or (data.get("laws_in_progress") or []))
+
+
+# Political Concessions (政治让步) 修正案 = 一组 generic 变体, 效果按变体等级
+# 递增 (权威耗费 / 赞助方利益集团政治力量 / 政府内支持度), 自然语言模板见下。
+POLITICAL_CONCESSION_KEYS = (
+    "amendment_generic_sponsor_polstr_increase",
+    "amendment_generic_sponsor_polstr_approval_increase",
+    "amendment_generic_sponsor_polstr_increase_negotiation_1",
+    "amendment_generic_sponsor_polstr_increase_negotiation_2",
+    "amendment_generic_sponsor_polstr_increase_negotiation_3",
+)
+
+# {ig} 由快照侧替换为赞助利益集团中文名
+POLITICAL_CONCESSION_TEXT = {
+    "amendment_generic_sponsor_polstr_increase":
+        "以国家行政权威为代价，向{ig}让渡政治权力，使其政治力量提高两成",
+    "amendment_generic_sponsor_polstr_approval_increase":
+        "以国家行政权威为代价，向{ig}让渡政治权力，使其政治力量提高两成，"
+        "{ig}对当局之支持亦随之增长",
+    "amendment_generic_sponsor_polstr_increase_negotiation_1":
+        "经与议会协商附入：以国家行政权威为代价，向{ig}让渡政治权力，"
+        "其政治力量提高两成，于政府内之支持度上升",
+    "amendment_generic_sponsor_polstr_increase_negotiation_2":
+        "经与议会协商附入：以更重的行政权威为代价，向{ig}让渡政治权力，"
+        "其政治力量提高三成，于政府内之支持度大增",
+    "amendment_generic_sponsor_polstr_increase_negotiation_3":
+        "经与议会协商附入：以沉重的行政权威为代价，向{ig}让渡政治权力，"
+        "其政治力量提高四成，于政府内之支持度极增",
+}
+
+
+def amendment_fact_lines(data):
+    """现行宪法修正案素材行 (有则返回、无则空)。
+
+    读取快照预解析的 active_amendments 列表 (每条已含中文名/被修正法律中文/
+    官方描述或政治让步效果句与赞助集团中文名), 输出可直接进提示词的素材行。
+    """
+    out = []
+    for am in (data.get("active_amendments") or []):
+        if not isinstance(am, dict):
+            continue
+        typ = str(am.get("type") or "")
+        name = str(am.get("name") or "").strip()
+        law_zh = str(am.get("law_zh") or "").strip()
+        desc = str(am.get("desc") or "").strip()
+        if am.get("kind") == "concession":
+            if desc:
+                out.append(f"- 现行政治让步（附于《{law_zh}》）：{desc}。"
+                           if law_zh else f"- 现行政治让步：{desc}。")
+            continue
+        if not name:
+            continue
+        if desc:
+            out.append(f"- 现行宪法修正案：「{name}」附于《{law_zh}》——{desc}" 
+                       if law_zh else f"- 现行宪法修正案：「{name}」——{desc}")
+        else:
+            out.append(f"- 现行宪法修正案：「{name}」附于《{law_zh}》。"
+                       if law_zh else f"- 现行宪法修正案：「{name}」。")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 宪法要览 (2026-): 程序端拼「现行宪法要览(节选)」, 随报纸政界动态后程序化
+# 插入, 不发给模型。章节/条文语料 data/constitution_clauses.json (键=法律 key)。
+# ---------------------------------------------------------------------------
+
+# 章节定义: (键, 章名, 该章可能出现的法律 key 集合)。取自游戏法律组文件
+# 00_governance_principles / 00_distribution_of_power / 00_citizenship /
+# 00_church_and_state / 02_free_speech, 与 data/constitution_clauses.json 键一致。
+CONSTITUTION_CHAPTERS = (
+    ("governance", "政体",
+     frozenset({"law_chiefdom", "law_monarchy", "law_social_monarchy",
+                "law_colonial_administration", "law_presidential_republic",
+                "law_parliamentary_republic", "law_theocracy",
+                "law_council_republic", "law_corporate_state"})),
+    ("voting", "选举与权力分配",
+     frozenset({"law_autocracy", "law_bakufu", "law_neo_absolutism",
+                "law_technocracy", "law_oligarchy", "law_organic_regulation",
+                "law_elder_council", "law_landed_voting", "law_wealth_voting",
+                "law_census_voting", "law_universal_suffrage", "law_anarchy",
+                "law_single_party_state"})),
+    ("citizenship", "公民身份",
+     frozenset({"law_subjecthood", "law_ethnostate", "law_national_supremacy",
+                "law_racial_segregation", "law_cultural_exclusion",
+                "law_multicultural"})),
+    ("church", "国教与信仰",
+     frozenset({"law_state_religion", "law_millet_system",
+                "law_people_of_the_book", "law_freedom_of_conscience",
+                "law_total_separation", "law_state_atheism"})),
+    ("speech", "言论与集会",
+     frozenset({"law_outlawed_dissent", "law_censorship",
+                "law_right_of_assembly", "law_protected_speech"})),
+)
+
+_CONSTITUTION_CN_NUM = ("", "一", "二", "三", "四", "五", "六", "七", "八", "九")
+_CONSTITUTION_CORPUS = None
+
+
+def _load_constitution_corpus():
+    """条文语料 {law_key: 条文句}; 文件缺失时返回空表 (附录自动退化为只列法律名)。"""
+    global _CONSTITUTION_CORPUS
+    if _CONSTITUTION_CORPUS is not None:
+        return _CONSTITUTION_CORPUS
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "data", "constitution_clauses.json")
+    try:
+        with open(path, encoding="utf-8") as fp:
+            _CONSTITUTION_CORPUS = json.load(fp) or {}
+    except Exception:
+        _CONSTITUTION_CORPUS = {}
+    return _CONSTITUTION_CORPUS
+
+
+def constitution_annex_text(data):
+    """程序端拼「现行宪法要览（节选）」正文 (不经 LLM)。
+
+    只列出存在现行法律的章节 (按章号连续编号), 每章一句现行法条文;
+    该国现行修正案 (含政治让步) 挂为「附则」。无条文语料时只列法律名。
+    """
+    active = data.get("active_laws") or []
+    cur = {}
+    for ch, _title, laws in CONSTITUTION_CHAPTERS:
+        cur[ch] = next((l for l in active if l in laws), None)
+    corpus = _load_constitution_corpus()
+    rows = []
+    for i, (ch, title, _laws) in enumerate(CONSTITUTION_CHAPTERS, 1):
+        law = cur.get(ch)
+        if not law:
+            continue
+        clause = corpus.get(law)
+        if clause:
+            rows.append(f"**第{_CONSTITUTION_CN_NUM[i]}章 {title}（现行{law_zh(law)}）**　{clause}")
+        else:
+            rows.append(f"**第{_CONSTITUTION_CN_NUM[i]}章 {title}（现行{law_zh(law)}）**")
+    if not rows:
+        return ""
+    out = ["---", "", "**附：现行宪法要览（节选）**", ""]
+    out += [f"- {r}" for r in rows]
+    ams = amendment_fact_lines(data)
+    if ams:
+        out += ["", "**附则（现行修正案）**", ""]
+        out += [a.replace("- ", "", 1) for a in ams]
+    return "\n".join(out)
+
+
+def should_attach_constitution(data, history=None):
+    """宪法要览触发条件: 本年度出现宪法性法律变动 (政体/选举/公民/国教/言论
+    任一组的施行或废除), 或政权较上年更替 (govt_law 变化)。"""
+    keys = set()
+    for _ch, _title, laws in CONSTITUTION_CHAPTERS:
+        keys.update(laws)
+    changed = set((data.get("laws_enacted") or []) + (data.get("laws_repealed") or []))
+    if changed & keys:
+        return True
+    prev = None
+    if history:
+        prev = history[-1] if isinstance(history, list) else history
+    if isinstance(prev, dict) and prev.get("govt_law") and data.get("govt_law") \
+            and prev.get("govt_law") != data.get("govt_law"):
+        return True
+    return False
+
+
 def render_politics(data, history=None):
     L = []
     L.append(f"- 政体：{GOVT_NAMES.get(data.get('govt', ''), data.get('govt', '未知'))}")
@@ -2341,15 +2509,14 @@ def render_politics(data, history=None):
                             line += f"；分离进程约{prog * 100:.0f}%"
             L.append(line)
     if "laws_enacted" in data or "laws_repealed" in data:
-        # 存档直读: laws 已只含本年度变化的法律, 直接展示新施行/废除
+        # 存档直读: laws 已只含本年度变化的法律, 直接展示新施行/废除;
+        # 本年度无法律变化时不输出任何占位行
         enacted = data.get("laws_enacted") or []
         repealed = data.get("laws_repealed") or []
         if enacted:
             L.append("- 本年度新施行法律：" + "、".join(law_zh(l) for l in enacted))
         if repealed:
             L.append("- 本年度废除法律：" + "、".join(law_zh(l) for l in repealed))
-        if not enacted and not repealed:
-            L.append("- 法律：本年度无变动")
     else:
         laws = data.get("laws") or []
         if laws:
@@ -2362,8 +2529,6 @@ def render_politics(data, history=None):
                 L.append("- 本年度新施行法律：" + "、".join(law_zh(l) for l in added))
             if removed:
                 L.append("- 本年度废除法律：" + "、".join(law_zh(l) for l in removed))
-            if not added and not removed:
-                L.append("- 法律：与上年无异")
     for lp in (data.get("laws_in_progress") or []):
         law_nm = law_zh(lp.get("law"))
         phase = lp.get("phase_zh") or f"阶段{lp.get('phase')}"
@@ -2372,8 +2537,7 @@ def render_politics(data, history=None):
         rep_s = f"以替代「{law_zh(rep)}」" if rep else ""
         L.append(f"- 立法进行中：当前「{law_nm}」法案处于「{phase}」阶段，"
                  f"该法案于{sub}提交{rep_s}")
-    if not (data.get("laws_in_progress") or []):
-        L.append("- 立法进行中：今年无正在制定的法律")
+    L.extend(amendment_fact_lines(data))
     return "\n".join(L)
 
 def render_society(data):
@@ -3525,65 +3689,117 @@ _RELIGION_BANS = {
     "beef": {"hindu"},
 }
 
-# 食品商品 → 变体篮: (菜品名, 最早年份或 None, 忌口或 None)
+# 食品商品 → 菜品候选篮 (2026-09 改造): 每个候选是**单一菜品**, 不再出现
+# 「X、Y」式一次两种形态; {dish: 菜名, base: 主料标签, since: 最早年份或 None,
+# ban: 忌口或 None}。base 用于一餐内槽间互斥 (防「烤红薯又喝红薯粥」同料两吃)。
+# 一餐槽位: 主食(grain)1 项 / 主菜(meat/fish)1 项 / 佐餐(groceries/fruit)1 项 /
+# 嗜好(tea/coffee/liquor/wine)1 项, 只写篮子里实际出现的商品。
 _FOOD_BASKETS = {
     "grain": [
-        ("大米饭", None, None), ("白粥", None, None),
-        ("馒头、面条（麦面）", None, None), ("烙饼", None, None),
-        ("玉米糊糊", None, None), ("烤玉米", None, None),
-        ("土豆炖菜", None, None), ("烤红薯、红薯粥", None, None),
-        ("小米粥", None, None), ("高粱米饭", None, None),
-        ("黑麦/白面包", None, None),
+        {"dish": "大米饭", "base": "米"},
+        {"dish": "白粥", "base": "米"},
+        {"dish": "小米粥", "base": "小米"},
+        {"dish": "玉米糊糊", "base": "玉米"},
+        {"dish": "烤玉米", "base": "玉米"},
+        {"dish": "馒头", "base": "麦"},
+        {"dish": "面条", "base": "麦"},
+        {"dish": "烙饼", "base": "麦"},
+        {"dish": "黑麦面包", "base": "麦"},
+        {"dish": "白面包", "base": "麦"},
+        {"dish": "烤红薯", "base": "红薯"},
+        {"dish": "红薯粥", "base": "红薯"},
+        {"dish": "土豆炖菜", "base": "薯"},
+        {"dish": "高粱米饭", "base": "高粱"},
     ],
     "meat": [
-        ("猪肉炖菜", None, "pork"), ("腊肉、腌肉", None, "pork"),
-        ("牛肉汤", None, "beef"), ("烤羊肉", None, None),
-        ("鸡鸭禽肉", None, None), ("肉干", None, None),
+        {"dish": "猪肉炖菜", "base": "猪", "ban": "pork"},
+        {"dish": "腊肉", "base": "猪", "ban": "pork"},
+        {"dish": "牛肉汤", "base": "牛", "ban": "beef"},
+        {"dish": "烤羊肉", "base": "羊"},
+        {"dish": "鸡鸭禽肉", "base": "禽"},
+        {"dish": "肉干", "base": "肉干"},
     ],
     "fish": [
-        ("煎河鱼", None, None), ("咸鱼、鱼干", None, None),
-        ("腌鱼", None, None), ("鱼汤", None, None),
-        ("熏鱼", None, None),
+        {"dish": "煎河鱼", "base": "鱼"},
+        {"dish": "咸鱼", "base": "鱼"},
+        {"dish": "鱼干", "base": "鱼"},
+        {"dish": "熏鱼", "base": "鱼"},
+        {"dish": "鱼汤", "base": "鱼"},
     ],
     "groceries": [
-        ("腌菜、酱菜", None, None), ("腐乳", None, None),
-        ("香肠", None, "pork"), ("饼干", None, None),
-        ("挂面", None, None), ("罐头食品", 1850, None),
-        ("炼乳", 1860, None),
+        {"dish": "腌菜", "base": "菜"},
+        {"dish": "酱菜", "base": "菜"},
+        {"dish": "腐乳", "base": "豆"},
+        {"dish": "香肠", "base": "猪", "ban": "pork"},
+        {"dish": "饼干", "base": "麦"},
+        {"dish": "挂面", "base": "麦"},
+        {"dish": "罐头食品", "base": "罐头", "since": 1850},
+        {"dish": "炼乳", "base": "奶", "since": 1860},
     ],
     "fruit": [
-        ("当季果品（枣、梨、桃）", None, None), ("柑橘", None, None),
-        ("香蕉", None, None), ("芒果", None, None),
+        {"dish": "当季果品", "base": "果"},
+        {"dish": "柑橘", "base": "柑橘"},
+        {"dish": "香蕉", "base": "香蕉"},
+        {"dish": "芒果", "base": "芒果"},
     ],
-    "tea": [("粗茶", None, None), ("细茶", None, None)],
-    "coffee": [("咖啡", None, None)],
-    "liquor": [("烧酒", None, None), ("黄酒", None, None)],
-    "wine": [("葡萄酒", None, None)],
+    "tea": [{"dish": "粗茶", "base": "茶"}, {"dish": "细茶", "base": "茶"}],
+    "coffee": [{"dish": "咖啡", "base": "咖啡"}],
+    "liquor": [{"dish": "烧酒", "base": "酒"}, {"dish": "黄酒", "base": "酒"}],
+    "wine": [{"dish": "葡萄酒", "base": "酒"}],
 }
 
-# 嗜好品槽位的动宾说法
-_TREAT_VERB = {"tea": "饭后喝", "coffee": "饭后喝",
-               "liquor": "年节饮", "wine": "待客饮"}
+# 嗜好品槽位动宾说法 (餐后茶咖 / 年节酒 / 待客酒)
+_TREAT_PHRASES = {
+    "tea": ["饭后喝{0}", "饭后饮{0}", "以{0}润口"],
+    "coffee": ["饭后喝{0}", "饭后饮{0}", "以{0}佐饭"],
+    "liquor": ["年节饮{0}", "以{0}助兴", "{0}留作年节之饮"],
+    "wine": ["待客饮{0}", "待客时奉{0}", "以{0}待客"],
+}
 
 
-def _food_basket_draw(rnd, key, year, religion):
-    """从商品变体篮里确定性抽一个菜品; 年代/忌口过滤后为空返回 None。"""
-    entries = _FOOD_BASKETS.get(key) or []
-    ok = []
-    for name, since, ban in entries:
-        if since is not None and year < since:
-            continue
-        if ban and (religion or "") in _RELIGION_BANS.get(ban, set()):
-            continue
-        ok.append(name)
-    return rnd.choice(ok) if ok else None
+def _food_entry_ok(entry, year, religion):
+    """候选菜品是否可用: 年代门槛 + 宗教忌口过滤。"""
+    if entry.get("since") is not None and year < entry["since"]:
+        return False
+    ban = entry.get("ban")
+    if ban and (religion or "") in _RELIGION_BANS.get(ban, set()):
+        return False
+    return True
+
+
+def _food_basket_draw(rnd, key, year, religion, exclude=()):
+    """从菜品篮里确定性抽一个候选; exclude 为同餐已用主料 (base) 集合,
+    排除后无候选时回退不排除 (篮小时保证有菜可写)。"""
+    entries = [e for e in (_FOOD_BASKETS.get(key) or [])
+               if _food_entry_ok(e, year, religion)]
+    if not entries:
+        return None
+    ex = set(exclude or ())
+    pool = [e for e in entries if e.get("base") not in ex] or entries
+    return rnd.choice(pool)
+
+
+def _meal_seg(rnd, tag, dish, treat_key=None):
+    """饭食单槽表述 (句式含变体, 随种子确定性轮换, 避免年年一个模板)。"""
+    if tag == "grain":
+        return rnd.choice([f"主食为{dish}", f"{dish}作主食"])
+    if tag == "main":
+        return rnd.choice([f"主菜是{dish}", f"{dish}是这一餐的主菜",
+                           f"另上一道{dish}作主菜"])
+    if tag == "side":
+        return rnd.choice([f"佐以{dish}", f"配以{dish}", f"就着{dish}下饭"])
+    tpl = _TREAT_PHRASES.get(treat_key) or ["{0}"]
+    return rnd.choice(tpl).format(dish)
+
 
 
 def _food_flavor_lines(goods, year=None, religion=None, seed_key=""):
     """人群采访「舌尖上的风味」素材行 (确定性, 以消费篮子为限)。
     goods: [{key, name, weight}] (快照 consumption_goods 同构)。
     返回形如 "- 灶火：…" / "- 饭食：…" 的资料行, 无数据或功能关闭返回 []。
-    seed_key 变化 → 同篮子抽不同菜品; 同年同 key 恒定 (regen 稳定)。"""
+    改造后: 一餐各槽只出**单一菜品**, 槽间主料(base)互斥 (防「烤红薯又吃
+    红薯粥」式同料两吃), 槽位句式与荤菜主次位置含变体 (期与期不单调);
+    seed_key 变化 → 同篮子抽不同组合, 同年同 key 恒定 (regen 稳定)。"""
     if not goods:
         return []
     try:
@@ -3614,34 +3830,48 @@ def _food_flavor_lines(goods, year=None, religion=None, seed_key=""):
             fname = (_consumption_goods_name(fuels[0].get("name"))
                      or _FUEL_STOVES[fkey][2] or fkey)
             lines.append(f"- 灶火：家用{stove}，以{fname}为火。")
-    # 饭食: 主食/荤腥/佐餐/嗜好 四槽, 只写篮子里实际出现的商品
+    # 饭食: 主食/主菜/佐餐/嗜好 四槽, 只写篮子里实际出现的商品
     present = sorted((g for g in goods
                       if (g.get("key") or "") in _FOOD_BASKETS),
                      key=lambda g: -(g.get("weight") or 0))
     have = {g["key"] for g in present}
-    bits = []
+    parts = {}
+    used = set()
     if "grain" in have:
-        it = _food_basket_draw(rnd, "grain", year, religion)
-        if it:
-            bits.append(f"主食为{it}")
+        e = _food_basket_draw(rnd, "grain", year, religion, used)
+        if e:
+            parts["grain"] = e["dish"]
+            used.add(e.get("base"))
     main_key = next((k for k in ("meat", "fish") if k in have), None)
     if main_key:
-        it = _food_basket_draw(rnd, main_key, year, religion)
-        if it:
-            bits.append(f"荤腥是{it}")
+        e = _food_basket_draw(rnd, main_key, year, religion, used)
+        if e:
+            parts["main"] = e["dish"]
+            used.add(e.get("base"))
     side_key = next((k for k in ("groceries", "fruit") if k in have), None)
     if side_key:
-        it = _food_basket_draw(rnd, side_key, year, religion)
-        if it:
-            bits.append(f"佐以{it}")
+        e = _food_basket_draw(rnd, side_key, year, religion, used)
+        if e:
+            parts["side"] = e["dish"]
+            used.add(e.get("base"))
     treat_key = next((k for k in ("tea", "coffee", "liquor", "wine")
                       if k in have), None)
     if treat_key:
-        it = _food_basket_draw(rnd, treat_key, year, religion)
-        if it:
-            bits.append(f"{_TREAT_VERB[treat_key]}{it}")
-    if bits:
-        lines.append("- 饭食：" + "，".join(bits) + "。")
+        e = _food_basket_draw(rnd, treat_key, year, religion, ())
+        if e:
+            parts["treat"] = e["dish"]
+    if parts:
+        # 句式轮换: 主菜在餐中的主次位置随种子变化 (有主菜时才让主菜打头)
+        order = ("main", "grain", "side", "treat")
+        if "main" not in parts or rnd.random() >= 0.35:
+            order = ("grain", "main", "side", "treat")
+        segs = []
+        for tag in order:
+            if tag not in parts:
+                continue
+            segs.append(_meal_seg(rnd, tag, parts[tag],
+                                  treat_key if tag == "treat" else None))
+        lines.append("- 饭食：" + "，".join(segs) + "。")
     return lines
 
 
@@ -4442,6 +4672,9 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     year = data.get("year", "?")
     unit = data.get("currency") or "英镑"
     req = spec[2]
+    if key == "politics" and not _has_law_activity(data):
+        # 本年度无法律变化时, 不要求板块报道法律变化 (数据层也不再下发占位行)
+        req = req.replace("、本年度法律变化(新施行/废除的法律)。", "。")
     if key == "peer":
         family_title = _section_title(style, "family", "民生访谈")
         req = req.replace("民生访谈", family_title)
@@ -4492,7 +4725,7 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     # 主辅币制: 仅注入有金额数据的板块 (头版/战事/外交/经济/股市/访谈/社论);
     # 政界/社会/广告等板块没有金额数据, 不注入币制规则, 避免模型自拟金额并换算。
     if key in _MONEY_SECTIONS:
-        parts.append(f"货币规则：金额一律按资料币种的主辅币书写（{currency_system_text(unit)}）；"
+        parts.append(f"货币规则：金额一律按资料币种（{unit}）的主辅币书写；"
                      "金额以资料给出者为限。")
     sys_msg = "\n\n".join(parts)
     facts = render_section_facts(key, data, history, style=style)
@@ -4641,6 +4874,12 @@ def generate_newspaper(data, cfg, history=None):
             ph = _SECTION_CHART_PLACEHOLDERS.get(key)
             if ph:
                 body = body.rstrip() + "\n\n" + ph
+            if key == "politics" and should_attach_constitution(data, history):
+                # 宪法要览: 仅宪法变动/新政权年份, 程序端拼装插在政界动态之后,
+                # 不经 LLM
+                annex = constitution_annex_text(data)
+                if annex:
+                    body = body.rstrip() + "\n\n" + annex
             return body
         except Exception as e:
             log(f"板块「{title}」生成失败: {e}")
