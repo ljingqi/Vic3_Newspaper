@@ -717,8 +717,8 @@ _CRIME_KEYS = ("crime", "crime_big", "crime_small_a", "crime_small_b")
 
 CRIME_TERM_RULE = (
     "「罪案称谓」: 全篇提及被控加害人时一律称「犯罪嫌疑人」(必要时可简称"
-    "「嫌疑人」), 不使用「凶手」等假定有罪的称谓; 人物对白、引文与街巷传闻"
-    "同样遵守; 资料中【犯罪嫌疑人】一栏的姓名与身份原样使用。"
+    "「嫌疑人」); 人物对白、引文与街巷传闻同样使用该称谓;"
+    "资料中【犯罪嫌疑人】一栏的姓名与身份原样使用。"
 )
 
 BATTLE_TYPE_ZH = {
@@ -1281,8 +1281,8 @@ def _facts_decrees(m, data):
             else:
                 ig_bits.append(nm)
         lines.append("利益集团力量格局：" + "、".join(ig_bits) + "。")
-    # 现行修正案素材: 有则附 (报纸政界动态同口径), 无则省
-    lines.extend(journal.amendment_fact_lines(data))
+    # 本报告年新增修正案素材 (既有附则只进报纸程序端附刊, 不进新闻素材), 无则省
+    lines.extend(journal.amendment_fact_lines(data, only_new=True))
     return "\n".join(lines)
 
 
@@ -1666,11 +1666,11 @@ def _intro_framework(data):
         lines.append("本年立法进行中：" + "、".join(
             journal.law_zh(str(x.get("law")))
             for x in data["laws_in_progress"][:3]) + "。")
-    ams = journal.amendment_fact_lines(data)
+    ams = journal.amendment_fact_lines(data, only_new=True)
     if ams:
-        # 现行修正案素材 (与报纸政界动态同口径), 杂志卷首一并可见
-        lines.append("现行宪法修正案：" + "；".join(
-            a.replace("- ", "", 1) for a in ams))
+        # 本报告年新增修正案素材 (与报纸政界动态同口径); 素材行自带"本年度新增
+        # 法律附则："前缀, 此处只去列表符号, 不再重复拼标签
+        lines.append("；".join(a.replace("- ", "", 1) for a in ams))
     ruler = m.get("ruler") or {}
     if ruler.get("name") and ruler.get("activity"):
         lines.append(f"统治者{ruler['name']}的活动：{ruler['activity']}。")
@@ -1891,6 +1891,14 @@ def build_intro_messages(data):
     # 政体字段随之从抬头移除
     full = journal.full_country_name(country, govt_zh, data.get("govt_law"))
     mag_name = style.derive_magazine_name(data)
+    # 非中华文化圈: 导言与正文一律公历纪年 (基调已含该规则, 此处再以变量行强化,
+    # 避免开篇写成「岁在戊戌」式干支纪年)
+    cal_note = ""
+    try:
+        if style.style_sphere_from_data(data) != style.SPHERE_SINIC:
+            cal_note = f"（纪年一律用公历书写，如{year}年）"
+    except Exception:
+        cal_note = ""
     # 缓存友好 (2026-08-27): system 以静态定位/基调/通用规则开头,
     # 动态变量 (刊名/国名/都城/年份/特稿清单/输出格式/数据框架) 移入 user。
     sys_msg = (
@@ -1912,7 +1920,7 @@ def build_intro_messages(data):
         "本期关键变量(抬头中的国名必须原样保留正式国名):\n"
         f"【刊名】《{mag_name}》(经编辑部审定, 导言抬头一律使用该刊名)\n"
         f"【国名】{country}（合并政体后的正式国名：{full}）\n"
-        f"【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}\n\n"
+        f"【都城】{capital}\n【政体】{govt_zh}\n【年份】{year}{cal_note}\n\n"
         f"{count_txt}: {preview}。{special_note}\n\n"
         "输出格式:\n"
         f"# 《{mag_name}》\n"
@@ -1958,9 +1966,10 @@ def _investment_req_append(req, facts):
 def _strip_law_change_clause(req, data):
     """本年度无法律变化时, 从 req 中去掉「报道本年法律变化」类指令
     (数据层已不再下发占位行, 指令残留会诱导模型硬写法律段落)。
-    保留句首「报道」动词, 使剩余句 "报道统治者活动、执政集团格局…" 通顺。"""
+    保留句首「报道」动词, 使剩余句 "报道统治者活动、执政集团格局…" 通顺。
+    本报告年新增修正案同样算法律变化 (new_amendments 非空时保留指令)。"""
     if not (data.get("laws_enacted") or data.get("laws_repealed")
-            or data.get("laws_in_progress")):
+            or data.get("laws_in_progress") or data.get("new_amendments")):
         req = req.replace(
             "报道本年法律变化(数据给出新施行/废除的法律)、", "报道")
     return req
@@ -2086,7 +2095,7 @@ def _strip_markdown_tables(text):
     return "\n".join(out)
 
 
-def _normalize_section(text, title):
+def _normalize_section(text, title, data=None):
     """板块正文规范化: 所有标题降为 ###, 表格转自然语言, 无标题时补 ### 板块名。
     加粗回显标题行 (**案件卷宗** / **案件卷宗：**) 归一化为 ### 标题, 已有时删除。"""
     _bold = re.compile(r"^\*\*(.+?)[:：]?\*\*[:：]?\s*$")
@@ -2114,6 +2123,7 @@ def _normalize_section(text, title):
                 continue
         out.append(s)
     body = _strip_markdown_tables("\n".join(out)).strip()
+    body = journal._desinicize_text(body, data)
     body = journal.clean_number_spaces(body)
     # 模型偶尔重复写板块标题并以 --- 分隔 (如 ### 案件卷宗\n\n---\n### 案件卷宗),
     # 折叠为单个标题, 避免正文出现空板块头。
@@ -2124,6 +2134,46 @@ def _normalize_section(text, title):
     if not _MAG_HEAD_RE.match(first):
         return f"### {title}\n\n{body}"
     return body
+
+
+# 板块标题去中国化 (2026): 文章模板标题含「衙门/州县/士绅」等中式制度词,
+# 非中华文化圈 (西方/伊斯兰/其他) 的刊物里改用该文化圈通用的官署称谓。
+_TITLE_SPHERE_REPL = (
+    ("衙门", "官署"),
+    ("州县", "地方"),
+    ("士绅", "乡绅"),
+)
+
+
+def _localize_article_titles(articles, data):
+    """非中华文化圈的文章标题/主题/板块名做制度词替换 (不改动模板常量)。"""
+    try:
+        sphere = style.style_sphere_from_data(data)
+    except Exception:
+        return articles
+    if sphere == style.SPHERE_SINIC:
+        return articles
+    out = []
+    for a in articles:
+        a2 = dict(a)
+        for k in ("default_title", "title", "theme"):
+            v = a2.get(k)
+            if isinstance(v, str):
+                for src, dst in _TITLE_SPHERE_REPL:
+                    v = v.replace(src, dst)
+                a2[k] = v
+        secs = []
+        for s in a2.get("sections") or []:
+            s2 = dict(s)
+            v = s2.get("title")
+            if isinstance(v, str):
+                for src, dst in _TITLE_SPHERE_REPL:
+                    v = v.replace(src, dst)
+                s2["title"] = v
+            secs.append(s2)
+        a2["sections"] = secs
+        out.append(a2)
+    return out
 
 
 def _build_article_list(data):
@@ -2202,7 +2252,7 @@ def _build_article_list(data):
                 articles.append(a2)
     if not articles:
         articles = [copy.deepcopy(a) for a in ARTICLES[:3]]
-    return articles
+    return _localize_article_titles(articles, data)
 
 
 def _assemble(intro, leads, sections, data, articles=None, titles=None):
@@ -2282,7 +2332,7 @@ def generate_magazine(data, cfg, force=True):
     intro_cfg = dict(cfg)
     intro_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 1500)
     intro = journal.call_deepseek(build_intro_messages(data), intro_cfg).strip()
-    intro = journal.clean_number_spaces(intro)
+    intro = journal._desinicize_text(journal.clean_number_spaces(intro), data)
     sec_cfg = dict(cfg)
     sec_cfg["max_tokens"] = min(cfg.get("max_tokens", 8000), 4000)
 
@@ -2318,7 +2368,8 @@ def generate_magazine(data, cfg, force=True):
                 title = title.replace("凶手", "嫌疑人")
                 body = (body or "").replace("凶手", "嫌疑人")
             body = _normalize_section(body or text,
-                                      article["sections"][0]["title"])
+                                      article["sections"][0]["title"],
+                                      data=data)
             # 开篇板块: 模型常以单换行代替分段 (Markdown 下仍是一段),
             # 统一转为空行分隔的段落。
             body = re.sub(r"(?<!\n)\n(?!\n)", "\n\n", body)
@@ -2369,7 +2420,7 @@ def generate_magazine(data, cfg, force=True):
             text = journal.call_deepseek(msg, sec2).strip()
             if article["key"] in _CRIME_KEYS:
                 text = text.replace("凶手", "嫌疑人")
-            body = _normalize_section(text, section["title"])
+            body = _normalize_section(text, section["title"], data=data)
             return article["key"], section["key"], body
         except Exception as e:
             journal.log(f"板块《{section['title']}》生成失败: {e}")

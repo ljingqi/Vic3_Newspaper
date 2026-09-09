@@ -10,11 +10,15 @@ __pycache__/
 #   goods_measure.json     （运行时量词表）
 #   rakaly.exe             （熔 .v3 存档，免去另装）
 #   build_state_food_palette.py / build_food_zones.py （升级游戏后重建 zone 数据）
+#   gen_country_sphere.py  （升级游戏后重建 data/country_sphere.json 文风文化圈表）
+#   test_style_sphere.py   （文风文化圈轴离线回归自检）
 tools/*
 !tools/goods_measure.json
 !tools/rakaly.exe
 !tools/build_state_food_palette.py
 !tools/build_food_zones.py
+!tools/gen_country_sphere.py
+!tools/test_style_sphere.py
 Source/
 
 # 会话生成输出统一输出到 output/（报纸/杂志/原始 JSON 一律不入库）

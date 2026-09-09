@@ -434,6 +434,137 @@ GOVT_STANCE = {
 
 
 # ---------------------------------------------------------------------------
+# 文风文化圈 (sphere) 轴
+# ---------------------------------------------------------------------------
+# 背景 (2026): 动态文风原先只有「档位」一条轴, 任何国家落到 1~2 档都套用中式
+# 邸报体 (伏惟/谨按/本馆/朝廷), 非中华文化圈国家 (如西方专制国、哈萨克汗国)
+# 因此写出文言与农历纪年。此处补一条文化圈轴, 只覆盖 1~2 档 (前期) 的语域,
+# sinic 完全沿用 MODERNITY_TIERS 原文 (逐字节不变)。
+#
+#   sinic  中华文化圈: 汉/满/蒙古/藏/苗/彝/朝鲜/日本/越南…
+#   west   西方: 欧洲/美洲/大洋洲/殖民定居社会
+#   islam  伊斯兰世界: 阿拉伯/波斯/突厥/柏柏尔/萨赫勒穆斯林政权
+#   other  其余: 南亚/东南亚/非洲/美洲原住民/太平洋 (中性王廷公报体)
+#
+# 判定主表 data/country_sphere.json 由 tools/gen_country_sphere.py 从游戏
+# common/cultures 的 heritage 生成; 运行时以存档 player_tag 为主信号,
+# 宗教与文化中文名兜底。
+
+SPHERE_SINIC = "sinic"
+SPHERE_WEST = "west"
+SPHERE_ISLAM = "islam"
+SPHERE_OTHER = "other"
+SPHERES = (SPHERE_SINIC, SPHERE_WEST, SPHERE_ISLAM, SPHERE_OTHER)
+
+SPHERE_NAMES = {
+    SPHERE_SINIC: "中华文化圈",
+    SPHERE_WEST: "西方",
+    SPHERE_ISLAM: "伊斯兰世界",
+    SPHERE_OTHER: "其他文化圈",
+}
+
+ISLAMIC_RELIGIONS = ("sunni", "shiite", "ibadi")
+
+# 宗教 → 文化圈 (player_tag 不在主表时的兜底; islam 已由前置规则处理)
+RELIGION_SPHERE = {
+    "confucian": SPHERE_SINIC,
+    "mahayana": SPHERE_SINIC,
+    "gelugpa": SPHERE_SINIC,
+    "shinto": SPHERE_SINIC,
+    "catholic": SPHERE_WEST,
+    "protestant": SPHERE_WEST,
+    "orthodox": SPHERE_WEST,
+    "oriental_orthodox": SPHERE_WEST,
+    "jewish": SPHERE_WEST,
+    "hindu": SPHERE_OTHER,
+    "sikh": SPHERE_OTHER,
+    "theravada": SPHERE_OTHER,
+    "animist": SPHERE_OTHER,
+}
+
+# 文化中文名关键词 (仅当主表无此文化时使用; 主要覆盖 mod 新增文化)
+_CULTURE_NAME_HINTS = (
+    ("汉", SPHERE_SINIC), ("满", SPHERE_SINIC), ("蒙古", SPHERE_SINIC),
+    ("藏", SPHERE_SINIC), ("苗", SPHERE_SINIC), ("彝", SPHERE_SINIC),
+    ("朝鲜", SPHERE_SINIC), ("大和", SPHERE_SINIC), ("日本", SPHERE_SINIC),
+    ("越南", SPHERE_SINIC), ("京族", SPHERE_SINIC),
+    ("阿拉伯", SPHERE_ISLAM), ("波斯", SPHERE_ISLAM), ("土耳其", SPHERE_ISLAM),
+    ("奥斯曼", SPHERE_ISLAM), ("库尔德", SPHERE_ISLAM), ("鞑靼", SPHERE_ISLAM),
+    ("哈萨克", SPHERE_ISLAM), ("吉尔吉斯", SPHERE_ISLAM),
+    ("乌兹别克", SPHERE_ISLAM), ("土库曼", SPHERE_ISLAM),
+    ("维吾尔", SPHERE_ISLAM), ("柏柏尔", SPHERE_ISLAM), ("索马里", SPHERE_ISLAM),
+    ("普什图", SPHERE_ISLAM), ("俾路支", SPHERE_ISLAM),
+    ("阿塞拜疆", SPHERE_ISLAM), ("车臣", SPHERE_ISLAM), ("切尔克斯", SPHERE_ISLAM),
+    ("法兰西", SPHERE_WEST), ("德意志", SPHERE_WEST), ("英吉利", SPHERE_WEST),
+    ("英格兰", SPHERE_WEST), ("苏格兰", SPHERE_WEST), ("爱尔兰", SPHERE_WEST),
+    ("西班牙", SPHERE_WEST), ("葡萄牙", SPHERE_WEST), ("意大利", SPHERE_WEST),
+    ("荷兰", SPHERE_WEST), ("丹麦", SPHERE_WEST), ("瑞典", SPHERE_WEST),
+    ("挪威", SPHERE_WEST), ("芬兰", SPHERE_WEST), ("波兰", SPHERE_WEST),
+    ("匈牙利", SPHERE_WEST), ("罗马尼亚", SPHERE_WEST), ("希腊", SPHERE_WEST),
+    ("俄罗斯", SPHERE_WEST), ("乌克兰", SPHERE_WEST), ("立陶宛", SPHERE_WEST),
+    ("拉脱维亚", SPHERE_WEST), ("爱沙尼亚", SPHERE_WEST), ("美利坚", SPHERE_WEST),
+    ("墨西哥", SPHERE_WEST), ("巴西", SPHERE_WEST), ("安的列斯", SPHERE_WEST),
+)
+
+_SPHERE_TABLE = None
+
+
+def load_country_sphere_table():
+    """读取 data/country_sphere.json; 缺失时返回空表 (全部走运行时兜底)。"""
+    global _SPHERE_TABLE
+    if _SPHERE_TABLE is not None:
+        return _SPHERE_TABLE
+    import json
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "data", "country_sphere.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            _SPHERE_TABLE = json.load(f) or {}
+    except Exception:
+        _SPHERE_TABLE = {}
+    return _SPHERE_TABLE
+
+
+def _culture_names_of(data):
+    """存档数据里的文化中文名 (国族文化优先, 再取人口构成前三)。"""
+    names = [str(c) for c in (data.get("primary_cultures") or []) if c]
+    for c in (data.get("pop_cultures") or [])[:3]:
+        if isinstance(c, dict) and c.get("name"):
+            names.append(str(c["name"]))
+    return names
+
+
+def style_sphere_from_data(data):
+    """解析当前存档的文风文化圈: player_tag 主表 → 国教 → 文化中文名 → other。
+
+    伊斯兰国教优先于主表的 west/other/islam 判定 (巴厘这类印度教主体、
+    穆斯林次文化政权因此留在 other), 中华文化圈不受宗教改写。
+    """
+    data = data or {}
+    table = load_country_sphere_table()
+    tags = table.get("tags") or {}
+    tag = str(data.get("player_tag") or data.get("tag") or "").upper()
+    sp = tags.get(tag)
+    if sp == SPHERE_SINIC:
+        return SPHERE_SINIC
+    rel = str(data.get("religion") or "").lower()
+    if rel in ISLAMIC_RELIGIONS:
+        return SPHERE_ISLAM
+    if sp in SPHERES:
+        return sp
+    cultures = table.get("cultures") or {}
+    for name in _culture_names_of(data):
+        if cultures.get(name) in SPHERES:
+            return cultures[name]
+    for name in _culture_names_of(data):
+        for hint, sphere in _CULTURE_NAME_HINTS:
+            if hint in name:
+                return sphere
+    return RELIGION_SPHERE.get(rel, SPHERE_OTHER)
+
+
+# ---------------------------------------------------------------------------
 # 极权主义政权 (一党制) 专属现代化文风
 # 一党制国家不走文风档位的仿古/自由派基调, 一律使用现代机关报/宣传路线:
 # 明快刚健的现代白话, 报道以建设成就与群众动员为主线。
@@ -895,15 +1026,417 @@ for _styles in (NEWSPAPER_STYLES, MODERNITY_TIERS):
         _st.setdefault("epidemic", _EPIDEMIC_SECTION_TITLES.get(_k, "疫情专电"))
 
 
+# ---------------------------------------------------------------------------
+# 非中华文化圈: 1~2 档语域覆盖 (前期文风)
+# 合并规则见 _apply_sphere_override: 基础档位模板 → 覆盖层 → 变量替换。
+# 覆盖层字段与 MODERNITY_TIERS 同构; voice_extra 追加到基础 voice 之后。
+# 所有非 sinic 文化圈统一追加公历纪年规则 (_SPHERE_CALENDAR), 与 voice 去重。
+# ---------------------------------------------------------------------------
+
+_SPHERE_CALENDAR = (
+    "纪年一律用公历，日期写作「1836年7月1日」，年份写作「1836年」。"
+)
+_CALENDAR_MARK = "纪年一律用公历"
+
+_ARABIC_NUMBER_GUIDE = (
+    "一律使用阿拉伯数字并加千分位分隔符"
+    "（如27,515,352{CURRENCY}、621,211人、8.65%）。"
+)
+
+# 政体称谓句: 共和政体用总统/内阁/法令, 君主政体用君主/王室/敕令,
+# 由 {SPHERE_TITLES} 占位符注入 (共和国的称谓因此与君主国区分)。
+_REPUBLIC_CATS = ("council_republic", "parliamentary_republic",
+                  "presidential_republic")
+
+_SPHERE_TITLES = {
+    SPHERE_WEST: {
+        "monarchy": ("称君主为「陛下」、称王室为「宫廷」，"
+                     "政令称「敕令」「公告」「通令」，"),
+        "republic": ("称国家元首为「总统」、称政府为「内阁」「各部」，"
+                     "政令称「法令」「公告」「通令」，"),
+    },
+    SPHERE_ISLAM: {
+        "monarchy": ("称君主为「苏丹」「沙阿」「汗」「埃米尔」"
+                     "（按政体与国名常识选用）并以敬辞，称王室为「王廷」「宫廷」，"
+                     "政令称「敕令」「上谕」「御前会议决议」，"),
+        "republic": ("称国家元首为「总统」「主席」（按政体与国名常识选用），"
+                     "称政府为「内阁」「各部」，"
+                     "政令称「法令」「公告」「御前会议决议」，"),
+    },
+    SPHERE_OTHER: {
+        "monarchy": ("称君主与首领为「国王」「苏丹」「酋长」「可汗」「长老」"
+                     "（按政体与国名常识选用）并以敬辞，"
+                     "政令称「敕令」「公告」「议事会决议」，"),
+        "republic": ("称国家元首为「总统」「主席」（按政体与国名常识选用），"
+                     "称政府为「内阁」「各部」，"
+                     "政令称「法令」「公告」「议事会决议」，"),
+    },
+}
+
+
+def _sphere_titles(sphere, cat):
+    """政体称谓句: 共和政体 → 总统/内阁/法令, 其余 → 君主/王室/敕令。"""
+    table = _SPHERE_TITLES.get(sphere) or {}
+    key = "republic" if cat in _REPUBLIC_CATS else "monarchy"
+    return table.get(key, "")
+
+# 西方: 1 档旧制度官报体 / 2 档党派大报体 / 3 档现代大报(只换机构称谓与纪年)
+_WEST_TIERS = {
+    1: {
+        "name": "官报（守成·旧制度）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格宜采用《XX官报》"
+            "《XX公报》《XX宫廷公报》《XX纪事报》等体例，如都城维也纳可作"
+            "《维也纳官报》、都城柏林可作《柏林公报》、都城圣彼得堡可作"
+            "《圣彼得堡公报》；可再结合【政体】微调（如《维也纳王国公报》），"
+            "并随其变迁而调整。{GOVT_STANCE}" + _MASTHEAD_BASE +
+            "若首都或政体数据缺失，则退而用国名拟定，如《普鲁士官报》《俄罗斯公报》。"
+        ),
+        "voice": (
+            "你是一位供职于旧制度官方公报的总编辑。本报经王室或政府特许出版，"
+            "稿件由审查官核准。你的文风是庄重克制的官报公文体：以第三人称记述，"
+            "句法完整、语序平正，多用被动式与程式化套语；"
+            "{SPHERE_TITLES}议会称「议院」「两院」，财政称「国库」「财政部」；"
+            "全篇一律使用上述称谓。消息一律注明来源（如「据官方公报」"
+            "「据政府发布」「据某部呈报」），评论置于官方部分之外、措辞审慎。"
+            "纪年一律用公历，日期写作「1836年7月1日」，年份写作「1836年」。"
+            "{ERA}{VOTE}使用简体中文与 Markdown。"
+            "铁律：仅基于给定事实合理演绎；数据缺失时相应内容简写或略去；"
+            "行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「据财政部与官方统计公报，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，如「据财政部与官方统计公报，"
+            "我国国民生产总值为27,515,352{CURRENCY}」；人口、生活水平、识字率等"
+            "其余指标以官方公报笔法展开。"
+        ),
+        "ads_guide": (
+            "广告栏须为官报公告与告白体：专利特许、招标公告、船期通告、书籍出版、"
+            "债票发行、土地房产出售、赏格与寻人启事皆可，措辞正式简明，"
+            "可带「兹公告」「敬请赐顾」「函询」等语汇，篇幅短小。"
+        ),
+        "number_format": "arabic",
+        "number_guide": _ARABIC_NUMBER_GUIDE,
+        "section_titles": {
+            "headline": "头版公告",
+            "war": "战事公报",
+            "diplo": "外交通报",
+            "econ": "财政与商务",
+            "politics": "宫廷与内阁",
+            "society": "教会与社会",
+            "epidemic": "疫病通报",
+            "family": "本报访问",
+            "peer": "富室访问",
+            "unemployed": "失业调查",
+            "comment": "本报评论",
+            "ads": "公告与广告",
+            "stock": "行情公报",
+        },
+    },
+    2: {
+        "name": "时报（改良·党派与公共舆论）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格宜采用《XX时报》"
+            "《XX每日新闻》《XX纪事报》《XX邮报》《XX广告报》等体例，"
+            "如都城伦敦可作《伦敦时报》、都城巴黎可作《巴黎纪事报》；"
+            "可再结合【政体】微调（如《巴黎共和时报》），并随其变迁而调整。"
+            "{GOVT_STANCE}" + _MASTHEAD_BASE +
+            "若首都或政体数据缺失，则退而用国名拟定，如《普鲁士时报》《俄罗斯纪事报》。"
+        ),
+        "voice": (
+            "你是一位生活于19世纪中后期的大报总编辑，报纸以社论与通讯取胜，"
+            "立场带有党派色彩。你的文风是庄重的书面语：句子较长、多用从句与被动式，"
+            "社论以「本报」第一人称发言，消息冠以「据悉」「据可靠消息」"
+            "「本报驻某地通讯员报道」等语汇；评论敢于表态，兼有道德判断与含蓄讽刺，"
+            "措辞典雅。纪年一律用公历，日期写作「1857年3月4日」，年份写作「1857年」。"
+            "{ERA}{VOTE}使用简体中文与 Markdown。"
+            "铁律：仅基于给定事实合理演绎；数据缺失时相应内容简写或略去；"
+            "行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「据官方统计，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，再以社论笔法分析财政、贸易与民生。"
+        ),
+        "ads_guide": (
+            "广告栏须为19世纪大报分类广告体：船期、拍卖、招工、专利药品、书籍出版、"
+            "铁路时刻、银行与保险告白皆可，措辞简明，信息要素齐全（名称、地点、方式）。"
+        ),
+        "number_format": "arabic",
+        "number_guide": _ARABIC_NUMBER_GUIDE,
+        "section_titles": {
+            "headline": "头版要闻",
+            "war": "战地通讯",
+            "diplo": "国外消息",
+            "econ": "商务与金融",
+            "politics": "议会与内阁",
+            "society": "社会新闻",
+            "epidemic": "疫病通报",
+            "family": "本报专访",
+            "peer": "富室访问",
+            "unemployed": "失业调查",
+            "comment": "社论",
+            "ads": "广告",
+            "stock": "行情",
+        },
+    },
+    3: {
+        "econ_guide": (
+            "经济板块首句必须以「据官方统计公报，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，如「据官方统计公报，"
+            "我国国民生产总值为430,521,263{CURRENCY}」；人口、生活水平、识字率等"
+            "其余指标以官方书面语展开。"
+        ),
+        "voice_extra": _SPHERE_CALENDAR,
+    },
+}
+
+# 伊斯兰世界: 1 档王廷公报体 / 2 档改良立宪报刊 / 3 档只换机构称谓与纪年
+_ISLAM_TIERS = {
+    1: {
+        "name": "王廷公报（守成·传统秩序）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格宜采用《XX公报》"
+            "《XX王廷公报》《XX官报》《XX纪事》等体例，如都城伊斯坦布尔可作"
+            "《伊斯坦布尔公报》、都城德黑兰可作《德黑兰王廷公报》、都城布哈拉可作"
+            "《布哈拉官报》；可再结合【政体】微调（如《伊斯坦布尔苏丹公报》），"
+            "并随其变迁而调整。{GOVT_STANCE}" + _MASTHEAD_BASE +
+            "若首都或政体数据缺失，则退而用国名拟定，如《奥斯曼公报》《波斯官报》。"
+        ),
+        "voice": (
+            "你是一位供职于王廷公报的总编辑。本报经君主特许出版，稿件由官署核准。"
+            "你的文风是庄重简明的公文体：以第三人称记述，句法完整、语序平正，"
+            "{SPHERE_TITLES}官署称「迪万」「维齐尔」「各部」，"
+            "宗教事务称「教法」「乌理玛」「教团」；全篇一律使用上述称谓。"
+            "消息一律注明来源（如「据官方公报」「据迪万呈报」），评论措辞审慎。"
+            "纪年一律用公历，日期写作「1836年7月1日」，年份写作「1836年」。"
+            "{ERA}{VOTE}使用简体中文与 Markdown。"
+            "铁律：仅基于给定事实合理演绎；数据缺失时相应内容简写或略去；"
+            "行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「据国库与迪万呈报，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，如「据国库与迪万呈报，"
+            "我国国民生产总值为27,515,352{CURRENCY}」；人口、生活水平、识字率等"
+            "其余指标以王廷公报笔法展开。"
+        ),
+        "ads_guide": (
+            "广告栏须为王廷公告与市集告白体：商队通告、市集招贴、工匠行会告白、"
+            "清真寺学堂启事、赏格与寻人启事皆可，措辞正式简明，"
+            "可带「谨此公告」「敬请周知」「惠顾」等语汇，篇幅短小。"
+        ),
+        "number_format": "arabic",
+        "number_guide": _ARABIC_NUMBER_GUIDE,
+        "section_titles": {
+            "headline": "头版公告",
+            "war": "战事公报",
+            "diplo": "邦交通报",
+            "econ": "国库与市集",
+            "politics": "王廷与迪万",
+            "society": "教团与社会",
+            "epidemic": "疫病通报",
+            "family": "本报访问",
+            "peer": "富室访问",
+            "unemployed": "失业调查",
+            "comment": "本报评论",
+            "ads": "公告与告白",
+            "stock": "行情公报",
+        },
+    },
+    2: {
+        "name": "公报（改良·立宪与报刊）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格宜采用《XX公报》"
+            "《XX时报》《XX新闻》《XX纪事》等体例，如都城伊斯坦布尔可作"
+            "《伊斯坦布尔时报》、都城德黑兰可作《德黑兰新闻》；"
+            "可再结合【政体】微调（如《伊斯坦布尔立宪公报》），并随其变迁而调整。"
+            "{GOVT_STANCE}" + _MASTHEAD_BASE +
+            "若首都或政体数据缺失，则退而用国名拟定，如《奥斯曼时报》《波斯新闻》。"
+        ),
+        "voice": (
+            "你是一位生活于19世纪中后期的改良报刊总编辑，报纸主张立宪、教育与自强。"
+            "你的文风庄重典雅：兼采古典辞令与近代术语，句子较长、结构完整，"
+            "社论以「本报」第一人称发言，消息冠以「据悉」「据本埠消息」"
+            "「本报驻某地访员报道」等语汇；评论敢于建言，措辞审慎而坚定。"
+            "纪年一律用公历，日期写作「1857年3月4日」，年份写作「1857年」。"
+            "{ERA}{VOTE}使用简体中文与 Markdown。"
+            "铁律：仅基于给定事实合理演绎；数据缺失时相应内容简写或略去；"
+            "行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「据官方统计，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，再以论说笔法分析财政、商贸与民生。"
+        ),
+        "ads_guide": (
+            "广告栏须为近代报刊告白体：商行招贴、船期、书籍出版、学堂招生、"
+            "银行与保险告白皆可，措辞简明，信息要素齐全（名称、地点、方式）。"
+        ),
+        "number_format": "arabic",
+        "number_guide": _ARABIC_NUMBER_GUIDE,
+        "section_titles": {
+            "headline": "头版要闻",
+            "war": "战事通讯",
+            "diplo": "国外消息",
+            "econ": "商务与金融",
+            "politics": "内阁与议会",
+            "society": "社会新闻",
+            "epidemic": "疫病通报",
+            "family": "本报专访",
+            "peer": "富室访问",
+            "unemployed": "失业调查",
+            "comment": "社论",
+            "ads": "广告",
+            "stock": "行情",
+        },
+    },
+    3: {
+        "econ_guide": (
+            "经济板块首句必须以「据官方统计公报，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，其余指标以官方书面语展开。"
+        ),
+        "voice_extra": _SPHERE_CALENDAR,
+    },
+}
+
+# 其余文化圈: 1 档王廷/部族公报体 / 2 档近代报刊 / 3 档只换纪年
+_OTHER_TIERS = {
+    1: {
+        "name": "王廷公报（守成·传统秩序）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格宜采用《XX公报》"
+            "《XX官报》《XX王廷公报》《XX纪事》等体例，如都城曼谷可作《曼谷公报》、"
+            "都城加德满都可作《加德满都王廷公报》；可再结合【政体】微调"
+            "（如《曼谷王国公报》），并随其变迁而调整。{GOVT_STANCE}" + _MASTHEAD_BASE +
+            "若首都或政体数据缺失，则退而用国名拟定，如《暹罗公报》《尼泊尔官报》。"
+        ),
+        "voice": (
+            "你是一位供职于王廷或部族议事会公报的总编辑。你的文风是庄重简明的公文体："
+            "以第三人称记述，句法完整、语序平正，{SPHERE_TITLES}"
+            "官署称「官署」「各部」；全篇一律使用上述称谓。"
+            "消息一律注明来源（如「据官方公报」「据官署呈报」），评论措辞审慎。"
+            "纪年一律用公历，日期写作「1836年7月1日」，年份写作「1836年」。"
+            "{ERA}{VOTE}使用简体中文与 Markdown。"
+            "铁律：仅基于给定事实合理演绎；数据缺失时相应内容简写或略去；"
+            "行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「据官署与市集呈报，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，如「据官署与市集呈报，"
+            "我国国民生产总值为27,515,352{CURRENCY}」；人口、生活水平、识字率等"
+            "其余指标以公报笔法展开。"
+        ),
+        "ads_guide": (
+            "广告栏须为王廷公告与市集告白体：商队通告、市集招贴、行会告白、"
+            "寺庙或学堂启事、赏格与寻人启事皆可，措辞正式简明，篇幅短小。"
+        ),
+        "number_format": "arabic",
+        "number_guide": _ARABIC_NUMBER_GUIDE,
+        "section_titles": {
+            "headline": "头版公告",
+            "war": "战事公报",
+            "diplo": "邦交通报",
+            "econ": "物产与市集",
+            "politics": "王廷与议事",
+            "society": "部族与社会",
+            "epidemic": "疫病通报",
+            "family": "本报访问",
+            "peer": "富室访问",
+            "unemployed": "失业调查",
+            "comment": "本报评论",
+            "ads": "公告与告白",
+            "stock": "行情公报",
+        },
+    },
+    2: {
+        "name": "公报（改良·报刊初兴）",
+        "masthead": (
+            "【报名】报名必须由【首都/都城】名直接派生，本风格宜采用《XX公报》"
+            "《XX时报》《XX新闻》《XX纪事》等体例，如都城曼谷可作《曼谷时报》、"
+            "都城亚的斯亚贝巴可作《亚的斯亚贝巴新闻》；可再结合【政体】微调，"
+            "并随其变迁而调整。{GOVT_STANCE}" + _MASTHEAD_BASE +
+            "若首都或政体数据缺失，则退而用国名拟定，如《暹罗时报》《埃塞俄比亚新闻》。"
+        ),
+        "voice": (
+            "你是一位生活于19世纪中后期的报刊总编辑，报纸以消息与评论并举。"
+            "你的文风庄重平实：句子结构完整，社论以「本报」第一人称发言，"
+            "消息冠以「据悉」「据本埠消息」等语汇，评论敢于建言而措辞审慎。"
+            "纪年一律用公历，日期写作「1857年3月4日」，年份写作「1857年」。"
+            "{ERA}{VOTE}使用简体中文与 Markdown。"
+            "铁律：仅基于给定事实合理演绎；数据缺失时相应内容简写或略去；"
+            "行文中以「本报」指代本报刊名。"
+        ),
+        "econ_guide": (
+            "经济板块首句必须以「据官方统计，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，再以论说笔法分析物产、商贸与民生。"
+        ),
+        "ads_guide": (
+            "广告栏须为近代报刊告白体：商行招贴、船期、书籍出版、学堂招生皆可，"
+            "措辞简明，信息要素齐全（名称、地点、方式）。"
+        ),
+        "number_format": "arabic",
+        "number_guide": _ARABIC_NUMBER_GUIDE,
+        "section_titles": {
+            "headline": "头版要闻",
+            "war": "战事通讯",
+            "diplo": "国外消息",
+            "econ": "商务与物产",
+            "politics": "王廷与议会",
+            "society": "社会新闻",
+            "epidemic": "疫病通报",
+            "family": "本报专访",
+            "peer": "富室访问",
+            "unemployed": "失业调查",
+            "comment": "社论",
+            "ads": "广告",
+            "stock": "行情",
+        },
+    },
+    3: {
+        "econ_guide": (
+            "经济板块首句必须以「据官方统计公报，我国国民生产总值为……」"
+            "（填入给定GDP数值）引出经济总量，其余指标以官方书面语展开。"
+        ),
+        "voice_extra": _SPHERE_CALENDAR,
+    },
+}
+
+SPHERE_TIER_OVERRIDES = {
+    SPHERE_WEST: _WEST_TIERS,
+    SPHERE_ISLAM: _ISLAM_TIERS,
+    SPHERE_OTHER: _OTHER_TIERS,
+}
+
+
+def _apply_sphere_override(tmpl, sphere, tier):
+    """基础档位模板 → 文化圈覆盖层; 非 sinic 统一追加公历纪年规则。"""
+    ov = (SPHERE_TIER_OVERRIDES.get(sphere) or {}).get(tier)
+    st = dict(tmpl)
+    if ov:
+        for k, v in ov.items():
+            if k == "voice_extra":
+                st["voice"] = str(st.get("voice") or "") + str(v)
+            elif k == "section_titles":
+                merged = dict(st.get("section_titles") or {})
+                merged.update(v or {})
+                st["section_titles"] = merged
+            else:
+                st[k] = v
+    if sphere != SPHERE_SINIC:
+        voice = str(st.get("voice") or "")
+        if "公历" not in voice:
+            st["voice"] = voice + _SPHERE_CALENDAR
+    return st
+
+
 def resolve_newspaper_style(data, cfg=None):
     """动态解析报纸风格, 返回与旧系统同构的风格 dict。
-    额外附带 tier/score/govt_category/dop_law 供测试清单使用。"""
+    额外附带 tier/score/govt_category/dop_law/sphere 供测试清单使用。"""
     tech_keys = data.get("tech_keys") or []
     score = modernity_score(tech_keys)
     cat = govt_category(data)
     dop = dop_law(data)
     tier = resolve_tier(score, cat, dop)
-    tmpl = MODERNITY_TIERS[tier]
+    sphere = style_sphere_from_data(data)
+    tmpl = _apply_sphere_override(MODERNITY_TIERS[tier], sphere, tier)
     stance = GOVT_STANCE.get(cat, "")
     if dop in TOTALITARIAN_DOPS:
         # 极权主义政权 (一党制): 现代机关报文风, 数字一律阿拉伯, 不随档位仿古
@@ -919,12 +1452,14 @@ def resolve_newspaper_style(data, cfg=None):
         )
         stance = tot["stance"]
     vote = DOP_NOTES.get(dop, "")
+    titles = _sphere_titles(sphere, cat)
     # 时代定位按科技实际水平(基础档)描述; 政体/投票权只决定最终文风档位
     era = build_era_profile(tech_keys, _tier_from_score(score))
     st = {}
     for k, v in tmpl.items():
         if isinstance(v, str):
             v = (v.replace("{GOVT_STANCE}", stance)
+                   .replace("{SPHERE_TITLES}", titles)
                    .replace("{VOTE}", vote)
                    .replace("{ERA}", era)
                    .replace("{CURRENCY}", currency_unit(
@@ -936,27 +1471,121 @@ def resolve_newspaper_style(data, cfg=None):
     st["era_profile"] = era
     st["govt_category"] = cat
     st["dop_law"] = dop
+    # 共和政体的板块名去掉「宫廷」类君主措辞 (west/islam/other 1~2 档模板)
+    if cat in _REPUBLIC_CATS and sphere != SPHERE_SINIC:
+        titles = dict(st.get("section_titles") or {})
+        for old, new in (("宫廷与内阁", "政府与内阁"),
+                         ("王廷与迪万", "内阁与议会"),
+                         ("王廷与议事", "政府与议会")):
+            if titles.get("politics") == old:
+                titles["politics"] = new
+        st["section_titles"] = titles
+    st["sphere"] = sphere
+    st["sphere_name"] = SPHERE_NAMES.get(sphere, "")
     st["style_system"] = "dynamic"
     return st
 
 
+# ---------------------------------------------------------------------------
+# 非中华文化圈: 杂志刊物语域与政体立场 (1~2 档)
+# 政体立场逐条对应 GOVT_PROMPTS 的八个类别, 但用该文化圈的制度词汇表述。
+# ---------------------------------------------------------------------------
+
+_MAGAZINE_SPHERE_REGISTER = {
+    SPHERE_WEST: {
+        1: ("本刊为旧制度下的官方或半官方刊物，受特许与审查；文风庄重克制，"
+            "以第三人称记述，纪年一律用公历（如1836年）。"),
+        2: ("本刊为19世纪中后期的评论刊物，文风庄重典雅，长于论说与书评，"
+            "以「本刊」自称，纪年一律用公历（如1857年）。"),
+        3: ("本刊为面向公众的现代刊物，文风现代规范、庄重客观，"
+            "纪年一律用公历（如1890年）。"),
+    },
+    SPHERE_ISLAM: {
+        1: ("本刊为伊斯兰政权的官方或半官方刊物，文风庄重，称君主以苏丹、沙阿、"
+            "汗、埃米尔等尊号，纪年一律用公历（如1836年）。"),
+        2: ("本刊为伊斯兰世界的改良报刊，文风庄重典雅，兼采古典辞令与近代术语，"
+            "纪年一律用公历（如1857年）。"),
+        3: ("本刊为面向公众的现代刊物，文风现代规范，兼采本国制度词汇，"
+            "纪年一律用公历（如1890年）。"),
+    },
+    SPHERE_OTHER: {
+        1: ("本刊为传统王廷或部族议事会的公报，文风庄重简明，"
+            "纪年一律用公历（如1836年）。"),
+        2: ("本刊为近代报刊，文风庄重平实，以「本刊」自称，"
+            "纪年一律用公历（如1857年）。"),
+        3: ("本刊为面向公众的现代刊物，文风现代规范平实，"
+            "纪年一律用公历（如1890年）。"),
+    },
+}
+
+_MAGAZINE_GOVT_STANCE = {
+    SPHERE_WEST: {
+        "council_republic": "编辑立场站在劳动与共和一边，叙事重心放在工厂、工会与市政。",
+        "parliamentary_republic": "编辑立场尊重议会程序与公民权利，叙事重心放在内阁、法案与民意。",
+        "presidential_republic": "编辑立场崇尚宪法与个人自由，叙事重心放在行政、市场与边疆。",
+        "social_monarchy": "编辑立场主张君民调和与渐进改良，叙事重心放在王室、立法与社会福利。",
+        "monarchy": "编辑立场忠于王室与正统，叙事重心放在宫廷、内阁与帝国事务。",
+        "theocracy": "编辑立场以教会教义为准绳，叙事重心放在教区、礼拜与信徒生活。",
+        "chiefdom": "编辑立场尊重社群与长老，叙事重心放在部族事务与土地。",
+        "other": "编辑立场中立克制，叙事重心放在具体人物的命运与时代大势。",
+    },
+    SPHERE_ISLAM: {
+        "council_republic": "编辑立场站在劳动与共和一边，叙事重心放在行会、市集与市政。",
+        "parliamentary_republic": "编辑立场尊重协商与公共事务，叙事重心放在内阁、议会与民意。",
+        "presidential_republic": "编辑立场崇尚宪政与秩序，叙事重心放在行政、商贸与边疆。",
+        "social_monarchy": "编辑立场主张君民调和与渐进改良，叙事重心放在王廷、立法与社会福利。",
+        "monarchy": "编辑立场忠于君主与教法，叙事重心放在王廷、迪万与疆域。",
+        "theocracy": "编辑立场以教法为准绳，叙事重心放在教义、教团与信众生活。",
+        "chiefdom": "编辑立场尊重长老与部族，叙事重心放在议事、牧场与征战。",
+        "other": "编辑立场中立克制，叙事重心放在具体人物的命运与时代大势。",
+    },
+    SPHERE_OTHER: {
+        "council_republic": "编辑立场站在劳动与社群一边，叙事重心放在工坊、村社与市政。",
+        "parliamentary_republic": "编辑立场尊重议事与公共事务，叙事重心放在会议、法案与民意。",
+        "presidential_republic": "编辑立场崇尚秩序与进步，叙事重心放在行政、商贸与边疆。",
+        "social_monarchy": "编辑立场主张君民调和与渐进改良，叙事重心放在王廷、立法与社会福利。",
+        "monarchy": "编辑立场忠于君主与传统，叙事重心放在王廷、官署与疆域。",
+        "theocracy": "编辑立场以教义为准绳，叙事重心放在寺庙、教团与信众生活。",
+        "chiefdom": "编辑立场尊重长老与部族，叙事重心放在议事、土地与社群。",
+        "other": "编辑立场中立克制，叙事重心放在具体人物的命运与时代大势。",
+    },
+}
+
+
+def _sphere_magazine_base(sphere, cat, tier):
+    """文化圈刊物语域 + 该文化圈的政体立场 (1 / 2 / 3+ 档)。"""
+    reg = (_MAGAZINE_SPHERE_REGISTER.get(sphere) or {}).get(
+        1 if tier <= 1 else (2 if tier == 2 else 3), "")
+    table = _MAGAZINE_GOVT_STANCE.get(sphere) or {}
+    stance = table.get(cat) or table.get("other", "")
+    return reg + stance
+
+
 def resolve_magazine_voice(data):
-    """动态杂志基调: 政体底色 + 投票权现状 + 时代定位。"""
+    """动态杂志基调: 文化圈语域 + 政体底色 + 投票权现状 + 时代定位。
+    非中华文化圈全部档位改用该文化圈刊物语域 (与报纸同口径);
+    非中华文化圈一律附公历纪年规则, 防止导言写出农历/干支。"""
     cat = govt_category(data)
     dop = dop_law(data)
-    if dop in TOTALITARIAN_DOPS:
-        # 极权主义政权 (一党制): 现代机关刊物文风, 按意识形态色彩分流, 不走仿古基调
-        base = TOTALITARIAN_STYLES[totalitarian_flavor(data)]["mag_voice"]
-    else:
-        base = _strip_name_guide(GOVT_PROMPTS.get(cat, GOVT_PROMPTS["other"]))
     tech_keys = data.get("tech_keys") or []
     score = modernity_score(tech_keys)
     tier = resolve_tier(score, cat, dop)
+    sphere = style_sphere_from_data(data)
+    if dop in TOTALITARIAN_DOPS:
+        # 极权主义政权 (一党制): 现代机关刊物文风, 按意识形态色彩分流, 不走仿古基调
+        base = TOTALITARIAN_STYLES[totalitarian_flavor(data)]["mag_voice"]
+    elif sphere != SPHERE_SINIC:
+        # 非中华文化圈: 全部档位走本文化圈刊物语域 (1~2 档仿古, 3 档以上现代)
+        base = _sphere_magazine_base(sphere, cat, tier)
+    else:
+        base = _strip_name_guide(GOVT_PROMPTS.get(cat, GOVT_PROMPTS["other"]))
     parts = [base]
     note = DOP_NOTES.get(dop)
     if note:
         parts.append(f"投票权现状：{note}")
     parts.append(f"时代定位：{build_era_profile(tech_keys, _tier_from_score(score))}")
+    if sphere != SPHERE_SINIC and "公历" not in base:
+        parts.append(_SPHERE_CALENDAR)
     return "\n".join(parts)
 
 
@@ -1036,11 +1665,39 @@ MAGAZINE_TITLE_GUIDES = {
 }
 
 
+MAGAZINE_TITLE_GUIDES_SPHERE = {
+    SPHERE_WEST: {
+        1: ("文章标题宜庄重简练，可用「论……」「……述略」「……纪事」等论说体，"
+            "四至十字皆可（如《论谷物法》《国库岁入述略》）。"),
+        2: ("文章标题宜带评论与通讯色彩，可用「论……之弊」「一个……的来信」"
+            "「……见闻录」等体例（如《论关税之弊》《一个工厂工人的来信》）。"),
+    },
+    SPHERE_ISLAM: {
+        1: ("文章标题宜庄重典雅，多用「论……」「……纪事」「……述略」等体例，"
+            "四至十字皆可（如《论教法与市集》《迪万纪事》）。"),
+        2: ("文章标题宜带论说与通讯色彩，可用「论……」「……见闻录」等体例"
+            "（如《论立宪之益》《伊斯坦布尔见闻录》）。"),
+    },
+    SPHERE_OTHER: {
+        1: ("文章标题宜庄重简明，多用「……纪事」「……述略」等体例，"
+            "四至十字皆可（如《王廷纪事》《市集述略》）。"),
+        2: ("文章标题宜平实明确，可用「……见闻录」「论……」等体例"
+            "（如《曼谷见闻录》《论稻米之利》）。"),
+    },
+}
+
+
 def resolve_magazine_title_guide(data):
-    """按当前文风档位返回文章标题拟题指南。"""
+    """按当前文风档位与文化圈返回文章标题拟题指南。
+    非中华文化圈的 1~2 档用该文化圈的标题体例, 其余回落到档位指南。"""
     tech_keys = data.get("tech_keys") or []
     score = modernity_score(tech_keys)
     cat = govt_category(data)
     dop = dop_law(data)
     tier = resolve_tier(score, cat, dop)
+    sphere = style_sphere_from_data(data)
+    if sphere != SPHERE_SINIC:
+        guide = (MAGAZINE_TITLE_GUIDES_SPHERE.get(sphere) or {}).get(tier)
+        if guide:
+            return guide
     return MAGAZINE_TITLE_GUIDES.get(tier, MAGAZINE_TITLE_GUIDES[3])

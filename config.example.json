@@ -78,6 +78,8 @@
   "food_flavor_salt": "",
   "food_zone_enabled": true,
   "food_self_layer_enabled": true,
+  "report_date_random_enabled": true,
+  "report_date_salt": "",
   "constitution_annex_enabled": true,
   "constitution_annex_policy": "annual"
 }

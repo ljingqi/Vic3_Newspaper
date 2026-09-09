@@ -715,6 +715,10 @@ def snapshot_from_country(country, meta):
         # 报告月 (1-12): 存档恒为 1.1 自动存档时=1; 年中手工存档如实取 (如 1836.7.1)
         m2 = re.match(r"\d{4}\.(\d{1,2})", str(meta.get("game_date", "")))
         snap["report_month"] = int(m2.group(1)) if m2 else 1
+        # 真实存档日期另存一份: 出版日期随机化后 date 会被改写, 法律窗口/
+        # 战争和约判定/报告年度一律读 save_date
+        snap["save_date"] = snap["date"]
+        snap["save_month"] = snap["report_month"]
         snap["player"] = meta.get("name", "未知")
     if not country:
         return snap
@@ -12711,12 +12715,8 @@ def build_magazine_data(melted, snap, folder, year, ctx=None,
         snap.get("year"))
     # 报告年度: 存档在年初(1月)时报道上一历年, 否则报道本年度至今。
     # 战役州只取报告年度内的战役, 避免把前几年的战场/遗留荒废度误报为当前战乱。
-    save_date = str(snap.get("date") or "")
-    try:
-        save_month = int(save_date.split(".")[1]) if "." in save_date else 1
-    except (ValueError, IndexError):
-        save_month = 1
-    report_year = (year - 1) if save_month <= 1 else year
+    # 一律按真实存档日期 save_date 判定 (date 可能已被随机出版日期覆盖)。
+    report_year = _journal._report_year_of(snap)
 
     def _battle_year(b):
         try:
@@ -13441,7 +13441,8 @@ def query_amendments(data, country_id):
 
     条目形如 {type: amendment_*, law: <laws.database 实例id>, sponsor: <IG id>}。
     归属: amendment.law → laws 实例的 country/law; sponsor → 该国利益集团。
-    返回 [{type, law_key, sponsor_name, sponsor_definition}]。"""
+    返回 [{type, law_key, sponsor_name, sponsor_definition, cooldown,
+    cooldown_end_date}]。"""
     out = []
     if data is None or not country_id:
         return out
@@ -13475,6 +13476,13 @@ def query_amendments(data, country_id):
                 law_key, cid = law_map[lid]
                 if cid == country_id and law_key:
                     item = {"type": str(obj["type"]), "law_key": law_key}
+                    # 冷却字段: cooldown(月) + cooldown_end_date → 添加日期,
+                    # 供区分"开局即有的既有附则"与"本报告年新增" (见 _amendments_snapshot_items)
+                    cd = obj.get("cooldown")
+                    if isinstance(cd, (int, float)):
+                        item["cooldown"] = cd
+                    if obj.get("cooldown_end_date"):
+                        item["cooldown_end_date"] = str(obj["cooldown_end_date"])
                     sp = obj.get("sponsor")
                     if isinstance(sp, int) and sp in ig_map:
                         ig_name, ig_def = ig_map[sp]
@@ -13485,12 +13493,76 @@ def query_amendments(data, country_id):
     return out
 
 
-def _amendments_snapshot_items(data, country_id):
+def _law_baseline_tuple(data, country_id):
+    """该国现行法律中最早的 activation_date 元组 (开局默认法的基线日期)。
+
+    与 query_laws_changed 同款单次顺序扫描; 用于把"开局即有的附则"
+    (添加日期 = 开局日) 排除在"本报告年新增"之外。无数据返回 None。"""
+    if data is None or not country_id:
+        return None
+    idx = data.find(b'"laws"')
+    if idx < 0:
+        return None
+    laws_end = _object_end(data, data.find(b'{', idx))
+    db = data.find(b'"database"', idx)
+    if db < 0:
+        return None
+    j = data.find(b'{', db)
+    _IDOBJ = re.compile(rb'"(\d+)":\{')
+    best = None
+    while True:
+        m = _IDOBJ.search(data, j, laws_end - 1)
+        if not m:
+            break
+        ob2 = m.start() + len(m.group(0)) - 1
+        raw, end = extract_json_object(data, ob2)
+        if not raw:
+            break
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            j = end
+            continue
+        if (isinstance(obj, dict) and obj.get("law") and obj.get("active")
+                and obj.get("country") == country_id
+                and obj.get("activation_date")):
+            t = _v3_date_tuple(obj["activation_date"])
+            if t and (best is None or t < best):
+                best = t
+        j = end
+    return best
+
+
+def _amendment_added_date(am):
+    """修正案添加日期 'Y.M.D' (由 cooldown_end_date 回退 cooldown 个月推算)。
+
+    游戏 amendment_manager 条目含 cooldown(月) 与 cooldown_end_date; 冷却结束日
+    回退 cooldown 个月即该附则附入法条的日期。开局即有的附则回退后落在开局日
+    (1836.1.1)。字段缺失/无法解析 (如政治让步的哨兵值) 返回 None。"""
+    m = re.match(r"^(\d{4})\.(\d{1,2})\.(\d{1,2})",
+                 str(am.get("cooldown_end_date") or ""))
+    if not m:
+        return None
+    y, mo, d = (int(x) for x in m.groups())
+    cd = am.get("cooldown")
+    cd = int(cd) if isinstance(cd, (int, float)) else 0
+    t = (y * 12 + (mo - 1)) - cd
+    return f"{t // 12}.{t % 12 + 1}.{max(1, min(28, d))}"
+
+
+def _amendments_snapshot_items(data, country_id, report_year=None, save_date=None):
     """query_amendments → 快照 active_amendments 条目 (中文名/被修正法律中文/
-    官方描述或政治让步效果句已烘焙, 供报纸与杂志渲染直接使用)。"""
+    官方描述或政治让步效果句已烘焙, 供报纸与杂志渲染直接使用)。
+
+    每条附 added_date (推算的添加日期, 见 _amendment_added_date) 与 is_new
+    (添加日期落在报告年内 → 本报告年新增)。报告年判定与 build_magazine_data
+    同口径: save_date 在 1 月时报告上一历年, 否则报告本年度至今; 缺参时
+    is_new 一律 False (旧调用方按"既有附则"处理)。"""
     from journal import (POLITICAL_CONCESSION_KEYS,
                          POLITICAL_CONCESSION_TEXT, ig_zh, law_zh)
     loc = _load_loc_all()
+    save_tuple = _v3_date_tuple(save_date) if save_date else None
+    baseline = _law_baseline_tuple(data, country_id)
     items = []
     for am in query_amendments(data, country_id):
         typ = am.get("type") or ""
@@ -13500,6 +13572,14 @@ def _amendments_snapshot_items(data, country_id):
         ig = None
         if sp_name or sp_def:
             ig = ig_zh(sp_name, sp_def)
+        added = _amendment_added_date(am)
+        is_new = False
+        if added and report_year is not None:
+            at = _v3_date_tuple(added)
+            # 开局即有的附则 (添加日期 = 现行法基线日) 一律算既有
+            is_new = bool(at and at[0] == report_year
+                          and (save_tuple is None or at < save_tuple)
+                          and (baseline is None or at > baseline))
         if typ in POLITICAL_CONCESSION_KEYS:
             tpl = POLITICAL_CONCESSION_TEXT.get(typ) or ""
             desc = tpl.format(ig=ig or "赞助该法的利益集团")
@@ -13507,11 +13587,13 @@ def _amendments_snapshot_items(data, country_id):
                 "type": typ, "kind": "concession",
                 "name": loc.get(typ, "政治让步"),
                 "law_zh": lzh, "desc": desc,
+                "added_date": added, "is_new": is_new,
             })
             continue
         name = loc.get(typ) or typ.replace("amendment_", "")
         desc = (loc.get(typ + "_desc") or "").strip()
-        items.append({"type": typ, "name": name, "law_zh": lzh, "desc": desc})
+        items.append({"type": typ, "name": name, "law_zh": lzh, "desc": desc,
+                      "added_date": added, "is_new": is_new})
     return items
 
 
@@ -14157,6 +14239,11 @@ def build_journal_data(snap):
     """把存档快照转成 journal.py 兼容的 data dict。"""
     data = {}
     data["date"] = snap.get("date", "")
+    # 真实存档日期 (出版日期随机化后 date 为随机出版日, 供诊断/口径对照)
+    data["save_date"] = snap.get("save_date") or snap.get("date", "")
+    data["report_month"] = snap.get("report_month")
+    data["report_date_rolled"] = snap.get("report_date_rolled")
+    data["report_date_salt"] = snap.get("report_date_salt")
     data["year"] = snap.get("year")
     data["player"] = snap.get("player", "未知")
     # 玩家国家标识: 供 render_overview 从战争参与者中识别「我国」,
@@ -14214,9 +14301,11 @@ def build_journal_data(snap):
     data["laws_enacted"] = snap.get("laws_enacted") or []
     data["laws_repealed"] = snap.get("laws_repealed") or []
     data["laws_in_progress"] = snap.get("laws_in_progress") or []
-    # 现行全部法律 + 现行修正案 (程序端宪法要览 / 报纸与杂志修正案素材行用)
+    # 现行全部法律 + 全部现行法律附则 (程序端宪法要览附则段用)
     data["active_laws"] = snap.get("active_laws") or []
     data["active_amendments"] = snap.get("active_amendments") or []
+    # 本报告年新增修正案 (新闻素材用; 既有附则只进程序端附刊)
+    data["new_amendments"] = snap.get("new_amendments") or []
     data["free_speech_law"] = snap.get("free_speech_law")
     data["dop_law"] = snap.get("dop_law")
     data["govt_law"] = snap.get("govt_law")
@@ -14298,7 +14387,8 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
     snap["capital_region_key"] = cap_rk
     snap["capital_region"] = _load_loc_all().get(cap_rk) if cap_rk else None
     # 法律: 只保留本年度内发生变化的法律 (新施行 + 废除), 不再输出全部现行法
-    enacted, repealed = query_laws_changed(melted, cid, snap.get("date"))
+    enacted, repealed = query_laws_changed(
+        melted, cid, snap.get("save_date") or snap.get("date"))
     snap["laws_enacted"] = enacted
     snap["laws_repealed"] = repealed
     snap["laws"] = list(dict.fromkeys(enacted + repealed))
@@ -14334,8 +14424,15 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
     snap["laws_in_progress"] = laws_ip
     # 现行全部法律 (供程序端拼宪法要览等): 随 raw 持久化
     snap["active_laws"] = active_laws
-    # 现行宪法修正案 (含政治让步), 中文已烘焙; 报纸政界动态与杂志法律相关池共用
-    snap["active_amendments"] = _amendments_snapshot_items(melted, cid)
+    # 现行法律附则 (修正案, 含政治让步), 中文已烘焙; 程序端附刊与杂志法律相关池共用。
+    # 每条带 added_date/is_new: 只有本报告年新增的附则进新闻素材 (new_amendments),
+    # 开局即有的既有附则只留在附刊, 避免被年年写成本年新立法。
+    _report_year = _journal._report_year_of(snap)
+    snap["active_amendments"] = _amendments_snapshot_items(
+        melted, cid, report_year=_report_year,
+        save_date=snap.get("save_date") or snap.get("date"))
+    snap["new_amendments"] = [a for a in snap["active_amendments"]
+                              if a.get("is_new")]
     snap["player_country_id"] = cid
     index, gp_ids, dp_index = ctx.index()
     names = load_current_country_names(melted, index)
@@ -14367,7 +14464,8 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
     snap["pop_religions"] = pops["religions"]
     snap["professions"] = pops["professions"]
     snap["wars"] = parse_wars(melted, names, cid, index=index, gp_ids=gp_ids,
-                              dp_index=dp_index, save_date=snap.get("date"))
+                              dp_index=dp_index,
+                              save_date=snap.get("save_date") or snap.get("date"))
     # 前一年玩家国家发生的战争及结果
     snap["prev_year_wars"] = _prev_year_player_wars(snap.get("wars") or [], snap.get("year"))
     # 去年发生的战争(玩家/列强参战, 仅主要参加者), 供战事专电
@@ -14477,6 +14575,10 @@ def extract_full_snapshot(melted, cid=None, ctx=None, prev_interview=None,
     except Exception as e:
         print(f"[snapshot-map] 疆域图数据提取失败, 跳过: {e}")
         snap["map"] = None
+    # 出版日期随机化: 放在全部依赖真实存档日期的解析之后 (法律窗口/战争和约/
+    # 报告年度/疫情/股市均已按 save_date 算完), 只改 date/report_month 供
+    # 时令风味与显示使用; 每存档年抽一次, 随快照/raw 持久化。
+    _journal.roll_report_date(snap)
     return snap
 
 def _extract_powers(data, names, index=None, gp_ids=None, player_id=None, player_tag=None):
@@ -18743,8 +18845,11 @@ def make_newspaper(year=None, force=True, melted=None, snap=None, ctx=None,
     session_dir = os.path.join(cfg["journal_dir"], folder)
     if cfg.get("epidemic_enabled", True):
         _attach_epidemic(snap, melted, ctx, session_dir)
+    # 出版日期随机化: 缓存命中时旧快照可能未抽签 (无 save_date/report_date_rolled),
+    # 在此补抽并回写缓存; 已抽过的年份 (salt 未变) 保持不变。
+    rolled = journal.roll_report_date(snap, cfg)
     # 快照落盘缓存: 只缓存纯提取结果, 跨年战争由 _merge_prev_year_wars 每次重算
-    if not snap_from_cache:
+    if not snap_from_cache or rolled:
         _save_snapshot_cache(snap, cfg["journal_dir"], folder, snap.get("year"))
     # 存档层落盘: 补回上一年存档中的「去年战争」(V3 war_manager 只保留进行中战争)
     _merge_prev_year_wars(snap, cfg["journal_dir"], folder)
@@ -18814,7 +18919,9 @@ def make_magazine(year=None, force=True, melted=None, snap=None, cfg=None,
         # 调用方(后台生成线程)已捕获本次会话文件夹: 锁定同步, 换国时不被改走
         with journal._FOLDER_LOCK:
             journal.SESSION["folder"] = folder
-    if not snap_from_cache:
+    # 出版日期随机化: 缓存命中时旧快照可能未抽签, 在此补抽并回写缓存
+    rolled = journal.roll_report_date(snap, cfg)
+    if not snap_from_cache or rolled:
         _save_snapshot_cache(snap, cfg["journal_dir"], folder, snap.get("year"))
     # 杂志数据需要 melted 字节: 缓存命中时读 melt 缓存即可 (约 0.5s), 缺缓存再熔化
     if snap_from_cache and melted is None:
@@ -18872,6 +18979,8 @@ def _generate_async(year, snap, melted=None):
     session_dir = os.path.join(cfg["journal_dir"], folder)
     if cfg.get("epidemic_enabled", True):
         _attach_epidemic(snap, melted, ctx, session_dir)
+    # 出版日期随机化: 报纸与杂志两线程共用同一 snap, 一次抽签即同年同日期
+    journal.roll_report_date(snap, cfg)
     _save_snapshot_cache(snap, cfg["journal_dir"], folder, snap.get("year"))
     _merge_prev_year_wars(snap, cfg["journal_dir"], folder)
 

@@ -47,7 +47,8 @@ except Exception:
     pass
 
 from style import (DEFAULT_STYLE, FREE_SPEECH_FLAVOR, NEWSPAPER_STYLES,
-                   resolve_newspaper_style)
+                   resolve_newspaper_style, style_sphere_from_data,
+                   govt_category)
 from currency import (currency_unit, format_money, currency_system_text,
                       DEFAULT_CURRENCY)
 
@@ -256,6 +257,13 @@ DEFAULT_CONFIG = {
     # food_self_layer_enabled=False 时禁止写篮子外的家常自给食材 (纯篮子纪律)。
     "food_zone_enabled": True,
     "food_self_layer_enabled": True,
+    # 报告日期随机化 (2026-09): 自动存档恒在 1.1, 报告月恒为 1, 时令风味恒为
+    # 冬季; 开启后每存档年抽一个出版日期 (年份=存档年, 月份∈[存档月,12]),
+    # 写入 date/report_month 并随快照/raw 持久化, 真实存档日期另存 save_date。
+    # report_date_random_enabled=false 完整回退旧行为;
+    # report_date_salt 填任意串可重抽 (留空 = 每存档年真随机一次)。
+    "report_date_random_enabled": True,
+    "report_date_salt": "",
     # 报纸「现行宪法要览」附刊 (2026-09): 政界动态正文后由程序端插入现行法度
     # 总览, 不经 LLM。constitution_annex_policy 可选值:
     #   change=仅宪法变动/政权更替年(旧行为) / opening=仅开局年 /
@@ -2261,9 +2269,10 @@ def _price_index_base_note(data):
     return "基准年"
 
 def _has_law_activity(data):
-    """本年度是否有法律动态 (新施行/废除/立法中)。"""
+    """本年度是否有法律动态 (新施行/废除/立法中/新增修正案)。"""
     return bool((data.get("laws_enacted") or []) or (data.get("laws_repealed") or [])
-                or (data.get("laws_in_progress") or []))
+                or (data.get("laws_in_progress") or [])
+                or (data.get("new_amendments") or []))
 
 
 # Political Concessions (政治让步) 修正案 = 一组 generic 变体, 效果按变体等级
@@ -2295,14 +2304,21 @@ POLITICAL_CONCESSION_TEXT = {
 }
 
 
-def amendment_fact_lines(data):
-    """现行宪法修正案素材行 (有则返回、无则空)。
+def amendment_fact_lines(data, only_new=False):
+    """修正案素材行 (有则返回、无则空)。
 
-    读取快照预解析的 active_amendments 列表 (每条已含中文名/被修正法律中文/
-    官方描述或政治让步效果句与赞助集团中文名), 输出可直接进提示词的素材行。
-    """
+    only_new=False (附刊口径): 读取快照全量 active_amendments, 输出"现行法律
+    附则（修正案）"行 —— 措辞点明是现行法条的既有附则, 避免"宪法修正案"
+    一词被读成待议的修宪议程。
+    only_new=True (新闻口径): 只取 new_amendments (本报告年新增的修正案),
+    输出"本年度新增法律附则"行; 开局即有的既有附则不进新闻素材, 防止模型
+    把三年未变的法条附则年年写成本年新立法。
+    每条已含中文名/被修正法律中文/官方描述或政治让步效果句与赞助集团中文名,
+    输出可直接进提示词的素材行。"""
+    src = ((data.get("new_amendments") if only_new
+            else data.get("active_amendments")) or [])
     out = []
-    for am in (data.get("active_amendments") or []):
+    for am in src:
         if not isinstance(am, dict):
             continue
         typ = str(am.get("type") or "")
@@ -2310,18 +2326,22 @@ def amendment_fact_lines(data):
         law_zh = str(am.get("law_zh") or "").strip()
         desc = str(am.get("desc") or "").strip()
         if am.get("kind") == "concession":
+            label = "本年度新增政治让步" if only_new else "现行政治让步"
             if desc:
-                out.append(f"- 现行政治让步（附于《{law_zh}》）：{desc}。"
-                           if law_zh else f"- 现行政治让步：{desc}。")
+                out.append(f"- {label}（附于《{law_zh}》）：{desc}。"
+                           if law_zh else f"- {label}：{desc}。")
             continue
         if not name:
             continue
+        label = "本年度新增法律附则" if only_new else "现行法律附则（修正案）"
+        added = str(am.get("added_date") or "").strip()
+        tail = f"（自{added}起施行）" if (not only_new and added) else ""
         if desc:
-            out.append(f"- 现行宪法修正案：「{name}」附于《{law_zh}》——{desc}" 
-                       if law_zh else f"- 现行宪法修正案：「{name}」——{desc}")
+            out.append(f"- {label}：「{name}」附于《{law_zh}》——{desc}{tail}"
+                       if law_zh else f"- {label}：「{name}」——{desc}{tail}")
         else:
-            out.append(f"- 现行宪法修正案：「{name}」附于《{law_zh}》。"
-                       if law_zh else f"- 现行宪法修正案：「{name}」。")
+            out.append(f"- {label}：「{name}」附于《{law_zh}》。{tail}"
+                       if law_zh else f"- {label}：「{name}」。{tail}")
     return out
 
 
@@ -2583,7 +2603,7 @@ def render_politics(data, history=None):
         rep_s = f"以替代「{law_zh(rep)}」" if rep else ""
         L.append(f"- 立法进行中：当前「{law_nm}」法案处于「{phase}」阶段，"
                  f"该法案于{sub}提交{rep_s}")
-    L.extend(amendment_fact_lines(data))
+    L.extend(amendment_fact_lines(data, only_new=True))
     return "\n".join(L)
 
 def render_society(data):
@@ -3595,25 +3615,69 @@ _STATE_FLAVOR_MODERN_REPL = (
 )
 
 
+# 非中华文化圈的州情措辞去中国化 (2026): 州情速写表 (journal_save._STATE_*_BANDS)
+# 的中式制度词 (衙门/士绅宗族/州县/蒙学…) 在西方、伊斯兰与其他文化圈同样出现,
+# 与 style.py 的文化圈语域不搭。渲染期按文化圈做短语替换:
+# 先换制度词 (各档位), 再按档位做文言→白话现代化 (3~5 档)。
+# 与 journal_save.build_state_flavor 的档位措辞表同步; 长短语在前避免误替换。
+_STATE_FLAVOR_SPHERE_REPL = (
+    ("基层由地方士绅宗族把持", "基层由地方乡绅把持"),
+    ("基层由士绅宗族把持", "基层由地主乡绅把持"),
+    ("衙门只管催科与刑名", "官署只管征税与刑狱"),
+    ("衙门只管收税和刑狱", "官署只管收税和刑狱"),
+    ("市廛栉比、商贾辐辏", "商铺林立、商旅云集"),
+    ("国家行政触角几乎不到州县", "国家行政触角几乎不到地方"),
+    ("政令可下州县", "政令可下地方"),
+    ("州县自治", "地方自治"),
+    ("士绅宗族", "地主乡绅"),
+    ("士绅", "乡绅"),
+    ("衙门", "官署"),
+    ("书吏", "文书吏员"),
+    ("州县", "地方"),
+    ("都门", "京城"),
+    ("市廛", "商铺"),
+    ("商贾辐辏", "商旅云集"),
+    ("目不识丁之乡", "识字率很低"),
+    ("蒙学初开", "识字未广"),
+    ("书声渐起", "读书人渐多"),
+    ("知书达理", "识字率很高"),
+    ("流民四起", "失业者众多"),
+    ("令行禁止", "政令通行"),
+    ("无远弗届", "行政覆盖完备"),
+    ("官道", "大道"),
+)
+
+
 def _state_flavor_lines_for_tier(lines, data):
-    """州情速写行按文风档位切换: 档位 1~2 (传统时代) 保留文言措辞,
-    档位 3~5 (现代时代) 换成现代白话; 档位解析失败时原样返回。"""
+    """州情速写行按文风档位与文化圈切换措辞。
+
+    - 档位 3~5 (现代时代): 文言措辞换成现代白话;
+    - 非中华文化圈: 先换掉衙门/士绅/州县等中式制度词, 再按档位现代化;
+    - 中华文化圈 1~2 档: 原样保留 (传统时代文言)。
+    档位或文化圈解析失败时原样返回。"""
     if not lines:
         return lines
     try:
-        from style import style_tier_from_data
+        from style import style_tier_from_data, style_sphere_from_data
         tier = style_tier_from_data(data)
+        sphere = style_sphere_from_data(data)
     except Exception:
-        tier = None
-    if not isinstance(tier, int) or tier < 3:
         return lines
-    out = []
-    for ln in lines:
-        for src, dst in _STATE_FLAVOR_MODERN_REPL:
-            if src in ln:
-                ln = ln.replace(src, dst)
-        out.append(ln)
+    out = list(lines)
+    if sphere and sphere != "sinic":
+        out = [_replace_flavor_phrases(ln, _STATE_FLAVOR_SPHERE_REPL)
+               for ln in out]
+    if isinstance(tier, int) and tier >= 3:
+        out = [_replace_flavor_phrases(ln, _STATE_FLAVOR_MODERN_REPL)
+               for ln in out]
     return out
+
+
+def _replace_flavor_phrases(line, repl):
+    for src, dst in repl:
+        if src in line:
+            line = line.replace(src, dst)
+    return line
 
 
 def _legacy_budget_lines(fi, unit, rate=None):
@@ -3854,6 +3918,59 @@ def _report_month_of(date_val):
             except ValueError:
                 pass
     return 1
+
+
+def _report_year_of(data):
+    """报告年度: 年初(1月)存档报道上一历年, 其余报道本年度至今。
+
+    日期优先取 save_date (真实存档日期); 缺省回退 date (旧 raw/快照无
+    save_date 时的兼容路径)。无法解析时原样返回 year。"""
+    save_date = str((data or {}).get("save_date") or (data or {}).get("date") or "")
+    year = (data or {}).get("year")
+    m = re.match(r"(\d{4})\.(\d{1,2})", save_date)
+    if not m or not isinstance(year, int):
+        return year
+    save_month = max(1, min(12, int(m.group(2))))
+    return (year - 1) if save_month <= 1 else year
+
+
+def roll_report_date(data, cfg=None, force=False):
+    """抽一个"本期出版日期", 供「报告月×半球」时令风味生效 (2026-09)。
+
+    自动存档恒在 1.1, 报告月恒为 1, 时令恒为冬季; 本函数把 data["date"] /
+    data["report_month"] 改为随机出版日期 (年份 = 存档年, 月份 ∈ [存档月, 12],
+    日 1~28 且不早于存档日), 使提示词【日期】、报头注释、阅读页报告日期与
+    时令管线四者一致。真实存档日期另存 save_date, 供法律窗口/战争和约判定/
+    报告年度使用。
+
+    每存档年只抽一次并随快照/raw 持久化 (report_date_rolled);
+    report_date_random_enabled=false 完整回退旧行为;
+    report_date_salt 填任意串可重抽 (留空 = 每存档年真随机一次)。
+    返回 True 表示本次改动了日期 (调用方据此回写快照缓存)。"""
+    if cfg is None:
+        cfg = load_config()
+    if not bool(cfg.get("report_date_random_enabled", True)):
+        return False
+    save_date = str((data or {}).get("save_date") or (data or {}).get("date") or "")
+    m = re.match(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", save_date)
+    if not m:
+        return False
+    sy, sm, sd = (int(x) for x in m.groups())
+    salt = str(cfg.get("report_date_salt") or "")
+    if (bool(data.get("report_date_rolled")) and not force
+            and str(data.get("report_date_salt") or "") == salt):
+        return False
+    rnd = (random.Random(f"{sy}|{salt}|{save_date}") if salt else random.Random())
+    rm = rnd.randint(max(1, min(12, sm)), 12)
+    rd = rnd.randint(1, 28)
+    if rm == sm:
+        rd = max(rd, min(sd, 31))
+    data["save_date"] = save_date
+    data["date"] = f"{sy}.{rm}.{rd}"
+    data["report_month"] = rm
+    data["report_date_rolled"] = True
+    data["report_date_salt"] = salt
+    return True
 
 
 _LOC_ALL_REV = None
@@ -4253,7 +4370,10 @@ def _food_flavor_lines(goods, year=None, religion=None, seed_key="",
         d = entry["d"]
         if entry.get("from_self"):
             if any(t in d for t in ("腌", "酸", "干", "酱", "储")):
-                return rnd.choice([f"配以自腌的{d}", f"就着冬储的{d}下饭"])
+                # 渍物四季常见, 但"冬储"措辞只在秋冬成立 (报告月已随机化)
+                if season in ("autumn", "winter"):
+                    return rnd.choice([f"配以自腌的{d}", f"就着冬储的{d}下饭"])
+                return rnd.choice([f"配以自腌的{d}", f"就着自腌的{d}下饭"])
             return rnd.choice([f"佐以自家园中的{d}", f"就着自家园里的{d}下饭"])
         return rnd.choice([f"佐以{d}", f"配以{d}", f"就着{d}下饭"])
 
@@ -5074,6 +5194,15 @@ def render_section_facts(key, data, history=None, style=None):
         return render_ads(data, history)
     return render_overview(data, history)
 
+
+def _calendar_note(data, year, style=None):
+    """非中华文化圈的年份变量行附公历纪年提示 (中华文化圈保留干支/年号空间)。"""
+    sphere = style.get("sphere") if isinstance(style, dict) else None
+    if sphere and sphere != "sinic":
+        return f"（纪年一律用公历书写，如{year}年）"
+    return ""
+
+
 def build_masthead_messages(data, style=DEFAULT_STYLE):
     if isinstance(style, dict):
         st = style
@@ -5109,7 +5238,7 @@ def build_masthead_messages(data, style=DEFAULT_STYLE):
         f"【国名】{country}（合并政体后的正式国名：{full}）\n"
         f"【都城】{cap_note}\n"
         f"【政体】{govt_zh}\n"
-        f"【年份】{year}\n\n"
+        f"【年份】{year}{_calendar_note(data, year, st)}\n\n"
         f"请据此撰写抬头（抬头中的国名须按正式国名「{full}」一字不改写入"
         + (f"；{_user_cap}" if _user_cap else "")
         + "）。"
@@ -5194,7 +5323,8 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
         req += ("该人群分红/投资收入与该企业本年行情对应写作其投资得失，"
                 "行情数字一律以资料给出者为限。")
     user_msg = (
-        f"本期报纸：【国名】={country}，【都城】={capital}，【年份】={year}。"
+        f"本期报纸：【国名】={country}，【都城】={capital}，"
+        f"【年份】={year}{_calendar_note(data, year, st)}。"
         f"抬头如下，行文须与之呼应：\n{masthead}\n\n"
         f"请撰写「{title}」板块。要求：{req}\n\n"
         f"以下是本期报纸关于「{title}」板块的相关数据（涉及国名、都城请用上述变量）：\n"
@@ -5242,6 +5372,62 @@ def clean_number_spaces(text):
     return text
 
 
+# 非中华文化圈输出兜底 (2026): 提示词已给出本国称谓, 模型偶发回潮中式制度词;
+# 渲染期按文化圈做确定性替换 (与程序端把「油」改写为「煤油」同一思路)。
+_DESINIC_COMMON = (
+    ("户部", "财政部"),
+    ("衙门", "官署"),
+    ("蒙馆", "学堂"),
+    ("义学", "学堂"),
+    ("士绅", "乡绅"),
+    ("州县", "地方"),
+    ("都门", "京城"),
+    ("市廛", "商铺"),
+    ("邸报", "公报"),
+    ("奏报", "呈报"),
+    ("本馆", "本报"),
+    ("伏惟", ""),
+    ("谨按", "按"),
+    ("圣上", "陛下"),
+    ("天子", "君主"),
+)
+_DESINIC_REPUBLIC = (
+    ("陛下", "总统"),
+    ("圣上", "总统"),
+    ("天子", "总统"),
+    ("宫廷", "政府"),
+)
+
+
+def _desinicize_text(text, data):
+    """非中华文化圈文本兜底替换 (sinic 原样返回)。"""
+    if not text or not data:
+        return text
+    try:
+        sphere = style_sphere_from_data(data)
+        cat = govt_category(data)
+    except Exception:
+        return text
+    if sphere == "sinic":
+        return text
+    repl = list(_DESINIC_COMMON)
+    if sphere == "west":
+        if cat in ("council_republic", "parliamentary_republic",
+                   "presidential_republic"):
+            repl.append(("朝廷", "政府"))
+            repl += list(_DESINIC_REPUBLIC)
+        elif cat == "theocracy":
+            repl.append(("朝廷", "教廷"))
+        else:
+            repl.append(("朝廷", "宫廷"))
+    else:
+        repl.append(("朝廷", "王廷"))
+    for src, dst in repl:
+        if src in text:
+            text = text.replace(src, dst)
+    return text
+
+
 def clean_prompt_messages(messages):
     """提示词侧数字↔汉字空格清理: 发送给模型的 sys/user 内容统一执行
     clean_number_spaces (「死亡 174,057 人」→「死亡174,057人」), 与输出侧
@@ -5256,7 +5442,8 @@ def clean_prompt_messages(messages):
         cleaned.append({**m, "content": c})
     return cleaned
 
-def _normalize_section_text(text, title, use_separators=False, paper_name=None):
+def _normalize_section_text(text, title, use_separators=False, paper_name=None,
+                            data=None):
     """规范化板块正文的标题层级:
     - 剔除模型回显的报名(# 《报名》)与抬头信息行(**国名：...｜都城：...**), 避免正文重复报头;
     - 加粗回显标题行 (**板块名** / **板块名导语：**) 归一化为 ## 板块名;
@@ -5294,6 +5481,7 @@ def _normalize_section_text(text, title, use_separators=False, paper_name=None):
                        r"\1 ", s).strip()
         out.append(s)
     body = "\n".join(out).strip()
+    body = _desinicize_text(body, data)
     body = clean_number_spaces(body)
     if use_separators:
         body = _insert_thousand_separators(body)
@@ -5318,6 +5506,7 @@ def generate_newspaper(data, cfg, history=None):
     st = resolve_style(cfg, data)
     use_sep = st.get("number_format") == "arabic"
     masthead = call_deepseek(build_masthead_messages(data, st), cfg).strip()
+    masthead = _desinicize_text(masthead, data)
     m = re.search(r"《([^《》]+)》", masthead)
     paper_name = m.group(1) if m else None
     section_cfg = dict(cfg)
@@ -5328,7 +5517,7 @@ def generate_newspaper(data, cfg, history=None):
             msg = build_section_messages(key, data, cfg, history, masthead, style=st)
             text = call_deepseek(msg, section_cfg).strip()
             body = _normalize_section_text(text, title, use_separators=use_sep,
-                                           paper_name=paper_name)
+                                           paper_name=paper_name, data=data)
             ph = _SECTION_CHART_PLACEHOLDERS.get(key)
             if ph:
                 body = body.rstrip() + "\n\n" + ph
@@ -5453,6 +5642,9 @@ def on_block_complete(data, cfg, force=False):
         log("跳过: 无法从数据块解析年份。")
         return
 
+    # 出版日期随机化 (时令风味): 旧 raw 无 save_date/未抽签时在此补抽,
+    # 随 save_raw_data 一并持久化; 已抽过的年份 (salt 未变) 保持不变。
+    roll_report_date(data, cfg)
     raw_path = save_raw_data(data, cfg)
     if not raw_path:
         return
