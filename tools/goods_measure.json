@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "note": "动态商品量词系统 v4 (2026, 方案B 全局金额放大): per = base÷目标史实单价 (物理量, 生产/条约数量读数), 价格显示与消费数量用 ppu = per×currency_base_scale (代码内计算, 价格公式中 S 相消 → 显示史实单价); prod = 生产数量放大系数 (gold=3 → 金矿年产量 3~5 吨); kcal = 每显示单位(千克/升)热量 (主食热量锚定用)。重标定: python tools/calibrate_measures.py --write",
+    "note": "动态商品量词系统 v4 (2026, 方案B 全局金额放大): per = base÷目标史实单价 (物理量, 生产/条约数量读数), 价格显示与消费数量用 ppu = per×currency_base_scale (代码内计算, 价格公式中 S 相消 → 显示史实单价); prod = 生产数量放大系数 (gold=3 → 金矿年产量 3~5 吨); kcal = 每显示单位(千克/升)热量 (主食热量锚定用); max_month = 家庭月消费上限 (显示单位/户/月, 数量行钳制用); unit_home/per_home/dec_home/max_month_home = 家庭账本专用小单位口径 (煤炭生产读吨、家庭读千克), 商品未给该组字段时家庭口径同生产口径。重标定: python tools/calibrate_measures.py --write",
     "anchor": "游戏 1 单位商品 ≈ 基准价 1£ 的抽象价值量; v4 起 per 按史实单价重标定 (谷物 20£→2500千克、煤炭 30£→37.5吨、黄金 100£→800克), 单价/数量/收入三端自洽。",
     "targets": {
       "grain": [
@@ -243,14 +243,16 @@
     "per": 400.0,
     "dec": 0,
     "base": 20,
-    "need": "简朴衣物/供暖"
+    "need": "简朴衣物/供暖",
+    "max_month": 15
   },
   "wood": {
     "unit": "立方米",
     "per": 20.0,
     "dec": 1,
     "base": 20,
-    "need": "粗木器具/供暖"
+    "need": "粗木器具/供暖",
+    "max_month": 2
   },
   "groceries": {
     "unit": "千克",
@@ -265,21 +267,24 @@
     "per": 50.0,
     "dec": 0,
     "base": 30,
-    "need": "简朴衣物/成衣"
+    "need": "简朴衣物/成衣",
+    "max_month": 2
   },
   "furniture": {
     "unit": "件",
     "per": 15.0,
     "dec": 0,
     "base": 30,
-    "need": "粗木器具/家庭用品"
+    "need": "粗木器具/家庭用品",
+    "max_month": 1
   },
   "paper": {
     "unit": "张",
     "per": 1500.0,
     "dec": 0,
     "base": 30,
-    "need": "家庭用品"
+    "need": "家庭用品",
+    "max_month": 100
   },
   "services": {
     "unit": "单位",
@@ -349,7 +354,11 @@
     "per": 37.5,
     "dec": 1,
     "base": 30,
-    "need": "供暖/工业燃料"
+    "need": "供暖/工业燃料",
+    "unit_home": "千克",
+    "per_home": 37500,
+    "dec_home": 0,
+    "max_month_home": 500
   },
   "iron": {
     "unit": "吨",
@@ -406,7 +415,8 @@
     "per": 100.0,
     "dec": 0,
     "base": 40,
-    "need": "家庭用品"
+    "need": "家庭用品",
+    "max_month": 5
   },
   "fertilizer": {
     "unit": "千克",
@@ -434,7 +444,8 @@
     "per": 23.3333,
     "dec": 0,
     "base": 70,
-    "need": "奢侈品"
+    "need": "奢侈品",
+    "max_month": 2
   },
   "meat": {
     "unit": "千克",
@@ -457,49 +468,56 @@
     "per": 100.0,
     "dec": 0,
     "base": 30,
-    "need": "嗜好品"
+    "need": "嗜好品",
+    "max_month": 8
   },
   "wine": {
     "unit": "升",
     "per": 83.3333,
     "dec": 0,
     "base": 50,
-    "need": "嗜好品/奢侈饮品"
+    "need": "嗜好品/奢侈饮品",
+    "max_month": 30
   },
   "tea": {
     "unit": "千克",
     "per": 125.0,
     "dec": 0,
     "base": 50,
-    "need": "刺激品/奢侈饮品"
+    "need": "刺激品/奢侈饮品",
+    "max_month": 0.8
   },
   "coffee": {
     "unit": "千克",
     "per": 200.0,
     "dec": 0,
     "base": 50,
-    "need": "刺激品/奢侈饮品"
+    "need": "刺激品/奢侈饮品",
+    "max_month": 1.5
   },
   "sugar": {
     "unit": "千克",
     "per": 750.0,
     "dec": 0,
     "base": 30,
-    "need": "刺激品/奢侈食物"
+    "need": "刺激品/奢侈食物",
+    "max_month": 6
   },
   "tobacco": {
     "unit": "千克",
     "per": 100.0,
     "dec": 0,
     "base": 40,
-    "need": "嗜好品/刺激品"
+    "need": "嗜好品/刺激品",
+    "max_month": 1.5
   },
   "opium": {
     "unit": "千克",
     "per": 6.25,
     "dec": 0,
     "base": 50,
-    "need": "嗜好品/休闲"
+    "need": "嗜好品/休闲",
+    "max_month": 0.2
   },
   "automobiles": {
     "unit": "辆",
@@ -527,14 +545,16 @@
     "per": 30.0,
     "dec": 0,
     "base": 60,
-    "need": "奢侈品"
+    "need": "奢侈品",
+    "max_month": 1
   },
   "luxury_furniture": {
     "unit": "件",
     "per": 12.0,
     "dec": 0,
     "base": 60,
-    "need": "奢侈品"
+    "need": "奢侈品",
+    "max_month": 1
   },
   "gold": {
     "unit": "克",

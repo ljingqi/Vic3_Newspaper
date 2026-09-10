@@ -1,6 +1,6 @@
 ---
 name: no-negative-prompts
-description: Use whenever writing, editing, or auditing prompts for this Journal project's LLM generation (journal.py, magazine.py, journal_save.py, style.py prompt strings) or any other prompt in this session — every instruction to the model must be phrased positively, stating what to do, with forbidden-phrasing (不要/避免/禁止/切勿/不得/请勿) converted to positive equivalents.
+description: Use whenever writing, editing, or auditing prompts for this Journal project's LLM generation (journal.py, magazine.py, journal_save.py, style.py prompt strings) or any other prompt in this session — every instruction to the model must be phrased positively, stating what to do, with forbidden-phrasing (不要/避免/禁止/切勿/不得/请勿) converted to positive equivalents, and every requirement the program can satisfy deterministically must be implemented in code or data instead of being written into the prompt.
 ---
 
 # 提示词正向表述铁律（no-negative-prompts）
@@ -36,6 +36,39 @@ description: Use whenever writing, editing, or auditing prompts for this Journal
 | 不要虚构伤亡数字 | 伤亡、耗资一律使用资料给出的数字 |
 | 禁止出现「数据缺失」 | 数据不足的内容简写或略去，以已知事实含蓄写作 |
 | 不要用表格 | 正文使用自然语言段落，Markdown 分段 |
+
+## 程序优先铁律（prompt-last）
+
+本项目的第二条铁律：**凡程序能确定性完成的事情，一律由程序（代码或数据文件）完成，提示词只承担程序做不到的创作性写作。** 提示词是最后手段，不是第一手段。
+
+### 判定方法
+
+写提示词之前先问一句：**这条要求能否用代码/数据确定性实现？** 能，就改代码或数据；不能（需要文风、叙事、取舍判断），才写进提示词。
+
+### 程序端职责清单（本项目已归程序，新增提示词前先对照）
+
+| 需求 | 程序端做法 | 位置 |
+| --- | --- | --- |
+| 抬头/板块标题只出现一次 | 排版端统一排入标题，渲染期剔除模型回显的抬头行与重复标题 | `journal.py _normalize_section_text` |
+| 商品名歧义（油→煤油） | 程序端改写商品名 | `journal.py _consumption_goods_name` |
+| 金额换算、主辅币、单位量词 | `format_money` / `goods_measure.json` 的 per、ppu | `currency.py`、`journal.py` |
+| 数字格式（千分位、汉字与数字间距） | 输出后处理 | `journal.py _insert_thousand_separators`、`clean_number_spaces` |
+| 制度词/文风替换（户部→财政部、衙门→官署） | 渲染期确定性替换 | `journal.py _desinicize_text` |
+| 图表数据、历史表、行情序列 | 程序算好数值后下发 | `htmlview.py`、`journal.py render_history_table` |
+| 板块增删（无战事就跳过战事板块） | 程序按数据门槛决定是否发送该板块 | `journal.py generate_newspaper` |
+
+### 反例与正例
+
+- 反例：在板块提示词里写「正文以第一段开始写；板块标题与报头由排版端统一排入。」——剔除与排版都是程序可做的确定性工作，写进提示词等于把确定性交给模型自觉。
+- 正例：程序在 `_normalize_section_text` 里剔除抬头回显、折叠重复标题，并在正文缺标题时补一条规范的 `## 板块名`。
+- 反例：提示词里写「价格按克计价，单位用千克」——正例：在 `goods_measure.json` 里定 `unit`/`per`，程序按量词表输出。
+- 反例：提示词里写「图中 GDP 要与正文一致」——正例：`htmlview.py` 用同一年汇率换算后画图。
+
+### 收尾自查
+
+1. 新增的每条提示词要求，标注它为什么不能在程序端实现；
+2. 能在程序端实现的，改成代码/数据改动，并把对应提示词句子删掉；
+3. 事实层的确定性改写（改名、换算、替换、去重）优先做在渲染期，输出侧与提示词侧同时受益。
 
 ## 本项目排查清单（改完提示词后自查）
 

@@ -211,9 +211,9 @@ DEFAULT_CONFIG = {
     # (tools/goods_measure.json 的 kcal 字段)。
     "interview_kcal_adult_day": 2300,
     "interview_kcal_child_day": 1700,
-    # 热量锚定启用阈值: 恩格尔系数 ≥ 该值 (食物支出占比高的贫困家庭) 才
-    # 启用; 富户 (恩格尔低, 画像中本就少见主食商品) 维持金额公式。
-    "interview_staple_engel_min": 45,
+    # 主食热量锚定开关 (默认开启, 对全人群生效): 商品自身的热量占比已按 SoL
+    # 分档 (贫困偏谷物、富裕偏肉果), 因此不再按恩格尔系数筛选人群。
+    "interview_staple_kcal_enabled": True,
     # 访谈板块消费画像最多保留的商品数 (按消费权重降序; 0 = 全量)。
     # 数量行只展示可读读数 (约每<10年1单位), 其余商品的金额在金额行给出。
     "interview_consumption_goods_max": 10,
@@ -2163,7 +2163,14 @@ def render_econ(data, history=None):
     gdp = data.get('gdp', '未知')
     unit = data.get("currency") or "英镑"
     gdp_line = f"- GDP：{_fm(data, gdp) if isinstance(gdp, (int, float)) else gdp}"
-    gdp_pct = _yoy_pct(prev.get("gdp"), gdp if isinstance(gdp, (int, float)) else None)
+    # 同比按「主币金额」口径: 两年各自按当年汇率换算后相比 (与正文列出的
+    # 两个 GDP 数值同源), 汇率年际漂移计入增幅
+    gdp_pct = None
+    if isinstance(gdp, (int, float)):
+        cur_v = gdp * _fx_rate(data, unit)
+        prev_v = (prev.get("gdp") * _fx_rate(prev, unit)
+                  if isinstance(prev.get("gdp"), (int, float)) else None)
+        gdp_pct = _yoy_pct(prev_v, cur_v)
     if gdp_pct is not None:
         gdp_line += f"（比去年同期{'增长' if gdp_pct >= 0 else '减少'}{abs(gdp_pct):.1f}%）"
     L.append(gdp_line)
@@ -3200,6 +3207,30 @@ def _goods_unit_per(key):
             float(m.get("prod") or 1.0) or 1.0)
 
 
+def _home_measure(key):
+    """家庭消费口径的量词 → (单位, per, dec, 基准价, ppu, prod, max_month)。
+
+    生产/物价读「吨」这类大单位的商品, 在家庭账本里按 unit_home/per_home
+    给的小单位读数 (如煤炭生产读吨、家庭读千克), 家庭读数因此保持整数小单位
+    (500 千克/月), 大单位仍留给生产与物价行。未给 unit_home 时与生产口径一致;
+    月度上限优先取 max_month_home, 缺省回退 max_month (0 或缺省表示不设上限)。"""
+    unit_, per, dec, base, ppu, prod = _goods_unit_per(key)
+    m = _goods_measure_local().get(key) or {}
+    hu = m.get("unit_home")
+    hp = m.get("per_home")
+    if hu and isinstance(hp, (int, float)) and hp > 0 and per and per > 0:
+        ppu = ppu * (float(hp) / per)
+        per = float(hp)
+        unit_ = hu
+        dec = int(m.get("dec_home", 0))
+    mm = m.get("max_month_home", m.get("max_month"))
+    if isinstance(mm, (int, float)) and mm > 0:
+        max_month = float(mm)
+    else:
+        max_month = None
+    return unit_, per, dec, base, ppu, prod, max_month
+
+
 _MONEY_SCALE_CACHE = None
 
 
@@ -3360,12 +3391,13 @@ def _goods_unit_price_text(data, g, unit=None):
     """主要消费商品每单位市价文本: 基准价×(1+dev/100)÷ppu → 主辅币。
     dev_pct 为市价相对正常价 (基准价) 的偏离率, ppu 为价格显示换算
     (每游戏单位显示单位数, 缺省同 per; 黄金用 ppu 保史实金价);
+    量词走家庭消费口径 (_home_measure: 煤炭等大单位商品在家庭账本按千克);
     数据不足或抽象单位 (如「单位」) 返回 None。"""
     key = g.get("key")
     d = g.get("dev_pct")
     if not key or not isinstance(d, (int, float)):
         return None
-    unit_, _per, _dec, base, ppu, _prod = _goods_unit_per(key)
+    unit_, _per, _dec, base, ppu, _prod, _mm = _home_measure(key)
     if unit_ is None or unit_ == "单位" or not isinstance(base, (int, float)) \
             or base <= 0 or ppu <= 0:
         return None
@@ -3453,11 +3485,13 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
         basic_pool = min(eff_goods * (basic_wsum / wsum), basic_cap)
         lux_pool = eff_goods - basic_pool
     out = []
-    # 金额行: 恩格尔口径的食物金额; 各主要商品的金额不再逐项列出
-    # (数量行已给出每项消费量, 逐项金额与数量行重复且无实义)。
-    food_m = eff_goods * (engel / 100.0) if isinstance(engel, (int, float)) else None
+    # 金额行: 用家庭账本同一口径的未封顶商品支出 (br.goods × 劳动力数), 与
+    # _family_budget_lines 的「商品消费」完全一致, 同一板块只出现一个总额;
+    # 富户封顶 (basic_pool/lux_pool) 只作用于下方数量篮子的分摊, 不改变账本。
+    # 各主要商品的金额不再逐项列出 (数量行已给出每项消费量)。
+    food_m = goods_m * (engel / 100.0) if isinstance(engel, (int, float)) else None
     head = (f"- 消费结构：该家庭每月商品消费约"
-            f"{format_money(eff_goods, unit, rate)}")
+            f"{format_money(goods_m, unit, rate)}")
     if food_m is not None:
         head += (f"，其中基本食物约{format_money(food_m, unit, rate)}"
                  f"（恩格尔系数约{engel}%）")
@@ -3492,11 +3526,15 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
     try:
         kcal_adult = float(cfg.get("interview_kcal_adult_day", 2300) or 2300)
         kcal_child = float(cfg.get("interview_kcal_child_day", 1700) or 1700)
-        engel_min = float(cfg.get("interview_staple_engel_min", 45) or 45)
     except (TypeError, ValueError):
-        kcal_adult, kcal_child, engel_min = 2300.0, 1700.0, 45.0
+        kcal_adult, kcal_child = 2300.0, 1700.0
+    # 主食热量锚定对全人群启用 (2026-09 修正): 原先按恩格尔系数门槛只在贫困家庭
+    # 启用, 富户 (恩格尔 25~44) 退回「金额÷市价×ppu」, 同一主食读数被放大到
+    # 谷物 143~212 千克/月、鱼 57~81 千克/月。商品自身的热量占比已按 SoL 分档
+    # (_STAPLE_KCAL_SHARE_BY_SOL: 贫困偏谷物、富裕偏肉果), 无需再按恩格尔把关。
+    staple_kcal_on = bool(cfg.get("interview_staple_kcal_enabled", True))
     staple_qty = {}
-    if isinstance(engel, (int, float)) and engel >= engel_min:
+    if staple_kcal_on:
         n_child = profile.get("children_count")
         n_child = int(n_child) if isinstance(n_child, (int, float)) and n_child >= 0 else 2
         hh_kcal_month = (2 * kcal_adult + n_child * kcal_child) * 30.4
@@ -3523,13 +3561,9 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
                 mi = lux_pool * (w or 0) / lux_wsum if lux_wsum else 0.0
         else:
             mi = eff_goods * (w or 0) / wsum
-        unit_, per, dec, base, ppu, _prod = _goods_unit_per(key)
+        unit_, per, dec, base, ppu, _prod, max_month = _home_measure(key)
         if unit_ is None:
             continue
-        max_month = None
-        _mm = (_goods_measure_local().get(key) or {}).get("max_month")
-        if isinstance(_mm, (int, float)) and _mm > 0:
-            max_month = float(_mm)
         price = base
         if isinstance(base, (int, float)) and base > 0 and isinstance(dv, (int, float)):
             price = base * (1 + dv / 100.0)
@@ -3550,9 +3584,10 @@ def _consumption_breakdown_lines(profile, unit, rate=None):
                 need = _goods_need(key)
                 if need and any(k in need for k in ("食物", "刺激", "嗜好")):
                     q = max(q, food_min)
-        # v4 消费上限 (goods_measure.json 的 max_month, 显示单位/月):
-        # 游戏需求权重偶有过度分配 (如煤油 14.8%), 按史实单价换算后读数虚高
-        # (每月数十升), 加显示上限使其回到现实量级 (如煤油 ≤20 升/月)。
+        # 消费上限 (goods_measure.json 的 max_month / max_month_home, 显示单位/月):
+        # 游戏需求权重偶有过度分配 (如煤油 14.8%、贵族砂糖 8%), 按史实单价换算后
+        # 读数虚高 (每月数十升、数十千克), 上限使各项回到现实量级 (家庭每月
+        # 糖≤6千克、煤≤500千克、煤气油≤20升…), 家庭账本不再出现超常读数。
         if max_month and q > max_month:
             q = max_month
         # 可读性守卫: 每月不足 1/120 单位 (约每10年1单位) 的稀疏商品跳过,
@@ -5333,8 +5368,11 @@ def build_section_messages(key, data, cfg, history, masthead, style=None):
     return [{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}]
 
 _MASTHEAD_ECHO_RE = re.compile(r"^#\s*《.+》\s*$")
+# 抬头信息行回显: 年份写「1843」或「1843年」两种写法皆命中 (模型惯写后者);
+# 全角/半角冒号皆可; 加粗包裹亦可。模块化抬头(国名/都城/年份)一律整行剔除。
 _HEADER_INFO_RE = re.compile(
-    r"^\*{0,2}国名：.+｜都城：.+｜(?:政体：.+｜)?年份：\d{4}\*{0,2}\s*$")
+    r"^\*{0,2}国名[：:]\s*.+?｜都城[：:]\s*.+?｜(?:政体[：:]\s*.+?｜)?"
+    r"年份[：:]\s*\d{4}年?\*{0,2}\s*$")
 _HEAD_RE = re.compile(r"^#{1,6}\s+")
 # 模型偶尔把板块标题写成加粗行 (**邦交纪要** / **头版导语：** / **《乡里访谈》**),
 # 而非 ## 标题, 导致板块名以正文段落形式出现在 HTML 里。此正则把这类行归一化为标题。
@@ -5342,16 +5380,34 @@ _HEAD_RE = re.compile(r"^#{1,6}\s+")
 _BOLD_ECHO_RE = re.compile(r"^\*\*(.+?)[:：]?\*\*[:：]?\s*$")
 
 
+def _heading_name(line):
+    """标题行 → 去掉井号、加粗号、书名号、引号与尾部冒号后的标题文本。"""
+    m = _HEAD_RE.match(line or "")
+    if not m:
+        m = _BOLD_ECHO_RE.match(line or "")
+        if not m:
+            return None
+        return (m.group(1).strip().strip("《》「」").strip().rstrip("：:"))
+    return (line[m.end():].strip().strip("*").strip()
+            .strip("《》「」").strip().rstrip("：:"))
+
+
+def _heading_is_title(line, title):
+    """该标题行是否就是本板块标题 (兼容「标题+导语」与书名号/冒号写法)。"""
+    if not title:
+        return False
+    name = _heading_name(line)
+    if name is None:
+        return False
+    return name == title or name == title + "导语"
+
+
 def _bold_echo_heading(line, title):
     """加粗回显行 → 规范的板块标题; 不是本板块标题的回显返回 None。
     兼容 `**头版导语：**`(去「导语」) 与 `**《乡里访谈》**`(去书名号)。"""
-    m = _BOLD_ECHO_RE.match(line)
-    if not m:
+    if not _BOLD_ECHO_RE.match(line or ""):
         return None
-    name = m.group(1).strip().strip("《》「」").strip().rstrip("：:")
-    if name == title:
-        return f"## {title}"
-    if title and name == title + "导语":
+    if _heading_is_title(line, title):
         return f"## {title}"
     return None
 
@@ -5444,14 +5500,14 @@ def clean_prompt_messages(messages):
 
 def _normalize_section_text(text, title, use_separators=False, paper_name=None,
                             data=None):
-    """规范化板块正文的标题层级:
-    - 剔除模型回显的报名(# 《报名》)与抬头信息行(**国名：...｜都城：...**), 避免正文重复报头;
+    """规范化板块正文的标题层级 (排版端确定性完成, 不依赖模型自觉):
+    - 剔除模型回显的报名(# 《报名》)与抬头信息行(国名：…｜都城：…｜年份：1843年);
     - 加粗回显标题行 (**板块名** / **板块名导语：**) 归一化为 ## 板块名;
-      若本板块已有同标题则整行删除 (消除重复标题与「板块名进正文」);
+    - 板块标题只保留一条: 模型重复回显的 ## 板块名 / **板块名** 整行删除;
+      正文确有板块标题但不在首行时, 上提到首行, 保证标题唯一且在最前;
     - 板块内的一级标题一律降为二级(保证 # 只留给报名);
     - 正文没有标题时补上规范的 ## 板块名。"""
     out = []
-    saw_title_heading = False
     for raw in (text or "").split("\n"):
         s = raw.strip()
         if not s:
@@ -5459,27 +5515,35 @@ def _normalize_section_text(text, title, use_separators=False, paper_name=None,
             continue
         if _MASTHEAD_ECHO_RE.match(s) or _HEADER_INFO_RE.match(s):
             continue
-        if _HEAD_RE.match(s) and title in s:
-            saw_title_heading = True
-        if not _HEAD_RE.match(s) and not _BOLD_ECHO_RE.match(s):
-            out.append(s)
-            continue
         head = _bold_echo_heading(s, title)
         if head is not None:
-            if saw_title_heading:
-                continue          # 已有 ## 标题, 重复回显行直接删除
-            saw_title_heading = True
-            out.append(head)
+            out.append(head)          # 加粗回显的板块标题 → ## 板块名
+            continue
+        if _HEAD_RE.match(s):
+            if _heading_is_title(s, title):
+                out.append(f"## {title}")   # 模型自写的板块标题归一化
+                continue
+            if s.startswith("# "):
+                s = "## " + s[2:]
+            if paper_name and s.startswith("#"):
+                s = re.sub(r"^(#{1,6})\s*《" + re.escape(paper_name) + r"》",
+                           r"\1 ", s).strip()
+            out.append(s)
             continue
         if _BOLD_ECHO_RE.match(s):
-            out.append(s)         # 非本板块标题的加粗行保留原样
+            out.append(s)             # 非本板块标题的加粗行保留原样
             continue
-        if s.startswith("# "):
-            s = "## " + s[2:]
-        if paper_name and s.startswith("#"):
-            s = re.sub(r"^(#{1,6})\s*《" + re.escape(paper_name) + r"》",
-                       r"\1 ", s).strip()
         out.append(s)
+    # 板块标题去重: 同名标题行只留第一条
+    seen_title = False
+    dedup = []
+    for ln in out:
+        if _heading_is_title(ln, title):
+            if seen_title:
+                continue
+            seen_title = True
+        dedup.append(ln)
+    out = dedup
     body = "\n".join(out).strip()
     body = _desinicize_text(body, data)
     body = clean_number_spaces(body)
@@ -5489,6 +5553,10 @@ def _normalize_section_text(text, title, use_separators=False, paper_name=None,
         return f"## {title}\n\n(本板块生成失败)"
     first = next((ln for ln in body.split("\n") if ln.strip()), "")
     if not _HEAD_RE.match(first):
+        # 首行不是标题: 板块标题若出现在正文中段则上提到首行, 否则补一条
+        if seen_title:
+            body = "\n".join(ln for ln in body.split("\n")
+                             if not _heading_is_title(ln, title)).strip()
         return f"## {title}\n\n{body}"
     return body
 

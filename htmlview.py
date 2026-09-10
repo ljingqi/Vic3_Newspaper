@@ -766,17 +766,24 @@ function bindMapTips(root) {
     const svg = fig.querySelector("svg");
     if (!svg) return;
     const data = (MAPS && MAPS[year]) || {};
+    // 州 GDP 悬浮提示口径: 存档只提供州间分布代理 (州内建筑利润合计), 绝对量按
+    // 该年国家 GDP × 州占比得出, 与正文/图表同一币种与同一总额 (旧数据同样适用)。
+    const macroRow = (CHARTS.macro || []).find(r => r.year === year);
+    const natGdp = (macroRow && typeof macroRow.gdp === "number") ? macroRow.gdp : null;
     svg.querySelectorAll("[id^='STATE_']").forEach(g => {
       const rk = g.getAttribute("id");
       const det = data[rk];
       if (!det) return;
+      const stateGdp = (natGdp != null && det.gdp_pct != null)
+        ? natGdp * det.gdp_pct / 100 : det.gdp;
       g.addEventListener("mouseenter", ev => {
         const cult = (det.culture || []).map(c => c.name + " " + fmtPct(c.pct)).join("、") || "—";
         const rel = (det.religion || []).map(r => r.name + " " + fmtPct(r.pct)).join("、") || "—";
         const hub = det.hub ? `（首府${det.hub}）` : "";
         mapTip.innerHTML =
           `<div class="tip-row"><b>${esc(det.name || rk)}</b>${hub}</div>`
-          + `<div class="tip-row"><span>GDP</span><span>${esc(det.gdp == null ? "—" : shortNum(det.gdp))}`
+          + `<div class="tip-row"><span>GDP${CHARTS.unit ? "（" + esc(CHARTS.unit) + "）" : ""}</span>`
+          + `<span>${esc(stateGdp == null ? "—" : shortNum(stateGdp))}`
           + `（占${fmtPct(det.gdp_pct)}）</span></div>`
           + `<div class="tip-pies">`
           + `<div class="tip-pie">${pieSvg(det.culture || [], 100)}<div>文化</div>`
@@ -938,9 +945,9 @@ def _collect_chart_data(base_dir):
     market: 逐年大盘概况 (涨跌家数/均值/领涨领跌/市场事件)。
     附带 player/capital (交易所指数命名用: 市场中心州首府 hub 名) 与
     palette ("east" 红涨绿跌 / "west" 绿涨红跌, 由玩家国名判定)。
-    个股价格按「当年汇率」换算为主币 (游戏镑 × 1英镑兑X主币, 与报纸正文 format_money
-    同口径); 旧年份无汇率数据时回退首个有汇率年份的汇率, 保持口径一致;
-    交易所指数是点数, 不换算。
+    个股价格与宏观 GDP/实际GDP 均按「当年汇率」换算为主币 (游戏镑 × 1英镑兑
+    X主币, 与报纸正文 format_money 同口径); 旧年份无汇率数据时回退首个有汇率
+    年份的汇率, 保持口径一致; 交易所指数是点数, 不换算。
     返回 {"macro": [...], "stock": [...], "exchange": [...], "market": [...],
           "currency": "...", "player": "...", "capital": "...", "palette": "...",
           "unit": "..."}。
@@ -986,11 +993,12 @@ def _collect_chart_data(base_dir):
         pi = raw.get("price_index") or {}
         macro.append({
             "year": year,
+            # 游戏镑原值, 循环后统一按当年汇率换算为主币 (与正文 GDP 同口径)
             "gdp": raw.get("gdp"),
             "pop": raw.get("pop"),
             "sol": raw.get("sol"),
             "literacy": lit,
-            # 问题3 (v4 2026): 实际GDP(游戏镑)/通胀率, 图表侧直接展示
+            # 问题3 (v4 2026): 实际GDP/通胀率; 实际GDP 同为游戏镑, 循环后一并换算
             "gdp_real": pi.get("real_gdp") if isinstance(pi.get("real_gdp"), (int, float)) else None,
             "inflation": pi.get("inflation") if isinstance(pi.get("inflation"), (int, float)) else None,
         })
@@ -1057,10 +1065,17 @@ def _collect_chart_data(base_dir):
     exchange.sort(key=lambda r: r["year"])
     for rec in stock.values():
         rec["rows"].sort(key=lambda r: r["year"])
-    # 个股价格按汇率换算 (游戏镑 → 主币, 与报纸正文 format_money 同口径):
-    # 当年汇率优先; 旧年份无汇率数据 (旧版快照) 回退首个有汇率年份的汇率,
-    # 保证图表与正文同一币种口径 (页面不再标注折算说明)。
+    # 金额序列统一按「当年汇率」换算为主币 (游戏镑 × 1英镑兑X主币, 与报纸正文
+    # format_money 同口径): 宏观 GDP/实际GDP 与个股价格同源同尺度, 避免正文
+    # 写 34.97亿里拉而图里画 918.2万。旧年份无汇率数据时回退首个有汇率年份,
+    # 保证同一币种口径 (页面不再标注折算说明)。
     first_rate = next((rates[y] for y in sorted(rates)), None)
+    for r in macro:
+        rate = rates.get(r["year"]) or first_rate
+        if rate and rate != 1.0:
+            for k in ("gdp", "gdp_real"):
+                if isinstance(r.get(k), (int, float)):
+                    r[k] = round(r[k] * rate, 2)
     for rec in stock.values():
         for r in rec["rows"]:
             rate = rates.get(r["year"]) or first_rate

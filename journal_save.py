@@ -6772,12 +6772,12 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     if source == "traded":
         active_line = (
             f"这里交易最活跃的商品是{good['zh']}"
-            + (f"，市价约{_fm_goods_price(snap, good['price'])}"
+            + (f"，{_fm_goods_unit_price(snap, good.get('key'), good['price'])}"
                if isinstance(good["price"], (int, float)) else "") + "。")
     else:
         active_line = (
             f"我国可自产的制成品中，{good['zh']}的市价居于前列"
-            + (f"，约{_fm_goods_price(snap, good['price'])}"
+            + (f"，{_fm_goods_unit_price(snap, good.get('key'), good['price'])}"
                if isinstance(good["price"], (int, float)) else "") + "。")
     if importer:
         export_bits = [f"{good['zh']}经我国贸易中心出口至{importer['country']}"]
@@ -6785,10 +6785,15 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             export_bits.append(f"目的地商埠为{importer['state_zh']}")
         if isinstance(importer.get("market_price"), (int, float)):
             imp_cur = importer.get("currency") or unit
-            imp_price = _fm_goods_price(snap, importer["market_price"], imp_cur)
+            gkey = good.get("key")
+            imp_price = _fm_goods_unit_price(snap, gkey,
+                                             importer["market_price"], imp_cur)
             if imp_cur != unit:
-                imp_price += (f"（折合约{_fm_goods_price(snap, importer['market_price'])}）")
-            export_bits.append(f"当地市价约{imp_price}")
+                imp_price += ("（折合约"
+                              + _fm_goods_unit_money(snap, gkey,
+                                                      importer["market_price"])
+                              + "）")
+            export_bits.append(f"当地{imp_price}")
         export_line = "，".join(export_bits) + "。"
     else:
         export_line = "（出口去向资料不足，本期按本地市场情况写作。）"
@@ -6861,7 +6866,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
     if up_chain:
         for mi, (name, b2, o2) in enumerate(up_chain[:2]):
             mkey = f"mine{mi}"
-            price_txt = (f"（市价约{_fm_goods_price(snap, good['price'])}）"
+            price_txt = (f"（{_fm_goods_unit_price(snap, good.get('key'), good['price'])}）"
                          if isinstance(good.get("price"), (int, float)) else "")
             lines = [f"主线商品：{good['zh']}{price_txt}，"
                      f"其原料「{name}」产自该建筑。",
@@ -6899,7 +6904,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                 melted, ctx, snap, country, prices, pops,
                 (by_state, btype_map, objs), [o2.get("state")]) or _fl
     else:
-        price_txt = (f"（市价约{_fm_goods_price(snap, good['price'])}）"
+        price_txt = (f"（{_fm_goods_unit_price(snap, good.get('key'), good['price'])}）"
                      if isinstance(good.get("price"), (int, float)) else "")
         mine_sections["mine"] = "\n".join([
             f"主线商品：{good['zh']}{price_txt}。",
@@ -6909,7 +6914,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
              else "（本地无上游生产建筑样本，原料多依赖外地输入，行文须含蓄。）")])
         mine_titles["mine"] = "原料的来处"
         mine_flavor["mine"] = _fl
-    price_txt = (f"（市价约{_fm_goods_price(snap, good['price'])}）"
+    price_txt = (f"（{_fm_goods_unit_price(snap, good.get('key'), good['price'])}）"
                  if isinstance(good.get("price"), (int, float)) else "")
     cust_lines = [f"主线商品：{good['zh']}{price_txt}，"
                   "以下为顾客买到它后的场景。"]
@@ -6951,10 +6956,12 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
 
         def _imp_fmt(v):
             """消费者侧金额: 进口国币种 + (币种不同时)折合我国币种说明。
-            商品单价口径 (与 lead 段同源): 汇率÷S, 见 _fm_goods_price。"""
-            s = _fm_goods_price(snap, v, imp_cur)
+            商品单价口径 (与 lead 段同源): 每显示单位 (÷量词) + 汇率÷S,
+            见 _fm_goods_unit_price。"""
+            s = _fm_goods_unit_price(snap, good.get("key"), v, imp_cur)
             if imp_cur != unit:
-                s += f"（折合约{_fm_goods_price(snap, v)}）"
+                s += ("（折合约"
+                      + _fm_goods_unit_money(snap, good.get("key"), v) + "）")
             return s
 
         if isinstance(gate, (int, float)) and gate > 0:
@@ -6964,7 +6971,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
             import_base = gate + export_duty
             import_duty = import_base * ir / 100.0
             total = gate + export_duty + import_duty
-            bits = [f"出厂价约{_fm_goods_price(snap, gate)}"]
+            bits = [f"出厂价{_fm_goods_unit_price(snap, good.get('key'), gate)}"]
             if abs(er) >= 1e-9:
                 bits.append(
                     f"出口补贴约{abs(er):g}%" if er < 0
@@ -6974,7 +6981,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
                     f"进口补贴约{abs(ir):g}%" if ir < 0
                     else f"进口关税约{abs(ir):g}%")
             cust_lines.append(
-                f"该消费者购买时共花费约{_imp_fmt(total)}，"
+                f"该消费者购买时{_imp_fmt(total)}，"
                 + "，".join(bits) + "。")
         else:
             cust_lines.append("（当地价格资料不足，请据终端顾客收支含蓄写作。）")
@@ -6996,7 +7003,7 @@ def _pool_shelf_data(melted, snap, ctx, rnd, country, cid, data):
         cust_lines.append(_blk)
     if not importer and isinstance(good["price"], (int, float)):
         cust_lines.append(
-            f"{good['zh']}当前市价约{_fm_goods_price(snap, good['price'])}，"
+            f"{good['zh']}当前{_fm_goods_unit_price(snap, good.get('key'), good['price'])}，"
             "可作为家庭账本的一笔支出参照。")
 
     # 动态板块标题: 按生产/上游环节实际形态命名,
@@ -7361,12 +7368,10 @@ def _pool_price_data(melted, snap, ctx, rnd, country, cid, data):
     def _fm_unit_price(r):
         """市价行: 每显示单位市价 + 量词 (动态量词体系, 与报纸访谈同口径)。
         每游戏单位市价 ÷ ppu → 每显示单位市价 (谷物→每千克、轻武器→每支、
-        飞机→每架), 避免模型自行脑补单位并错读量级 (谷物 77 比索实为
-        每 1 游戏单位 = 2500 千克的价); 无有效量词 (单位) 时退回原写法。"""
-        unit_, _per, _dec, ppu, _prod = _goods_measure(r["key"])
-        if unit_ == "单位" or not isinstance(ppu, (int, float)) or ppu <= 0:
-            return f"市价约{_fm_goods_price(snap, r['price'])}"
-        return f"每{unit_}约{_fm_goods_price(snap, r['price'] / ppu)}"
+        飞机→每架), 模型与读者由此直接拿到单件价格; 无有效量词 (单位) 时
+        退回整单位写法。与货架板块共用 _fm_goods_unit_price 同一实现。"""
+        t = _fm_goods_unit_price(snap, r["key"], r["price"])
+        return t if t.startswith("每") else f"市价{t}"
 
     lead = []
     if have_prev:
@@ -11551,6 +11556,38 @@ def _fm_goods_price(snap, v, currency=None):
                         rate / scale)
 
 
+def _goods_unit_ppu(key):
+    """商品 key → (量词, ppu); 抽象「单位」或无有效换算时返回 (None, None)。
+
+    ppu 为「每游戏单位折合多少显示单位」(goods_measure.json 的 per/ppu),
+    量词体系的价格行与消费数量行共用它。"""
+    unit_, _per, _dec, ppu, prod = _goods_measure(key)
+    if unit_ == "单位" or not isinstance(ppu, (int, float)) or ppu <= 0:
+        return None, None
+    return unit_, ppu
+
+
+def _fm_goods_unit_money(snap, key, price, currency=None):
+    """商品「每游戏单位」市价 → 「一个显示单位」的主辅币金额文本。
+
+    例: 轻武器市价 52.7 游戏镑/单位、量词 per=17.1429 支/单位 →
+    3.07 游戏镑/支 折 73里拉24分。抽象单位商品按整单位金额返回。"""
+    _unit, ppu = _goods_unit_ppu(key)
+    return _fm_goods_price(snap, price / (ppu or 1.0), currency)
+
+
+def _fm_goods_unit_price(snap, key, price, currency=None):
+    """商品「每游戏单位」市价 → 「每支约73里拉24分」/「约1,255里拉」文本。
+
+    量词体系的价格行统一走本函数: 游戏存档里商品价格以「游戏单位」计价
+    (1 游戏单位 = per 个显示单位, 如轻武器 1 单位 = 17.1429 支), 直接输出
+    整单位价格会把一箱枪的价钱写成一支枪的价钱 (物价板块与报纸访谈均按
+    每显示单位书写, 货架板块由此同口径)。"""
+    unit_, _ppu = _goods_unit_ppu(key)
+    money = _fm_goods_unit_money(snap, key, price, currency)
+    return f"每{unit_}约{money}" if unit_ else f"约{money}"
+
+
 # ---------------------------------------------------------------------------
 # 价格指数 / 实际GDP / 通胀率 (问题3, v4 2026): 12 商品等权拉氏指数,
 # 纯游戏镑口径 (与金额放大/汇率无关, 名义/实际同乘 S)。
@@ -14156,7 +14193,9 @@ def _extract_map_data(melted, snap, ctx, cid, state_ids, names=None,
                 rail_links.append([r, nb])
 
     # 7. 州详情 (悬浮提示用): 州名/hub 首府名/GDP 占比/文化宗教饼图。
-    #    GDP 代理 = 州内建筑 profit_after_reserves 合计 (无独立州GDP字段);
+    #    GDP 代理 = 州内建筑 profit_after_reserves 合计 (无独立州GDP字段), 代理只
+    #    提供州间分布; 展示值按全国 GDP 总量与当年汇率换算为主币 (与报纸正文同
+    #    口径), 使「州 GDP + 占比」与正文的国家 GDP 自洽。
     #    文化/宗教按州内 POP workforce+dependents 聚合, 取前 4 项。
     pops = ctx.pops_by_state(state_ids)
     gdp_sum = 0.0
@@ -14173,6 +14212,9 @@ def _extract_map_data(melted, snap, ctx, cid, state_ids, names=None,
         gdp_sum = sum(state_gdp.values())
     except Exception:
         pass
+    _map_unit = snap.get("currency") or DEFAULT_CURRENCY
+    _map_rate = _fx_rate(snap, _map_unit)
+    _map_nat_gdp = snap.get("gdp")
 
     culture_map = build_culture_map()
     zh_cult = culture_map.get("_zh") or {}
@@ -14212,10 +14254,14 @@ def _extract_map_data(melted, snap, ctx, cid, state_ids, names=None,
                    for k, v in sorted(rel.items(), key=lambda kv: -kv[1])[:4]] \
             if sum(rel.values()) else []
         gdp = state_gdp.get(sid, 0.0)
+        # 展示口径: 代理值按全国 GDP 份额放大 (总量=国家 GDP), 再乘当年汇率换主币
+        gdp_disp = gdp
+        if gdp_sum and isinstance(_map_nat_gdp, (int, float)) and _map_nat_gdp > 0:
+            gdp_disp = _map_nat_gdp * (gdp / gdp_sum)
         states_detail[rk] = {
             "name": st_name,
             "hub": _hub_city_name(sid),
-            "gdp": round(gdp, 0),
+            "gdp": round(gdp_disp * _map_rate, 0),
             "gdp_pct": round(gdp / gdp_sum * 100, 1) if gdp_sum else 0.0,
             "culture": cult_top,
             "religion": rel_top,
